@@ -60,8 +60,8 @@ class ObjectType(TypeDecorator[dict[str, Any]]):
 
     def load_dialect_impl(self, dialect: Dialect):
         if dialect.name == "postgresql":
-            return dialect.type_descriptor(JSONB())
-        return dialect.type_descriptor(JSON())
+            return dialect.type_descriptor(JSONB(none_as_null=True))
+        return dialect.type_descriptor(JSON(none_as_null=True))
 
 
 class Base(DeclarativeBase):

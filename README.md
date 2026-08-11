@@ -97,6 +97,17 @@ Supabase stores the sanitized source, sanitized metadata, structured protected s
 provenance, and processing state. Sensitive fragments are stored separately as encrypted vault
 entries; the complete raw source record is never stored.
 
+### Proof-of-concept ingestion UI
+
+Open the **Ingest records** workspace in the frontend to submit manual text through the backend's
+`POST /ingestion` endpoint. The form accepts source provenance, an opaque record ID, optional
+metadata, occurrence time, and source text. Its result compares the user-submitted text with the
+protected downstream text and shows the protected summary and processing status.
+
+For this proof of concept, the endpoint trusts the role selected in the existing UI and returns
+`authorization_mode: demo-role`. This is intentionally not an authentication boundary. The role
+field must be replaced by a verified server-side session before commercial or multi-user use.
+
 ## Configuration
 
 Set `GEMINI_API_KEY` in `backend/.env` to use Gemini. Without it, the backend runs in explicit

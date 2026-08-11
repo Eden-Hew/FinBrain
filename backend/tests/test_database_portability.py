@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
@@ -28,6 +28,28 @@ def test_role_list_compiles_to_postgres_jsonb():
     column_type = TokenVaultEntry.__table__.c.allowed_roles.type
     postgres_type = column_type.load_dialect_impl(postgresql.dialect())
     assert isinstance(postgres_type, JSONB)
+
+
+def test_optional_object_values_are_stored_as_sql_null():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(
+            TokenizedContent(
+                source_record_id="protected-only",
+                content_text="Protected content awaiting enrichment.",
+                structured_summary=None,
+            )
+        )
+        db.commit()
+
+        assert db.scalar(
+            text(
+                "select structured_summary is null "
+                "from tokenized_content where source_record_id = :source_record_id"
+            ),
+            {"source_record_id": "protected-only"},
+        ) == 1
 
 
 def test_sqlite_retrieval_uses_portable_embedding_values():
