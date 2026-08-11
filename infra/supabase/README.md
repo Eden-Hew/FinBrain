@@ -40,12 +40,17 @@ From the activated backend environment:
 
 ```powershell
 uv sync --active --extra dev
-uv run --active python -m scripts.check_supabase
-uv run --active python -m seed.seed_data
+uv run --active --no-sync python -m scripts.check_supabase
+uv run --active --no-sync python -m seed.seed_data
 ```
 
 The seed command goes through the real tokenization, encryption, Gemini embedding, and native
-pgvector storage path. It is idempotent by `source_record_id`.
+pgvector storage path. It is idempotent by `source_record_id` and its keyed content fingerprint.
+
+Migration `202608110002_unified_ingestion.sql` adds the source-system provenance, safe JSON
+metadata, protected structured summaries, retryable processing states, enrichment mode, and update
+timestamps. The embedding column is nullable so a protected record can be retained safely while an
+external enrichment is retried.
 
 ## Security boundary
 

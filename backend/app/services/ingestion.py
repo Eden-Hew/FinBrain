@@ -1,10 +1,158 @@
+import hashlib
+import hmac
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import TokenizedContent, TokenVaultEntry
+from app.schemas import CanonicalIngestionRecord, IngestionResult, ProcessingStatus
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.tokenize import tokenize_record
 from app.services.embeddings import embed_text
+from app.services.summarization import summarize_protected_text
+
+
+def _content_fingerprint(record: CanonicalIngestionRecord) -> str:
+    """Return a non-reversible keyed fingerprint for idempotency checks."""
+    payload = json.dumps(
+        {
+            "metadata": record.metadata,
+            "occurred_at": record.occurred_at.isoformat() if record.occurred_at else None,
+            "record_type": record.record_type,
+            "source_system": record.source_system,
+            "text": record.text,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hmac.new(
+        get_settings().token_root_secret.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def _protect_text(text: str, source_record_id: str) -> tuple[str, list[TokenVaultEntry]]:
+    protected, entries = tokenize_record(text, detect_spans(text), source_record_id)
+    if contains_known_pii(protected):
+        raise ValueError(f"Safety-net PII detection failed for source {source_record_id}")
+    return protected, entries
+
+
+def _protect_metadata(
+    metadata: dict[str, str], source_record_id: str
+) -> tuple[dict[str, str], list[TokenVaultEntry]]:
+    protected_metadata: dict[str, str] = {}
+    entries: dict[str, TokenVaultEntry] = {}
+    for key, value in metadata.items():
+        protected_value, value_entries = _protect_text(value, source_record_id)
+        protected_metadata[key] = protected_value
+        entries.update({entry.token: entry for entry in value_entries})
+    return protected_metadata, list(entries.values())
+
+
+def _result(
+    row: TokenizedContent,
+    *,
+    created: bool,
+    refreshed: bool,
+) -> IngestionResult:
+    return IngestionResult(
+        source_record_id=row.source_record_id,
+        content_text=row.content_text,
+        summary=row.summary,
+        processing_status=ProcessingStatus(row.processing_status),
+        enrichment_mode=row.enrichment_mode,
+        created=created,
+        refreshed=refreshed,
+    )
+
+
+def ingest_canonical_record(
+    db: Session,
+    record: CanonicalIngestionRecord,
+    *,
+    refresh: bool = False,
+) -> IngestionResult:
+    """Persist protected source text before any retryable external enrichment."""
+    if contains_known_pii(record.source_record_id):
+        raise ValueError("source_record_id must be an opaque identifier without recognizable PII")
+    fingerprint = _content_fingerprint(record)
+    existing = db.scalar(
+        select(TokenizedContent).where(TokenizedContent.source_record_id == record.source_record_id)
+    )
+    if (
+        existing
+        and not refresh
+        and existing.processing_status == ProcessingStatus.READY
+        and existing.content_fingerprint in {None, fingerprint}
+    ):
+        return _result(existing, created=False, refreshed=False)
+
+    protected_text, content_entries = _protect_text(record.text, record.source_record_id)
+    protected_metadata, metadata_entries = _protect_metadata(
+        record.metadata, record.source_record_id
+    )
+    entries = {entry.token: entry for entry in content_entries + metadata_entries}
+    for token, entry in entries.items():
+        if db.get(TokenVaultEntry, token) is None:
+            db.add(entry)
+
+    created = existing is None
+    row = existing or TokenizedContent(
+        source_record_id=record.source_record_id,
+        content_text=protected_text,
+    )
+    row.content_text = protected_text
+    row.embedding = None
+    row.record_type = record.record_type
+    row.summary = None
+    row.source_system = record.source_system
+    row.occurred_at = record.occurred_at
+    row.content_fingerprint = fingerprint
+    row.safe_metadata = protected_metadata
+    row.structured_summary = None
+    row.processing_status = ProcessingStatus.PROTECTED
+    row.processing_error = None
+    row.enrichment_mode = None
+    if created:
+        db.add(row)
+    db.commit()
+
+    stage = "summarization"
+    try:
+        summary, summary_mode = summarize_protected_text(protected_text)
+        stage = "embedding"
+        embedding, embedding_mode = embed_text(
+            f"{protected_text}\n\nProtected summary:\n{summary.summary}"
+        )
+        row.summary = summary.summary
+        row.structured_summary = summary.model_dump(mode="json")
+        row.embedding = embedding
+        row.processing_status = ProcessingStatus.READY
+        row.processing_error = None
+        row.enrichment_mode = (
+            summary_mode
+            if summary_mode == embedding_mode
+            else f"summary:{summary_mode},embedding:{embedding_mode}"
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        row = db.scalar(
+            select(TokenizedContent).where(
+                TokenizedContent.source_record_id == record.source_record_id
+            )
+        )
+        if row is None:
+            raise RuntimeError("Protected record disappeared during enrichment") from None
+        row.processing_status = ProcessingStatus.FAILED_ENRICHMENT
+        row.processing_error = f"{stage}_failed"
+        row.enrichment_mode = None
+        db.commit()
+
+    return _result(row, created=created, refreshed=not created)
 
 
 def ingest_record(
@@ -15,31 +163,15 @@ def ingest_record(
     *,
     refresh: bool = False,
 ) -> str:
-    """Tokenize raw text in memory and persist only its sanitized representation."""
-    existing = db.scalar(
-        select(TokenizedContent).where(TokenizedContent.source_record_id == source_id)
+    """Compatibility wrapper; adapters should use ``ingest_canonical_record`` directly."""
+    result = ingest_canonical_record(
+        db,
+        CanonicalIngestionRecord(
+            source_record_id=source_id,
+            source_system=source_type,
+            record_type=source_type,
+            text=raw_text,
+        ),
+        refresh=refresh,
     )
-    if existing and not refresh:
-        return existing.content_text
-    sanitized, entries = tokenize_record(raw_text, detect_spans(raw_text), source_id)
-    if contains_known_pii(sanitized):
-        raise ValueError(f"Safety-net PII detection failed for source {source_id}")
-    for entry in entries:
-        if db.get(TokenVaultEntry, entry.token) is None:
-            db.add(entry)
-    embedding, _ = embed_text(sanitized)
-    if existing:
-        existing.content_text = sanitized
-        existing.embedding = embedding
-        existing.record_type = source_type
-    else:
-        db.add(
-            TokenizedContent(
-                source_record_id=source_id,
-                content_text=sanitized,
-                embedding=embedding,
-                record_type=source_type,
-            )
-        )
-    db.commit()
-    return sanitized
+    return result.content_text

@@ -52,6 +52,26 @@ def test_sqlite_retrieval_uses_portable_embedding_values():
         assert retrieve_top_k(db, [1.0, 0.0], k=1) == ["finance record"]
 
 
+def test_retrieval_keeps_protected_summary_and_source_together():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(
+            TokenizedContent(
+                source_record_id="customer-message",
+                content_text="PERSON_0011223344 has an overdue invoice.",
+                summary="PERSON_0011223344 needs payment attention.",
+                embedding=[1.0, 0.0],
+            )
+        )
+        db.commit()
+
+        assert retrieve_top_k(db, [1.0, 0.0], k=1) == [
+            "Protected summary: PERSON_0011223344 needs payment attention.\n"
+            "Protected source: PERSON_0011223344 has an overdue invoice."
+        ]
+
+
 def test_ingestion_refresh_updates_existing_record(monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -66,7 +86,7 @@ def test_ingestion_refresh_updates_existing_record(monkeypatch):
 
     with Session(engine) as db:
         ingestion.ingest_record(db, "record-1", "payment", "first")
-        unchanged = ingestion.ingest_record(db, "record-1", "payment", "ignored")
+        unchanged = ingestion.ingest_record(db, "record-1", "payment", "first")
         refreshed = ingestion.ingest_record(
             db,
             "record-1",

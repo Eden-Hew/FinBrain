@@ -22,6 +22,11 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 - FastAPI application with health, query, and compliance audit-log endpoints.
 - Portable SQLAlchemy data model supporting SQLite locally and Supabase Postgres remotely.
 - Seed ingestion pipeline that never persists raw inbound text.
+- Canonical source-neutral ingestion contract shared by seed data and future connectors.
+- Protected metadata tokenization, keyed content fingerprints, automatic change detection, and
+  idempotent delivery handling.
+- Sanitized-only Gemini structured summarization with exact-token and residual-PII validation.
+- Retryable `protected`, `ready`, and `failed_enrichment` states that retain no raw source payload.
 - Deterministic tokenization using tenant-secret HMAC tokens.
 - Regex detection for Malaysian NRICs, phone numbers, email addresses, monetary values, and bank
   account-like values.
@@ -64,6 +69,8 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 ### Infrastructure and documentation
 
 - Deployable timestamped Supabase migration with pgvector and HNSW cosine indexing.
+- Unified-ingestion Supabase migration with provenance, JSONB metadata and summaries, processing
+  status, nullable retry-safe embeddings, and operational indexes.
 - Supabase CLI project configuration with synchronized local and remote migration history.
 - Default-deny Data API grants with forced RLS on business, vault, and audit tables.
 - Role-aware vault and compliance audit policy templates using verified `user_role` JWT claims.
@@ -79,8 +86,9 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **12 tests passed**, including SQLite/Postgres portability and in-place
-  ingestion refresh coverage.
+- Backend test suite: **19 tests passed**, including protected-boundary privacy, metadata
+  tokenization, idempotency, automatic refresh, failed-enrichment persistence, summary validation,
+  opaque source-ID enforcement, retrieval composition, and SQLite/Postgres portability coverage.
 - Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
   GeForce RTX 5060 Laptop GPU; GLiNER loaded on `cuda:0`.
 - GLiNER CPU/GPU comparison: identical detections on the representative PII sample; warm inference
@@ -94,10 +102,17 @@ The latest local checks completed successfully:
 - User/Gemini comparison response contract: backend and frontend compile successfully.
 - Live Supabase schema: all three tables, `vector(768)`, JSONB roles, HNSW index, and forced RLS
   verified.
-- Migration `202608110001` is synchronized in local and remote Supabase CLI history.
+- Migrations `202608110001` and `202608110002` are synchronized in local and remote Supabase CLI
+  history.
 - Remote seed state after GLiNER refresh: **4 tokenized content rows**, **11 encrypted vault
   entries** (including **4 PERSON tokens**), and **0 audit events** before application queries.
 - Remote sample-name verification: **0 original sample names** remain in tokenized content.
+- Unified-ingestion remote verification: all **4 records ready**, all **4 structured summaries**
+  generated through Gemini, all embeddings at **768 dimensions**, and keyed fingerprints and source
+  provenance populated; **0 original sample names** remain across content, summaries, and metadata.
+- Current remote counts: **4 protected content records**, **11 encrypted vault entries**, and **22
+  existing query-disclosure audit events** with a valid hash chain; ingestion refreshes do not
+  create disclosure events.
 
 ## Local operation
 

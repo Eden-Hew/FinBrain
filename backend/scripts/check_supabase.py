@@ -4,6 +4,17 @@ from app.config import get_settings
 from app.db import engine
 
 REQUIRED_TABLES = ("tokenized_content", "token_vault", "audit_log")
+REQUIRED_INGESTION_COLUMNS = {
+    "source_system",
+    "occurred_at",
+    "content_fingerprint",
+    "safe_metadata",
+    "structured_summary",
+    "processing_status",
+    "processing_error",
+    "enrichment_mode",
+    "updated_at",
+}
 
 
 def main() -> None:
@@ -34,6 +45,15 @@ def main() -> None:
                 "and a.attname = 'embedding' and not a.attisdropped"
             )
         )
+        ingestion_columns = {
+            row.column_name: (row.data_type, row.is_nullable)
+            for row in connection.execute(
+                text(
+                    "select column_name, data_type, is_nullable from information_schema.columns "
+                    "where table_schema = 'public' and table_name = 'tokenized_content'"
+                )
+            )
+        }
         role_list_type = connection.scalar(
             text(
                 "select format_type(a.atttypid, a.atttypmod) "
@@ -63,6 +83,18 @@ def main() -> None:
         raise SystemExit(f"Connected, but migrations are missing tables: {', '.join(missing)}")
     if embedding_type != "vector(768)":
         raise SystemExit(f"Expected vector(768), found {embedding_type!r}.")
+    missing_ingestion_columns = REQUIRED_INGESTION_COLUMNS - ingestion_columns.keys()
+    if missing_ingestion_columns:
+        raise SystemExit(
+            "Unified-ingestion migration is missing columns: "
+            + ", ".join(sorted(missing_ingestion_columns))
+        )
+    if ingestion_columns["safe_metadata"][0] != "jsonb":
+        raise SystemExit("Expected safe_metadata jsonb.")
+    if ingestion_columns["structured_summary"][0] != "jsonb":
+        raise SystemExit("Expected structured_summary jsonb.")
+    if ingestion_columns["embedding"][1] != "YES":
+        raise SystemExit("Embedding must be nullable for retryable protected records.")
     if role_list_type != "jsonb":
         raise SystemExit(f"Expected allowed_roles jsonb, found {role_list_type!r}.")
     if vector_index is None:
@@ -77,6 +109,7 @@ def main() -> None:
     print(f"pgvector: {vector_version}")
     print(f"Tables: {', '.join(REQUIRED_TABLES)}")
     print(f"Embedding column: {embedding_type}")
+    print("Unified ingestion columns: present")
     print(f"Role-list column: {role_list_type}")
     print("HNSW index: present")
     print("RLS: enabled and forced")

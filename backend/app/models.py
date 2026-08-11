@@ -52,6 +52,18 @@ class RoleListType(TypeDecorator[list[str]]):
         return dialect.type_descriptor(JSON())
 
 
+class ObjectType(TypeDecorator[dict[str, Any]]):
+    """SQLite JSON locally and JSONB for queryable protected metadata on Postgres."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(JSONB())
+        return dialect.type_descriptor(JSON())
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -64,10 +76,23 @@ class TokenizedContent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_record_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     content_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(EmbeddingType(), nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(EmbeddingType())
     record_type: Mapped[str | None] = mapped_column(String)
     summary: Mapped[str | None] = mapped_column(Text)
+    source_system: Mapped[str] = mapped_column(String, default="legacy", nullable=False)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_fingerprint: Mapped[str | None] = mapped_column(String)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(
+        ObjectType(), default=dict, nullable=False
+    )
+    structured_summary: Mapped[dict[str, Any] | None] = mapped_column(ObjectType())
+    processing_status: Mapped[str] = mapped_column(String, default="protected", nullable=False)
+    processing_error: Mapped[str | None] = mapped_column(String)
+    enrichment_mode: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class TokenVaultEntry(Base):

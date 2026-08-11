@@ -51,6 +51,52 @@ Set-Location frontend; npm.cmd run dev
 
 Open <http://localhost:5173>. API documentation is available at <http://localhost:8000/docs>.
 
+## Unified protected ingestion
+
+Every source adapter must convert its input into the same `CanonicalIngestionRecord` contract:
+
+```text
+source_record_id + source_system + record_type + text + occurred_at + metadata
+```
+
+`source_record_id` must be an opaque connector identifier, never a phone number, email address, or
+customer name. Metadata keys must be fixed adapter-defined identifiers; metadata values pass
+through the same detection and tokenization boundary as content.
+
+The shared ingestion service then runs one ordered boundary:
+
+```text
+validate and fingerprint
+  -> detect and tokenize content and metadata
+  -> persist protected source
+  -> summarize protected text
+  -> validate summary tokens and residual PII
+  -> embed protected source and summary
+  -> mark ready
+```
+
+Raw source text exists only in process memory during detection. It must never be written to a
+database, log, retry queue, error message, or temporary file. Only protected content may cross the
+Gemini boundary or be retried. A keyed HMAC fingerprint makes repeated delivery idempotent without
+storing a reversible hash of the raw record.
+
+Records use the following enrichment states:
+
+- `protected`: tokenization is safely persisted and enrichment is pending.
+- `ready`: protected summary and embedding are available.
+- `failed_enrichment`: protected source is retained for a safe retry; raw input is not retained.
+
+The seed module is the first adapter and exercises this same service. Refresh its known sample
+records after a detector, summarizer, or embedding change:
+
+```powershell
+uv run --active --no-sync python -m seed.seed_data --refresh
+```
+
+Supabase stores the sanitized source, sanitized metadata, structured protected summary, embedding,
+provenance, and processing state. Sensitive fragments are stored separately as encrypted vault
+entries; the complete raw source record is never stored.
+
 ## Configuration
 
 Set `GEMINI_API_KEY` in `backend/.env` to use Gemini. Without it, the backend runs in explicit
