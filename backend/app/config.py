@@ -21,6 +21,14 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 
     @property
+    def database_backend(self) -> str:
+        return (
+            "postgresql"
+            if self.database_url.startswith(("postgres://", "postgresql"))
+            else "sqlite"
+        )
+
+    @property
     def production_secret_configured(self) -> bool:
         return len(self.token_root_secret) >= 32 and not self.token_root_secret.startswith(
             "development-only"

@@ -1,12 +1,62 @@
-# Supabase migration
+# Supabase deployment
 
-Apply `schema.sql`, followed by `rls_policies.sql`, in the Supabase SQL editor.
-The production migration also requires:
+The backend now supports Supabase Postgres directly through SQLAlchemy, psycopg 3, and pgvector.
+SQLite remains the zero-configuration local default.
 
-1. Replacing SQLite JSON embeddings with `pgvector` and native cosine search.
-2. Adding verified `user_role` custom claims through a Supabase Auth hook.
-3. Moving detokenization behind a server-only service or Edge Function.
-4. Storing `TOKEN_ROOT_SECRET` in the platform secret manager, never the browser.
+## 1. Create and migrate a Supabase project
 
-Do not expose the service-role key or vault decryption secret to the frontend.
+Create a project, then apply the migration using either method:
 
+- Supabase CLI: from the repository root, link the project and run `npx supabase db push`.
+- SQL Editor: run `../../supabase/migrations/202608110001_finbrain_initial.sql` as the database
+  owner.
+
+The migration installs pgvector, creates the three FinBrain tables, builds an HNSW cosine index,
+enables and forces RLS, and defaults the Data API to no table access.
+
+## 2. Configure the backend connection
+
+In the Supabase dashboard, choose **Connect** and copy the exact connection URI. For this persistent
+FastAPI backend:
+
+- Prefer the direct connection when the host supports IPv6.
+- Use Supavisor **session mode** on port 5432 when the host is IPv4-only.
+- Use transaction mode on port 6543 only for serverless deployments. FinBrain disables psycopg
+  prepared statements automatically for a `:6543` connection.
+
+Put the URI only in the ignored `backend/.env` file. Use the psycopg SQLAlchemy scheme and require
+TLS:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@POOLER_HOST:5432/postgres?sslmode=require
+```
+
+Copy the dashboard URI instead of guessing its host, region, or username. URL-encode special
+characters in the database password.
+
+## 3. Verify and seed
+
+From the activated backend environment:
+
+```powershell
+uv sync --active --extra dev
+uv run --active python -m scripts.check_supabase
+uv run --active python -m seed.seed_data
+```
+
+The seed command goes through the real tokenization, encryption, Gemini embedding, and native
+pgvector storage path. It is idempotent by `source_record_id`.
+
+## Security boundary
+
+- Never expose the Postgres URI, database password, service-role key, or `TOKEN_ROOT_SECRET` to the
+  frontend.
+- The FastAPI backend currently uses a trusted server-side Postgres connection.
+- RLS claims must be issued by a Custom Access Token Auth Hook or stored in `raw_app_meta_data`, not
+  user-editable metadata.
+- Data API grants remain revoked until tenant IDs and tenant-scoped policies are implemented.
+- The UI role selector is still a demonstration mechanism; Supabase Auth is the next authorization
+  phase.
+
+`schema.sql` and `rls_policies.sql` remain as readable split references. The timestamped migration
+is the deployment artifact.

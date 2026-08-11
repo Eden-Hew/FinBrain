@@ -90,6 +90,29 @@ Set `ENABLE_GLINER=false` to use only deterministic structured-data detection. B
 replace `TOKEN_ROOT_SECRET` with at least 32 random characters, disable offline fallback, add real
 authentication, and migrate the supplied schema and RLS policies to Supabase.
 
+## Supabase/Postgres
+
+The backend supports both SQLite and Supabase Postgres. Supabase uses native `vector(768)` storage,
+an HNSW cosine index, psycopg 3, JSON role lists, and SQL-side nearest-neighbor retrieval.
+
+1. Create a Supabase project.
+2. Run `supabase/migrations/202608110001_finbrain_initial.sql` in the SQL editor, or push it with
+   `npx supabase db push` after linking the CLI.
+3. Copy the exact **Connect** URI into the ignored `backend/.env`, using the
+   `postgresql+psycopg://` scheme and `sslmode=require`.
+4. For a persistent IPv4 backend, prefer Supavisor session mode on port 5432. Direct connections
+   require IPv6 unless the project has the IPv4 add-on.
+5. Verify and seed from `backend`:
+
+```powershell
+uv sync --active --extra dev
+uv run --active python -m scripts.check_supabase
+uv run --active python -m seed.seed_data
+```
+
+See [`infra/supabase/README.md`](./infra/supabase/README.md) for connection modes, RLS boundaries,
+and deployment details.
+
 ## Verification
 
 ```powershell
@@ -105,7 +128,7 @@ npm.cmd run build
 ## Current prototype boundaries
 
 - The UI role selector demonstrates authorization behavior; it is not authentication.
-- SQLite and in-process cosine search are intended for local data volumes only.
+- SQLite remains available for local development; Supabase uses native pgvector retrieval.
 - Live WhatsApp, banking, and OCR connectors remain deferred.
 - The default secret is for local demonstrations only and is reported by `/health`.
 

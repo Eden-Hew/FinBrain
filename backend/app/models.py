@@ -1,11 +1,55 @@
+import json
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, Text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import JSON, Boolean, DateTime, Integer, LargeBinary, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 
 def utcnow() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+    return datetime.now(UTC)
+
+
+class EmbeddingType(TypeDecorator[list[float]]):
+    """JSON text on SQLite and a native vector(768) on Postgres."""
+
+    impl = Text
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(Vector(768))
+        return dialect.type_descriptor(Text())
+
+    def process_bind_param(self, value: list[float] | str | None, dialect: Dialect):
+        if value is None:
+            return None
+        if dialect.name == "postgresql":
+            return json.loads(value) if isinstance(value, str) else value
+        return value if isinstance(value, str) else json.dumps(value)
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> list[float] | None:
+        if value is None:
+            return None
+        if dialect.name == "postgresql":
+            return [float(item) for item in value]
+        return [float(item) for item in json.loads(value)]
+
+
+class RoleListType(TypeDecorator[list[str]]):
+    """SQLite JSON locally and indexable JSONB on Postgres."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(JSONB())
+        return dialect.type_descriptor(JSON())
 
 
 class Base(DeclarativeBase):
@@ -20,10 +64,10 @@ class TokenizedContent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_record_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     content_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(EmbeddingType(), nullable=False)
     record_type: Mapped[str | None] = mapped_column(String)
     summary: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class TokenVaultEntry(Base):
@@ -35,10 +79,10 @@ class TokenVaultEntry(Base):
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     encrypted_value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    allowed_roles: Mapped[str] = mapped_column(Text, nullable=False)
+    allowed_roles: Mapped[list[str]] = mapped_column(RoleListType(), nullable=False)
     sensitivity: Mapped[str] = mapped_column(String, default="high")
     source_record_id: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AuditLogEntry(Base):
@@ -51,4 +95,4 @@ class AuditLogEntry(Base):
     token: Mapped[str] = mapped_column(String, nullable=False)
     authorized: Mapped[bool] = mapped_column(Boolean, nullable=False)
     query_hash: Mapped[str] = mapped_column(String, nullable=False)
-    ts: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -33,5 +33,6 @@ def health() -> dict[str, str | bool]:
     return {
         "status": "ok",
         "mode": "gemini" if settings.gemini_api_key else "offline-demo",
+        "database": settings.database_backend,
         "production_secret_configured": settings.production_secret_configured,
     }

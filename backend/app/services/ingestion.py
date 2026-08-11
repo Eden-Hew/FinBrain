@@ -1,5 +1,3 @@
-import json
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,7 +25,7 @@ def ingest_record(db: Session, source_id: str, source_type: str, raw_text: str) 
         TokenizedContent(
             source_record_id=source_id,
             content_text=sanitized,
-            embedding=json.dumps(embedding),
+            embedding=embedding,
             record_type=source_type,
         )
     )

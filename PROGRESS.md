@@ -1,7 +1,7 @@
 # FinBrain OS — Project Progress
 
 **Last updated:** 11 August 2026  
-**Current phase:** Working end-to-end prototype
+**Current phase:** End-to-end prototype deployed to Supabase Postgres
 
 ## Summary
 
@@ -13,13 +13,14 @@ audit chain.
 
 Both the backend and frontend are implemented and verified locally. Gemini is configurable through
 the ignored `backend/.env` file, while an explicit offline demonstration mode remains available.
+The remote Supabase project is linked through the CLI, migrated, verified, and seeded.
 
 ## Completed
 
 ### Backend
 
 - FastAPI application with health, query, and compliance audit-log endpoints.
-- SQLAlchemy data model backed by SQLite for the prototype.
+- Portable SQLAlchemy data model supporting SQLite locally and Supabase Postgres remotely.
 - Seed ingestion pipeline that never persists raw inbound text.
 - Deterministic tokenization using tenant-secret HMAC tokens.
 - Regex detection for Malaysian NRICs, phone numbers, email addresses, monetary values, and bank
@@ -38,6 +39,10 @@ the ignored `backend/.env` file, while an explicit offline demonstration mode re
 - Unknown model-token validation before detokenization.
 - Hash-chained audit log with verification of the complete event chain.
 - Gemini connectivity checker at `backend/scripts/check_gemini.py`.
+- Native Postgres `vector(768)` storage and SQL cosine-distance retrieval.
+- psycopg 3 support for direct, Supavisor session, and transaction-pooler connections.
+- Supabase database connectivity and schema checker at `backend/scripts/check_supabase.py`.
+- Live Supabase Postgres 17.6 deployment with pgvector 0.8.2.
 
 ### Frontend
 
@@ -53,8 +58,10 @@ the ignored `backend/.env` file, while an explicit offline demonstration mode re
 
 ### Infrastructure and documentation
 
-- Supabase/Postgres schema with pgvector storage.
-- Row-level security policy templates for protected vault and audit access.
+- Deployable timestamped Supabase migration with pgvector and HNSW cosine indexing.
+- Supabase CLI project configuration with synchronized local and remote migration history.
+- Default-deny Data API grants with forced RLS on business, vault, and audit tables.
+- Role-aware vault and compliance audit policy templates using verified `user_role` JWT claims.
 - Guardrails for the future detokenization Edge Function.
 - Locked Python dependencies in `backend/uv.lock`.
 - Locked frontend dependencies in `frontend/package-lock.json`.
@@ -67,7 +74,7 @@ the ignored `backend/.env` file, while an explicit offline demonstration mode re
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **7 tests passed**.
+- Backend test suite: **11 tests passed**, including SQLite/Postgres portability coverage.
 - Frontend ESLint: passed.
 - Frontend TypeScript/Vite production build: passed.
 - Seed ingestion: passed with sensitive values removed from stored content.
@@ -75,6 +82,11 @@ The latest local checks completed successfully:
 - Unauthorized audit access: correctly returns HTTP 403.
 - Multi-token disclosure audit chain: verified as valid.
 - User/Gemini comparison response contract: backend and frontend compile successfully.
+- Live Supabase schema: all three tables, `vector(768)`, JSONB roles, HNSW index, and forced RLS
+  verified.
+- Migration `202608110001` is synchronized in local and remote Supabase CLI history.
+- Remote seed state: **4 tokenized content rows**, **6 encrypted vault entries**, and **0 audit
+  events** before application queries.
 
 ## Local operation
 
@@ -101,7 +113,7 @@ The application is available at `http://localhost:5173`, with API documentation 
 
 - Replace the demonstration role selector with verified authentication and server-issued role
   claims.
-- Migrate SQLite and in-process retrieval to Supabase/Postgres and pgvector.
+- Add a backup and restore procedure for the Supabase database and encrypted vault.
 - Enforce vault access through production RLS and a server-controlled detokenization boundary.
 - Implement live WhatsApp Business, email, banking, and document ingestion connectors.
 - Add OCR for scanned documents.
@@ -121,6 +133,6 @@ The application is available at `http://localhost:5173`, with API documentation 
 - `backend/.env` is intentionally not tracked and must never be committed.
 - `TOKEN_ROOT_SECRET` must be generated once, stored securely, and kept stable; changing it makes
   existing vault values undecryptable unless they are re-encrypted.
-- The local SQLite database is ignored because it contains encrypted sample vault entries and is
-  tied to the local root secret.
+- Any local SQLite database is ignored because it contains encrypted vault entries and is tied to
+  the configured root secret.
 - The current role selector is a demonstration mechanism, not an authentication boundary.

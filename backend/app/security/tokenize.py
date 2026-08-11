@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import json
 import re
 
 from app.config import get_settings
@@ -75,7 +74,7 @@ def tokenize_record(
             entity_type=label,
             encrypted_value=ciphertext,
             nonce=nonce,
-            allowed_roles=json.dumps(ACL_POLICY.get(label, ["compliance"])),
+            allowed_roles=ACL_POLICY.get(label, ["compliance"]),
             sensitivity="high" if label in {"NRIC", "CARD"} else "medium",
             source_record_id=source_record_id,
         )

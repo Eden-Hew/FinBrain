@@ -1,5 +1,4 @@
 import hashlib
-import json
 import re
 
 from sqlalchemy import select
@@ -41,7 +40,7 @@ def detokenize_response(db: Session, text: str, role: str, query_hash: str) -> s
         entry = db.scalar(select(TokenVaultEntry).where(TokenVaultEntry.token == token))
         if entry is None:
             continue
-        authorized = role in json.loads(entry.allowed_roles)
+        authorized = role in entry.allowed_roles
         if authorized:
             key = derive_key(info=f"vault:{token}".encode())
             replacement = decrypt_value(entry.encrypted_value, entry.nonce, key)
