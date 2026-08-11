@@ -33,6 +33,9 @@ Copy-Item backend\.env.example backend\.env
 cd backend
 uv sync --active --extra dev
 uv run --active --no-sync python -m seed.seed_data
+
+cd ..\frontend
+npm.cmd ci
 ```
 
 ## Launch
@@ -46,10 +49,12 @@ Set-ExecutionPolicy -Scope Process RemoteSigned; & .\.venv\Scripts\Activate.ps1;
 Frontend, in another terminal from the repository root:
 
 ```powershell
-Set-Location frontend; npm.cmd run dev
+Set-Location frontend; npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-Open <http://localhost:5173>. API documentation is available at <http://localhost:8000/docs>.
+Open <http://127.0.0.1:5173>. API documentation is available at
+<http://127.0.0.1:8000/docs>. `--strictPort` prevents Vite from silently starting a different
+copy of the application on another port.
 
 ## Unified protected ingestion
 
@@ -58,6 +63,28 @@ Every source adapter must convert its input into the same `CanonicalIngestionRec
 ```text
 source_record_id + source_system + record_type + text + occurred_at + metadata
 ```
+
+Connectors and the manual frontend submit that contract to the generic `POST /ingestion` boundary.
+The HTTP request adds the proof-of-concept `role` and `refresh` fields:
+
+```json
+{
+  "source_record_id": "crm:record-123",
+  "source_system": "crm",
+  "record_type": "customer_note",
+  "text": "Original source text that may contain sensitive values.",
+  "occurred_at": "2026-08-12T10:30:00+08:00",
+  "metadata": {
+    "channel": "support"
+  },
+  "role": "finance_ops",
+  "refresh": false
+}
+```
+
+Source-specific connectors are responsible only for extracting text and producing this normalized
+JSON. Detection and tokenization remain inside FinBrain's backend and must not be duplicated in a
+browser or connector.
 
 `source_record_id` must be an opaque connector identifier, never a phone number, email address, or
 customer name. Metadata keys must be fixed adapter-defined identifiers; metadata values pass
@@ -94,8 +121,9 @@ uv run --active --no-sync python -m seed.seed_data --refresh
 ```
 
 Supabase stores the sanitized source, sanitized metadata, structured protected summary, embedding,
-provenance, and processing state. Sensitive fragments are stored separately as encrypted vault
-entries; the complete raw source record is never stored.
+provenance, and processing state. Reversible sensitive fragments are stored separately as
+encrypted vault entries; monetary values are generalized into non-reversible amount bands. The
+complete raw source record is never stored.
 
 ### Proof-of-concept ingestion UI
 
@@ -104,15 +132,21 @@ Open the **Ingest records** workspace in the frontend to submit manual text thro
 metadata, occurrence time, and source text. Its result compares the user-submitted text with the
 protected downstream text and shows the protected summary and processing status.
 
-For this proof of concept, the endpoint trusts the role selected in the existing UI and returns
-`authorization_mode: demo-role`. This is intentionally not an authentication boundary. The role
-field must be replaced by a verified server-side session before commercial or multi-user use.
+For this proof of concept, the endpoint accepts the role selected in the existing UI and returns it
+as `submitted_as` together with `authorization_mode: demo-role`. The ingestion service currently
+removes this field before processing, so it does not authorize ingestion or change tokenization,
+storage, enrichment, or vault permissions. It is an informational demonstration field and must be
+replaced by a verified server-side session and ingestion authorization before commercial or
+multi-user use.
 
 ## Configuration
 
 Set `GEMINI_API_KEY` in `backend/.env` to use Gemini. Without it, the backend runs in explicit
-`offline-demo` mode using deterministic local embeddings and protected-record output, allowing the
-security pipeline and role behavior to be demonstrated without external services.
+`offline-demo` mode using deterministic local embeddings and protected-record output. The current
+offline embedding is 128-dimensional and therefore supports the complete local SQLite demo, but it
+is not compatible with Supabase's `vector(768)` column. A Supabase deployment must currently use
+the configured Gemini embedding model; if Gemini enrichment is unavailable, protected ingestion is
+retained with `failed_enrichment` status for a later retry.
 
 Create an API key in [Google AI Studio](https://aistudio.google.com/app/apikey), then edit the
 ignored `backend/.env` file locally:
@@ -122,6 +156,11 @@ GEMINI_API_KEY=your-key-here
 GEMINI_REASONING_MODEL=gemini-3.6-flash
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 ```
+
+`gemini-3.6-flash` is the tracked project default. The ignored local environment may override it
+with another model available to the configured API key, such as `gemini-3.1-flash-lite`. Run the
+connectivity checker after changing either model instead of assuming an account or region supports
+the default.
 
 Do not paste the key into source files or commit `backend/.env`. Verify both models from the
 `backend` directory:
@@ -174,8 +213,10 @@ The backend supports both SQLite and Supabase Postgres. Supabase uses native `ve
 an HNSW cosine index, psycopg 3, JSON role lists, and SQL-side nearest-neighbor retrieval.
 
 1. Create a Supabase project.
-2. Run `supabase/migrations/202608110001_finbrain_initial.sql` in the SQL editor, or push it with
-   `npx supabase db push` after linking the CLI.
+2. Apply both migrations in timestamp order in the SQL editor:
+   `supabase/migrations/202608110001_finbrain_initial.sql`, followed by
+   `supabase/migrations/202608110002_unified_ingestion.sql`. Alternatively, link the CLI and run
+   `npx supabase db push` to apply all pending migrations.
 3. Copy the exact **Connect** URI into the ignored `backend/.env`, using the
    `postgresql+psycopg://` scheme and `sslmode=require`.
 4. For a persistent IPv4 backend, prefer Supavisor session mode on port 5432. Direct connections
@@ -206,7 +247,18 @@ npm.cmd run build
 ## Current prototype boundaries
 
 - The UI role selector demonstrates authorization behavior; it is not authentication.
+- The ingestion role is currently informational; it is not an ingestion authorization check.
 - SQLite remains available for local development; Supabase uses native pgvector retrieval.
+- Offline 128-dimensional embeddings are currently SQLite-only; Supabase enrichment requires the
+  configured 768-dimensional Gemini embedding model.
+- Manual ingestion and selected fallback chat queries call the live backend. Finance, e-invoice,
+  approvals, recommendations, and several audit rows remain in-memory demonstration data.
+- The redesigned Audit screen currently displays its sample data because its live request uses an
+  owner/director role while the backend audit endpoint correctly requires compliance. Backend audit
+  chain verification remains implemented, but the screen still needs role wiring before it is a
+  live compliance viewer.
+- Chat file selection currently attaches only a filename chip, and the web-search control is a UI
+  demonstration; neither performs file ingestion or web browsing yet.
 - Live WhatsApp, banking, and OCR connectors remain deferred.
 - The default secret is for local demonstrations only and is reported by `/health`.
 

@@ -8,11 +8,14 @@ SQLite remains the zero-configuration local default.
 Create a project, then apply the migration using either method:
 
 - Supabase CLI: from the repository root, link the project and run `npx supabase db push`.
-- SQL Editor: run `../../supabase/migrations/202608110001_finbrain_initial.sql` as the database
-  owner.
+- SQL Editor: run `../../supabase/migrations/202608110001_finbrain_initial.sql`, then
+  `../../supabase/migrations/202608110002_unified_ingestion.sql`, in timestamp order as the
+  database owner.
 
-The migration installs pgvector, creates the three FinBrain tables, builds an HNSW cosine index,
-enables and forces RLS, and defaults the Data API to no table access.
+The migrations install pgvector, create the three FinBrain tables, add the unified-ingestion
+columns and constraints, build the operational indexes, enable and force RLS, and default the Data
+API to no table access. `npx supabase db push` applies every pending timestamped migration after the
+project is linked.
 
 ## 2. Configure the backend connection
 
@@ -46,6 +49,11 @@ uv run --active --no-sync python -m seed.seed_data
 
 The seed command goes through the real tokenization, encryption, Gemini embedding, and native
 pgvector storage path. It is idempotent by `source_record_id` and its keyed content fingerprint.
+
+Supabase requires 768-dimensional embeddings. The deterministic offline fallback currently emits
+128 dimensions for SQLite demonstrations, so configure and verify Gemini before seeding Supabase.
+If enrichment later becomes unavailable, the ingestion service retains the protected record with
+`failed_enrichment` status for a safe retry.
 
 Migration `202608110002_unified_ingestion.sql` adds the source-system provenance, safe JSON
 metadata, protected structured summaries, retryable processing states, enrichment mode, and update
