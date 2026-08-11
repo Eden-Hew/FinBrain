@@ -16,7 +16,7 @@ import {
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
-  | "agents" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals";
+  | "agents" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
 
 interface AppStateValue {
   screen: Screen;

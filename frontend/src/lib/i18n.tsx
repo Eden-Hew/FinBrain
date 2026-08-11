@@ -42,6 +42,13 @@ const FB_I18N: Record<string, Record<Lang, string>> = {
     zh: "一个助手，涵盖开票、表格、文件、销售与合规——尽管开口问。",
   },
   "agents.viewingAs": { en: "Viewing as", ms: "Melihat sebagai", zh: "查看身份：" },
+  "nav.ingestion": { en: "Ingestion", ms: "Pengambilan", zh: "数据接入" },
+  "ingestion.title": { en: "Protected Ingestion", ms: "Pengambilan Terlindung", zh: "受保护的数据接入" },
+  "ingestion.desc": {
+    en: "Add a business record — raw text stays on FinBrain's backend, only the tokenized version reaches Gemini.",
+    ms: "Tambah rekod perniagaan — teks mentah kekal di bahagian belakang FinBrain, hanya versi bertokencapai Gemini.",
+    zh: "添加业务记录——原始文本保留在 FinBrain 后端，仅令牌化版本会发送给 Gemini。",
+  },
 };
 
 export const FB_UI_STRINGS: Record<Lang, { placeholder: string; send: string; switched: string }> = {

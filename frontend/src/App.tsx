@@ -14,6 +14,7 @@ import EinvoiceDetail from "./screens/EinvoiceDetail";
 import Finance from "./screens/Finance";
 import Audit from "./screens/Audit";
 import Approvals from "./screens/Approvals";
+import Ingestion from "./screens/Ingestion";
 
 function Screens() {
   const { screen } = useAppState();
@@ -31,6 +32,7 @@ function Screens() {
     case "finance": return <Finance />;
     case "audit": return <Audit />;
     case "approvals": return <Approvals />;
+    case "ingestion": return <Ingestion />;
     default: return <Landing />;
   }
 }

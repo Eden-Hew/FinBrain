@@ -48,6 +48,7 @@ const NAV_LINKS: { screen: Screen; key: string }[] = [
   { screen: "finance", key: "nav.financeDashboard" },
   { screen: "audit", key: "nav.audit" },
   { screen: "approvals", key: "nav.approvals" },
+  { screen: "ingestion", key: "nav.ingestion" },
 ];
 
 export function AppNav({ current, backTo, backLabel }: { current?: Screen; backTo?: () => void; backLabel?: string }) {
