@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     gliner_model_name: str = "urchade/gliner_multi_pii-v1"
     gliner_device: str = "cpu"
     allow_offline_demo: bool = True
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1):517[3-9]$"
 
     @property
     def cors_origin_list(self) -> list[str]:

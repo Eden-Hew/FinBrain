@@ -19,7 +19,8 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 
 ### Backend
 
-- FastAPI application with health, query, and compliance audit-log endpoints.
+- FastAPI application with health, query, proof-of-concept ingestion, and compliance audit-log
+  endpoints.
 - Portable SQLAlchemy data model supporting SQLite locally and Supabase Postgres remotely.
 - Seed ingestion pipeline that never persists raw inbound text.
 - Canonical source-neutral ingestion contract shared by seed data and future connectors.
@@ -64,6 +65,12 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
   - **User view** shows the original question and role-authorized response.
   - **Gemini view** shows the sanitized question and exact tokenized model response.
 - Compliance-only audit viewer with chain-integrity status.
+- Ingestion workspace for manual text, source provenance, occurrence time, safe metadata, and
+  refresh control.
+- Side-by-side user-submitted versus protected downstream content, with enrichment status and
+  protected summary output.
+- Explicit demo-role notice documenting that the selected role is trusted until authentication is
+  implemented.
 - Production frontend build configuration and ESLint checks.
 
 ### Infrastructure and documentation
@@ -86,15 +93,18 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **19 tests passed**, including protected-boundary privacy, metadata
+- Backend test suite: **21 tests passed**, including protected-boundary privacy, metadata
   tokenization, idempotency, automatic refresh, failed-enrichment persistence, summary validation,
-  opaque source-ID enforcement, retrieval composition, and SQLite/Postgres portability coverage.
+  opaque source-ID enforcement, ingestion-route behavior, retrieval composition, and
+  SQLite/Postgres portability coverage.
 - Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
   GeForce RTX 5060 Laptop GPU; GLiNER loaded on `cuda:0`.
 - GLiNER CPU/GPU comparison: identical detections on the representative PII sample; warm inference
   measured 0.092 seconds on CPU and 0.021 seconds on GPU (approximately 4.4x GPU speedup).
 - Frontend ESLint: passed.
 - Frontend TypeScript/Vite production build: passed.
+- Isolated browser ingestion flow: passed end to end with structured phone, NRIC, email-metadata,
+  and amount tokenization; protected comparison and summary rendered with no console errors.
 - Seed ingestion: passed with sensitive values removed from stored content.
 - Query endpoint: passed in offline demonstration mode and Gemini-capable configuration.
 - Unauthorized audit access: correctly returns HTTP 403.

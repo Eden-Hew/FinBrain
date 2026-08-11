@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import engine
 from app.models import Base
-from app.routes import audit_log, query
+from app.routes import audit_log, ingestion, query
 
 
 @asynccontextmanager
@@ -20,12 +20,14 @@ app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 app.include_router(query.router)
 app.include_router(audit_log.router)
+app.include_router(ingestion.router)
 
 
 @app.get("/health", tags=["system"])

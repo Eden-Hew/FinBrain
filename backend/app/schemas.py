@@ -71,6 +71,18 @@ class IngestionResult(BaseModel):
     refreshed: bool
 
 
+class IngestionRequest(CanonicalIngestionRecord):
+    """Demo request contract; role is caller-selected until authentication is implemented."""
+
+    role: UserRole
+    refresh: bool = False
+
+
+class IngestionResponse(IngestionResult):
+    submitted_as: UserRole
+    authorization_mode: str = "demo-role"
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     role: UserRole
