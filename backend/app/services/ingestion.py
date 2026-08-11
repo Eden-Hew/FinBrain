@@ -7,12 +7,19 @@ from app.security.tokenize import tokenize_record
 from app.services.embeddings import embed_text
 
 
-def ingest_record(db: Session, source_id: str, source_type: str, raw_text: str) -> str:
+def ingest_record(
+    db: Session,
+    source_id: str,
+    source_type: str,
+    raw_text: str,
+    *,
+    refresh: bool = False,
+) -> str:
     """Tokenize raw text in memory and persist only its sanitized representation."""
     existing = db.scalar(
         select(TokenizedContent).where(TokenizedContent.source_record_id == source_id)
     )
-    if existing:
+    if existing and not refresh:
         return existing.content_text
     sanitized, entries = tokenize_record(raw_text, detect_spans(raw_text), source_id)
     if contains_known_pii(sanitized):
@@ -21,13 +28,18 @@ def ingest_record(db: Session, source_id: str, source_type: str, raw_text: str) 
         if db.get(TokenVaultEntry, entry.token) is None:
             db.add(entry)
     embedding, _ = embed_text(sanitized)
-    db.add(
-        TokenizedContent(
-            source_record_id=source_id,
-            content_text=sanitized,
-            embedding=embedding,
-            record_type=source_type,
+    if existing:
+        existing.content_text = sanitized
+        existing.embedding = embedding
+        existing.record_type = source_type
+    else:
+        db.add(
+            TokenizedContent(
+                source_record_id=source_id,
+                content_text=sanitized,
+                embedding=embedding,
+                record_type=source_type,
+            )
         )
-    )
     db.commit()
     return sanitized

@@ -1,3 +1,4 @@
+import logging
 import re
 from dataclasses import dataclass
 
@@ -35,16 +36,25 @@ PII_LABELS = [
 
 _model = None
 _model_failed = False
+logger = logging.getLogger(__name__)
 
 
 def _get_model():
     global _model, _model_failed
     if _model is None and not _model_failed:
         try:
+            import torch
             from gliner import GLiNER
 
-            _model = GLiNER.from_pretrained("urchade/gliner_multi_pii-v1")
+            settings = get_settings()
+            device = settings.gliner_device
+            if device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            _model = GLiNER.from_pretrained(settings.gliner_model_name).to(device)
+            _model.eval()
+            logger.info("GLiNER loaded on %s", device)
         except Exception:
+            logger.exception("GLiNER failed to load; regex-only detection remains active")
             _model_failed = True
     return _model
 

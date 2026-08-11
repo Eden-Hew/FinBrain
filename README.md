@@ -22,15 +22,17 @@ not sent directly to Gemini either.
 
 ## Local setup with uv
 
-The conventional `.venv` environment uses `FinBrain` as its displayed prompt name. In PowerShell:
+The conventional `.venv` environment uses `FinBrain` as its displayed prompt name. This standard
+setup installs PyTorch along with GLiNER, so it works without a pre-existing global Torch install:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+uv venv .venv --prompt FinBrain
 & .\.venv\Scripts\Activate.ps1
 Copy-Item backend\.env.example backend\.env
 cd backend
 uv sync --active --extra dev
-uv run --active python -m seed.seed_data
+uv run --active --no-sync python -m seed.seed_data
 ```
 
 ## Launch
@@ -38,7 +40,7 @@ uv run --active python -m seed.seed_data
 Backend, from the repository root:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process RemoteSigned; & .\.venv\Scripts\Activate.ps1; Set-Location backend; uv run --active uvicorn app.main:app --reload --port 8000
+Set-ExecutionPolicy -Scope Process RemoteSigned; & .\.venv\Scripts\Activate.ps1; Set-Location backend; uv run --active --no-sync uvicorn app.main:app --reload --port 8000
 ```
 
 Frontend, in another terminal from the repository root:
@@ -68,7 +70,7 @@ Do not paste the key into source files or commit `backend/.env`. Verify both mod
 `backend` directory:
 
 ```powershell
-uv run --active python -m scripts.check_gemini
+uv run --active --no-sync python -m scripts.check_gemini
 ```
 
 The local database seeded in offline mode contains incompatible fallback embeddings. After the
@@ -76,15 +78,34 @@ connectivity check succeeds, recreate the sample-only database once from the `ba
 
 ```powershell
 Remove-Item -LiteralPath '.\finbrain.db' -Force
-uv run --active python -m seed.seed_data
+uv run --active --no-sync python -m seed.seed_data
 ```
 
-GLiNER is an optional, comparatively large dependency:
+GLiNER is part of the protected ingestion boundary:
 
 ```powershell
 cd backend
-uv sync --active --extra ml --extra dev
+uv sync --active --extra dev
 ```
+
+GLiNER and PyTorch are both explicit project dependencies. GLiNER defaults to CPU for wider device
+compatibility; this changes inference speed rather than the intended detections. Set
+`GLINER_DEVICE=cuda` on a CUDA-capable workstation to accelerate it, or `GLINER_DEVICE=auto` to
+select CUDA when available.
+
+For a workstation that already has a compatible CUDA PyTorch build, such as this RTX 50-series
+machine, reuse that build without changing dependency resolution for everyone else:
+
+```powershell
+uv venv .venv --system-site-packages --prompt FinBrain
+& .\.venv\Scripts\Activate.ps1
+cd backend
+uv sync --active --extra dev --no-install-package torch
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+Use `uv run --active --no-sync ...` after this RTX-specific sync so a later command does not install
+the locked default Torch package over the inherited CUDA build.
 
 Set `ENABLE_GLINER=false` to use only deterministic structured-data detection. Before production,
 replace `TOKEN_ROOT_SECRET` with at least 32 random characters, disable offline fallback, add real
@@ -106,8 +127,8 @@ an HNSW cosine index, psycopg 3, JSON role lists, and SQL-side nearest-neighbor 
 
 ```powershell
 uv sync --active --extra dev
-uv run --active python -m scripts.check_supabase
-uv run --active python -m seed.seed_data
+uv run --active --no-sync python -m scripts.check_supabase
+uv run --active --no-sync python -m seed.seed_data
 ```
 
 See [`infra/supabase/README.md`](./infra/supabase/README.md) for connection modes, RLS boundaries,
@@ -117,8 +138,8 @@ and deployment details.
 
 ```powershell
 cd backend
-uv run --active python -m pytest
-uv run --active python -m ruff check .
+uv run --active --no-sync python -m pytest
+uv run --active --no-sync python -m ruff check .
 
 cd ..\frontend
 npm.cmd run lint

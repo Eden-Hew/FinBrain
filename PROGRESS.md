@@ -25,7 +25,12 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 - Deterministic tokenization using tenant-secret HMAC tokens.
 - Regex detection for Malaysian NRICs, phone numbers, email addresses, monetary values, and bank
   account-like values.
-- Optional GLiNER integration for context-dependent entities.
+- GLiNER integration for context-dependent entities, running on the RTX 5060 through the global
+  CUDA 12.8 PyTorch build without installing a second Torch distribution.
+- PyTorch is an explicit locked project dependency for standard installations; the RTX workstation
+  alone skips its managed installation and inherits the verified global CUDA build.
+- Portable GLiNER device configuration defaults to CPU, with explicit `cuda` and automatic
+  selection available for accelerated deployments.
 - AES-256-GCM token vault with HKDF-derived encryption keys.
 - Amount generalization into non-reversible value bands.
 - Role-based detokenization for general employee, finance/operations, owner/director, and compliance
@@ -74,7 +79,12 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **11 tests passed**, including SQLite/Postgres portability coverage.
+- Backend test suite: **12 tests passed**, including SQLite/Postgres portability and in-place
+  ingestion refresh coverage.
+- Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
+  GeForce RTX 5060 Laptop GPU; GLiNER loaded on `cuda:0`.
+- GLiNER CPU/GPU comparison: identical detections on the representative PII sample; warm inference
+  measured 0.092 seconds on CPU and 0.021 seconds on GPU (approximately 4.4x GPU speedup).
 - Frontend ESLint: passed.
 - Frontend TypeScript/Vite production build: passed.
 - Seed ingestion: passed with sensitive values removed from stored content.
@@ -85,8 +95,9 @@ The latest local checks completed successfully:
 - Live Supabase schema: all three tables, `vector(768)`, JSONB roles, HNSW index, and forced RLS
   verified.
 - Migration `202608110001` is synchronized in local and remote Supabase CLI history.
-- Remote seed state: **4 tokenized content rows**, **6 encrypted vault entries**, and **0 audit
-  events** before application queries.
+- Remote seed state after GLiNER refresh: **4 tokenized content rows**, **11 encrypted vault
+  entries** (including **4 PERSON tokens**), and **0 audit events** before application queries.
+- Remote sample-name verification: **0 original sample names** remain in tokenized content.
 
 ## Local operation
 
@@ -96,7 +107,7 @@ Backend, from the repository root:
 Set-ExecutionPolicy -Scope Process RemoteSigned
 & .\.venv\Scripts\Activate.ps1
 cd backend
-uv run --active uvicorn app.main:app --reload --port 8000
+uv run --active --no-sync uvicorn app.main:app --reload --port 8000
 ```
 
 Frontend, in a second terminal from the repository root:
@@ -117,8 +128,7 @@ The application is available at `http://localhost:5173`, with API documentation 
 - Enforce vault access through production RLS and a server-controlled detokenization boundary.
 - Implement live WhatsApp Business, email, banking, and document ingestion connectors.
 - Add OCR for scanned documents.
-- Complete GLiNER model installation, evaluation, and entity-detection tuning against representative
-  Malaysian business records.
+- Evaluate and tune GLiNER entity detection against representative Malaysian business records.
 - Add detection-quality tests, prompt-injection testing, adversarial privacy tests, and broader API
   integration tests.
 - Store `TOKEN_ROOT_SECRET` in a managed secret service and implement controlled key rotation and

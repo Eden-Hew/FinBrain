@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     gemini_reasoning_model: str = "gemini-3.6-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
     enable_gliner: bool = True
+    gliner_model_name: str = "urchade/gliner_multi_pii-v1"
+    gliner_device: str = "cpu"
     allow_offline_demo: bool = True
     cors_origins: str = "http://localhost:5173"
 

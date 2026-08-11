@@ -1,10 +1,11 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.db import _sqlalchemy_url
 from app.models import Base, TokenizedContent, TokenVaultEntry
+from app.services import ingestion
 from app.services.retrieval import retrieve_top_k
 
 
@@ -49,3 +50,34 @@ def test_sqlite_retrieval_uses_portable_embedding_values():
         )
         db.commit()
         assert retrieve_top_k(db, [1.0, 0.0], k=1) == ["finance record"]
+
+
+def test_ingestion_refresh_updates_existing_record(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(ingestion, "detect_spans", lambda _text: [])
+    monkeypatch.setattr(
+        ingestion,
+        "tokenize_record",
+        lambda raw_text, _spans, _source_id: (f"sanitized:{raw_text}", []),
+    )
+    monkeypatch.setattr(ingestion, "contains_known_pii", lambda _text: False)
+    monkeypatch.setattr(ingestion, "embed_text", lambda text: ([float(len(text))], False))
+
+    with Session(engine) as db:
+        ingestion.ingest_record(db, "record-1", "payment", "first")
+        unchanged = ingestion.ingest_record(db, "record-1", "payment", "ignored")
+        refreshed = ingestion.ingest_record(
+            db,
+            "record-1",
+            "conversation",
+            "second",
+            refresh=True,
+        )
+
+        records = db.scalars(select(TokenizedContent)).all()
+        assert unchanged == "sanitized:first"
+        assert refreshed == "sanitized:second"
+        assert len(records) == 1
+        assert records[0].content_text == "sanitized:second"
+        assert records[0].record_type == "conversation"
