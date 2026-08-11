@@ -1,0 +1,85 @@
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+
+export type Lang = "en" | "ms" | "zh";
+
+const FB_I18N: Record<string, Record<Lang, string>> = {
+  "nav.aiAgents": { en: "AI Agents", ms: "Ejen AI", zh: "AI 代理" },
+  "nav.einvoicing": { en: "e-Invoicing", ms: "e-Invois", zh: "电子发票" },
+  "nav.financeDashboard": { en: "Finance Dashboard", ms: "Papan Pemuka Kewangan", zh: "财务仪表板" },
+  "nav.audit": { en: "Audit", ms: "Audit", zh: "审计" },
+  "nav.approvals": { en: "Approvals", ms: "Kelulusan", zh: "审批" },
+  "nav.logout": { en: "Log out", ms: "Log keluar", zh: "退出登录" },
+  "einvoice.title": { en: "e-Invoicing", ms: "e-Invois", zh: "电子发票" },
+  "einvoice.desc": {
+    en: "Receipts and invoices, mapped to MyInvois and submitted to LHDN — PDPA-aligned end to end.",
+    ms: "Resit dan invois, dipetakan ke MyInvois dan dihantar ke LHDN — mematuhi PDPA sepenuhnya.",
+    zh: "收据与发票，对接 MyInvois 并提交至 LHDN——全程符合 PDPA 规范。",
+  },
+  "einvoice.filterAll": { en: "All invoices", ms: "Semua invois", zh: "全部发票" },
+  "einvoice.filterMine": { en: "My submissions", ms: "Penyerahan saya", zh: "我的提交" },
+  "finance.title": { en: "Finance Dashboard", ms: "Papan Pemuka Kewangan", zh: "财务仪表板" },
+  "finance.desc": {
+    en: "Company earnings, at a glance — last 12 months.",
+    ms: "Pendapatan syarikat secara ringkas — 12 bulan terakhir.",
+    zh: "公司业绩概览——近 12 个月。",
+  },
+  "export.csv": { en: "Export as CSV", ms: "Eksport sebagai CSV", zh: "导出为 CSV" },
+  "audit.title": { en: "Audit Trail", ms: "Rekod Audit", zh: "审计记录" },
+  "audit.desc": {
+    en: "Every access and action, tamper-evident and traceable.",
+    ms: "Setiap akses dan tindakan, tahan gangguan dan boleh dijejaki.",
+    zh: "每一次访问与操作，均可追溯且防篡改。",
+  },
+  "approvals.title": { en: "Approvals", ms: "Kelulusan", zh: "审批" },
+  "approvals.desc": {
+    en: "Everything an AI agent has prepared on your behalf — nothing is submitted, sent, or adopted until you act here.",
+    ms: "Semua yang disediakan oleh ejen AI bagi pihak anda — tidak ada yang dihantar atau digunakan sehingga anda meluluskannya di sini.",
+    zh: "所有由 AI 代理代您准备的事项——在您在此处操作之前，绝不会提交、发送或采用。",
+  },
+  "agents.desc": {
+    en: "One assistant for invoicing, spreadsheets, files, sales, and compliance — just ask.",
+    ms: "Satu pembantu untuk invois, hamparan, fail, jualan dan pematuhan — tanya sahaja.",
+    zh: "一个助手，涵盖开票、表格、文件、销售与合规——尽管开口问。",
+  },
+  "agents.viewingAs": { en: "Viewing as", ms: "Melihat sebagai", zh: "查看身份：" },
+  "nav.ingestion": { en: "Ingestion", ms: "Pengambilan", zh: "数据接入" },
+  "ingestion.title": { en: "Protected Ingestion", ms: "Pengambilan Terlindung", zh: "受保护的数据接入" },
+  "ingestion.desc": {
+    en: "Add a business record — raw text stays on FinBrain's backend, only the tokenized version reaches Gemini.",
+    ms: "Tambah rekod perniagaan — teks mentah kekal di bahagian belakang FinBrain, hanya versi bertokencapai Gemini.",
+    zh: "添加业务记录——原始文本保留在 FinBrain 后端，仅令牌化版本会发送给 Gemini。",
+  },
+};
+
+export const FB_UI_STRINGS: Record<Lang, { placeholder: string; send: string; switched: string }> = {
+  en: { placeholder: "Ask FINBRAIN anything, or tell it what to do...", send: "Send", switched: "Switched to English." },
+  ms: { placeholder: "Tanya FINBRAIN apa-apa, atau beritahu ia apa yang perlu dilakukan...", send: "Hantar", switched: "Ditukar kepada Bahasa Malaysia." },
+  zh: { placeholder: "向 FINBRAIN 提问，或告诉它该做什么...", send: "发送", switched: "已切换为中文。" },
+};
+
+interface I18nContextValue {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  t: (key: string) => string;
+}
+
+const I18nContext = createContext<I18nContextValue | null>(null);
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [lang, setLang] = useState<Lang>("en");
+  const value = useMemo<I18nContextValue>(
+    () => ({
+      lang,
+      setLang,
+      t: (key: string) => FB_I18N[key]?.[lang] ?? FB_I18N[key]?.en ?? key,
+    }),
+    [lang],
+  );
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n() {
+  const ctx = useContext(I18nContext);
+  if (!ctx) throw new Error("useI18n must be used within I18nProvider");
+  return ctx;
+}

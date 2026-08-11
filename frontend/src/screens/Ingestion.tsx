@@ -1,0 +1,218 @@
+import { useState, type FormEvent } from "react";
+import { useI18n } from "../lib/i18n";
+import { AppNav } from "../components/Nav";
+import { ingestRecord, type IngestionResponse, type ProcessingStatus, type Role } from "../api/client";
+
+const SOURCE_OPTIONS = [
+  { value: "manual", label: "Manual entry" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "email", label: "Email" },
+  { value: "bank_csv", label: "Bank CSV" },
+  { value: "document", label: "Document / OCR" },
+];
+
+const RECORD_OPTIONS = [
+  { value: "customer_note", label: "Customer note" },
+  { value: "customer_message", label: "Customer message" },
+  { value: "transaction", label: "Transaction" },
+  { value: "document_note", label: "Document note" },
+];
+
+const ROLE_OPTIONS: { value: Role; label: string }[] = [
+  { value: "general_employee", label: "General Employee" },
+  { value: "finance_ops", label: "Finance Ops" },
+  { value: "owner_director", label: "Owner / Director" },
+  { value: "compliance", label: "Compliance" },
+];
+
+const STATUS_PILL_CLASS: Record<ProcessingStatus, string> = {
+  ready: "is-active",
+  protected: "",
+  failed_enrichment: "is-review",
+};
+
+function newRecordId() {
+  return `manual:${crypto.randomUUID()}`;
+}
+
+export default function Ingestion() {
+  const { t } = useI18n();
+  const [role, setRole] = useState<Role>("general_employee");
+  const [sourceRecordId, setSourceRecordId] = useState(newRecordId);
+  const [sourceSystem, setSourceSystem] = useState("manual");
+  const [recordType, setRecordType] = useState("customer_note");
+  const [occurredAt, setOccurredAt] = useState("");
+  const [channel, setChannel] = useState("manual_entry");
+  const [reference, setReference] = useState("");
+  const [text, setText] = useState("");
+  const [refresh, setRefresh] = useState(false);
+  const [submittedText, setSubmittedText] = useState("");
+  const [result, setResult] = useState<IngestionResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const reset = () => {
+    setSourceRecordId(newRecordId());
+    setOccurredAt("");
+    setReference("");
+    setText("");
+    setRefresh(false);
+    setSubmittedText("");
+    setResult(null);
+    setError("");
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!text.trim() || loading) return;
+    setLoading(true);
+    setError("");
+    setResult(null);
+    try {
+      const response = await ingestRecord({
+        role,
+        source_record_id: sourceRecordId.trim(),
+        source_system: sourceSystem,
+        record_type: recordType,
+        text: text.trim(),
+        occurred_at: occurredAt ? new Date(occurredAt).toISOString() : null,
+        metadata: {
+          ...(channel.trim() ? { channel: channel.trim() } : {}),
+          ...(reference.trim() ? { reference: reference.trim() } : {}),
+        },
+        refresh,
+      });
+      setSubmittedText(text.trim());
+      setResult(response);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Ingestion failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fb-root">
+      <AppNav current="ingestion" />
+
+      <header className="fb-app-header">
+        <h1>{t("ingestion.title")}</h1>
+        <p>{t("ingestion.desc")}</p>
+      </header>
+
+      <div className="fb-page-body">
+        <div className="fb-callout">
+          The selected <strong>{ROLE_OPTIONS.find((r) => r.value === role)?.label}</strong> role is trusted for this demo.
+          Raw text goes only to FinBrain's backend; Gemini receives the tokenized version.
+        </div>
+
+        <div className="fb-role-switch" role="tablist" style={{ margin: "0 0 1.4rem" }}>
+          {ROLE_OPTIONS.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              className={"fb-role-btn" + (role === r.value ? " is-current" : "")}
+              onClick={() => setRole(r.value)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
+            <label className="fb-field-label">Source
+              <select className="fb-field-mock" value={sourceSystem} onChange={(e) => setSourceSystem(e.target.value)}>
+                {SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="fb-field-label">Record type
+              <select className="fb-field-mock" value={recordType} onChange={(e) => setRecordType(e.target.value)}>
+                {RECORD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="fb-field-label" style={{ gridColumn: "1 / -1" }}>Opaque record ID
+              <input
+                className="fb-field-mock"
+                value={sourceRecordId}
+                onChange={(e) => setSourceRecordId(e.target.value)}
+                required
+                pattern="[A-Za-z0-9:_.\-]+"
+              />
+              <span className="fb-fine">Use an internal ID, never a customer name, phone number, or email.</span>
+            </label>
+            <label className="fb-field-label">Occurred at
+              <input className="fb-field-mock" type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
+            </label>
+            <label className="fb-field-label">Channel metadata
+              <input className="fb-field-mock" value={channel} onChange={(e) => setChannel(e.target.value)} />
+            </label>
+            <label className="fb-field-label" style={{ gridColumn: "1 / -1" }}>Reference metadata
+              <input className="fb-field-mock" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Optional; sensitive values will also be tokenized" />
+            </label>
+            <label className="fb-field-label" style={{ gridColumn: "1 / -1" }}>Source text
+              <textarea
+                className="fb-field-mock"
+                rows={7}
+                style={{ resize: "vertical", lineHeight: 1.5 }}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Paste a customer message, transaction note, email, or extracted document text..."
+                required
+              />
+            </label>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <label className="fb-sans" style={{ display: "inline-flex", alignItems: "center", gap: ".5rem", fontSize: ".75rem", color: "var(--ink-soft)" }}>
+              <input type="checkbox" checked={refresh} onChange={(e) => setRefresh(e.target.checked)} />
+              Reprocess this ID
+            </label>
+            <div style={{ display: "flex", gap: ".6rem" }}>
+              {result && <button type="button" className="fb-btn fb-btn-outline" onClick={reset}>New record</button>}
+              <button type="submit" className="fb-btn fb-btn-solid" disabled={loading || !text.trim()}>
+                {loading ? "Protecting and summarizing..." : "Protect and ingest"}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {error && (
+          <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)", marginTop: "1.2rem" }} role="alert">
+            {error}
+          </div>
+        )}
+
+        {result && (
+          <div style={{ marginTop: "1.6rem", maxWidth: "920px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: ".8rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+              <span className={"fb-status-pill " + STATUS_PILL_CLASS[result.processing_status]}>
+                <span className="fb-status-dot"></span>{result.processing_status.replaceAll("_", " ")}
+              </span>
+              <strong className="fb-sans" style={{ fontSize: ".8rem" }}>
+                {result.created ? "New record stored" : result.refreshed ? "Record refreshed" : "Existing record unchanged"}
+              </strong>
+              <span className="fb-fine" style={{ marginTop: 0 }}>{result.enrichment_mode ?? "enrichment pending"} · {result.authorization_mode}</span>
+            </div>
+
+            <div className="fb-detail-body" style={{ padding: 0, margin: "0 0 1rem" }}>
+              <div className="fb-detail-col">
+                <h2>User submitted</h2>
+                <div className="fb-rec-evidence" style={{ margin: 0 }}>{submittedText}</div>
+              </div>
+              <div className="fb-detail-col">
+                <h2>Gemini and Supabase receive</h2>
+                <div className="fb-rec-evidence" style={{ margin: 0, fontFamily: "'Courier New', monospace", color: "var(--accent)" }}>{result.content_text}</div>
+              </div>
+            </div>
+
+            <div className="fb-answer-card">
+              <div className="fb-eyebrow" style={{ marginBottom: ".5rem" }}>Protected summary</div>
+              <p className="fb-answer-text" style={{ margin: 0 }}>{result.summary ?? "Summary is pending; the protected source was retained safely."}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
