@@ -1,7 +1,7 @@
 # FinBrain OS — Project Progress
 
-**Last updated:** 11 August 2026  
-**Current phase:** End-to-end prototype deployed to Supabase Postgres
+**Last updated:** 13 August 2026
+**Current phase:** Local-first Telegram remote capture prototype
 
 ## Summary
 
@@ -14,6 +14,11 @@ audit chain.
 Both the backend and frontend are implemented and verified locally. Gemini is configurable through
 the ignored `backend/.env` file, while an explicit offline demonstration mode remains available.
 The remote Supabase project is linked through the CLI, migrated, verified, and seeded.
+
+A private Telegram capture adapter now runs locally through long polling. It authenticates numeric
+Telegram user IDs, creates expiring in-memory drafts, displays protected previews, normalizes text
+and supported documents into the canonical ingestion contract, and persists protected records
+before asynchronous Morpheus/Gemini enrichment.
 
 ## Completed
 
@@ -54,6 +59,12 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 - psycopg 3 support for direct, Supavisor session, and transaction-pooler connections.
 - Supabase database connectivity and schema checker at `backend/scripts/check_supabase.py`.
 - Live Supabase Postgres 17.6 deployment with pgvector 0.8.2.
+- Local Telegram Bot API long-polling worker with private-chat and numeric-ID authorization.
+- Protected preview with signed confirm/change/cancel callbacks and ten-minute in-memory drafts.
+- Safe TXT, Markdown, CSV, EML, PDF, and DOCX extraction with file, page, and expansion limits.
+- Privacy-safe Telegram update receipts and integration heartbeat tables.
+- Split protection and enrichment stages so protected persistence completes before external AI
+  calls.
 
 ### Frontend
 
@@ -72,6 +83,7 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 - Explicit demo-role notice documenting that the selected role is trusted until authentication is
   implemented.
 - Production frontend build configuration and ESLint checks.
+- Live Telegram integration health and protected recent-record history in the ingestion workspace.
 
 ### Infrastructure and documentation
 
@@ -87,16 +99,19 @@ The remote Supabase project is linked through the CLI, migrated, verified, and s
 - Root setup, launch, configuration, verification, and Gemini instructions in `README.md`.
 - Local secrets, databases, environments, dependencies, caches, and builds excluded through
   `.gitignore`.
+- One-command local demo run, stop, and status scripts.
 
 ## Verification status
 
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **21 tests passed**, including protected-boundary privacy, metadata
+- Backend test suite: **32 tests passed**, including protected-boundary privacy, metadata
   tokenization, idempotency, automatic refresh, failed-enrichment persistence, summary validation,
   opaque source-ID enforcement, ingestion-route behavior, retrieval composition, and
   SQLite/Postgres portability coverage.
+- Telegram token connectivity: verified through `getMe` without printing the token.
+- Telegram detector heartbeat: verified healthy with GLiNER loaded on CPU.
 - Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
   GeForce RTX 5060 Laptop GPU; GLiNER loaded on `cuda:0`.
 - GLiNER CPU/GPU comparison: identical detections on the representative PII sample; warm inference

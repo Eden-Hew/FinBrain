@@ -16,6 +16,10 @@ dependencies = [
   "sqlalchemy>=2.0,<3",
   "torch>=2.5,<3",
   "uvicorn[standard]>=0.34,<1",
+  "python-telegram-bot>=22.8,<23",
+  "pypdf>=6,<7",
+  "python-docx>=1.2,<2",
+  "beautifulsoup4>=4.13,<5",
 ]
 
 [project.optional-dependencies]
@@ -37,3 +41,6 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"] # FastAPI uses Depends/Query calls as its documented declaration syntax.
+
+[tool.setuptools.packages.find]
+include = ["app*", "scripts*", "seed*"]

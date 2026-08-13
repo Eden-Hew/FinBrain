@@ -1,7 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useI18n } from "../lib/i18n";
 import { AppNav } from "../components/Nav";
-import { ingestRecord, type IngestionResponse, type ProcessingStatus, type Role } from "../api/client";
+import {
+  fetchTelegramRecords,
+  fetchTelegramStatus,
+  ingestRecord,
+  type IngestionResponse,
+  type ProcessingStatus,
+  type ProtectedIngestionRecord,
+  type Role,
+  type TelegramIntegrationStatus,
+} from "../api/client";
 
 const SOURCE_OPTIONS = [
   { value: "manual", label: "Manual entry" },
@@ -33,6 +42,93 @@ const STATUS_PILL_CLASS: Record<ProcessingStatus, string> = {
 
 function newRecordId() {
   return `manual:${crypto.randomUUID()}`;
+}
+
+function shortReference(sourceRecordId: string) {
+  return `TG-${sourceRecordId.split(":").at(-1)?.slice(0, 6).toUpperCase() ?? "RECORD"}`;
+}
+
+function TelegramCapturePanel() {
+  const [status, setStatus] = useState<TelegramIntegrationStatus | null>(null);
+  const [records, setRecords] = useState<ProtectedIngestionRecord[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const [nextStatus, nextRecords] = await Promise.all([
+          fetchTelegramStatus(),
+          fetchTelegramRecords(),
+        ]);
+        if (!active) return;
+        setStatus(nextStatus);
+        setRecords(nextRecords);
+        setError("");
+      } catch {
+        if (active) setError("Telegram integration status is temporarily unavailable.");
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const statusLabel = status?.status.replaceAll("_", " ") ?? "checking";
+  return (
+    <section style={{ marginBottom: "2rem" }} aria-labelledby="telegram-capture-title">
+      <div className="fb-answer-card" style={{ marginBottom: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <div className="fb-eyebrow">Remote capture</div>
+            <h2 id="telegram-capture-title" style={{ margin: ".35rem 0" }}>Telegram integration</h2>
+            <p className="fb-fine" style={{ maxWidth: "650px" }}>
+              Capture records from a private Telegram chat. FinBrain stores and enriches only protected content.
+            </p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <span className={"fb-status-pill " + (status?.status === "healthy" ? "is-active" : "is-review")}>
+              <span className="fb-status-dot"></span>{statusLabel}
+            </span>
+            <div className="fb-fine" style={{ marginTop: ".5rem" }}>
+              {status?.mode ?? "polling"} · detector {status?.detector_ready ? "ready" : "not ready"}
+            </div>
+          </div>
+        </div>
+        {error && <div role="status" className="fb-fine" style={{ color: "var(--chart-attn)", marginTop: ".7rem" }}>{error}</div>}
+      </div>
+
+      <div className="fb-eyebrow" style={{ marginBottom: ".7rem" }}>Recent Telegram records</div>
+      {records.length === 0 ? (
+        <div className="fb-callout">No Telegram records yet. Open the bot, run /capture, and confirm a protected record.</div>
+      ) : (
+        <div style={{ display: "grid", gap: ".65rem" }}>
+          {records.map((record) => (
+            <article className="fb-answer-card" key={record.source_record_id} style={{ padding: "1rem 1.1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", flexWrap: "wrap" }}>
+                <strong className="fb-sans">{shortReference(record.source_record_id)} · {(record.record_type ?? "record").replaceAll("_", " ")}</strong>
+                <span className={"fb-status-pill " + STATUS_PILL_CLASS[record.processing_status]}>
+                  <span className="fb-status-dot"></span>{record.processing_status.replaceAll("_", " ")}
+                </span>
+              </div>
+              <p className="fb-fine" style={{ margin: ".65rem 0 0", overflowWrap: "anywhere" }}>
+                {record.summary ?? record.content_excerpt}
+              </p>
+              {record.structured_summary && (
+                <div className="fb-fine" style={{ marginTop: ".55rem" }}>
+                  {record.structured_summary.category ?? "uncategorized"} · {record.structured_summary.priority ?? "unknown"} priority
+                  {record.structured_summary.action_required ? " · action required" : ""}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export default function Ingestion() {
@@ -101,9 +197,10 @@ export default function Ingestion() {
       </header>
 
       <div className="fb-page-body">
+        <TelegramCapturePanel />
         <div className="fb-callout">
           The selected <strong>{ROLE_OPTIONS.find((r) => r.value === role)?.label}</strong> role is trusted for this demo.
-          Raw text goes only to FinBrain's backend; Gemini receives the tokenized version.
+          Raw text goes only to FinBrain's backend; AI services and Supabase receive only protected content.
         </div>
 
         <div className="fb-role-switch" role="tablist" style={{ margin: "0 0 1.4rem" }}>
@@ -201,7 +298,7 @@ export default function Ingestion() {
                 <div className="fb-rec-evidence" style={{ margin: 0 }}>{submittedText}</div>
               </div>
               <div className="fb-detail-col">
-                <h2>Gemini and Supabase receive</h2>
+                <h2>AI services and Supabase receive</h2>
                 <div className="fb-rec-evidence" style={{ margin: 0, fontFamily: "'Courier New', monospace", color: "var(--accent)" }}>{result.content_text}</div>
               </div>
             </div>

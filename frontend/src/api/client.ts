@@ -9,7 +9,7 @@ export interface QueryResponse {
   model_answer: string;
   model_question: string;
   sources_used: number;
-  mode: "gemini" | "offline-demo";
+  mode: "morpheus" | "gemini" | "offline-demo";
 }
 
 export interface AuditEntry {
@@ -51,6 +51,34 @@ export interface IngestionResponse {
   authorization_mode: "demo-role";
 }
 
+export interface TelegramIntegrationStatus {
+  configured: boolean;
+  mode: string;
+  status: "healthy" | "degraded" | "offline" | "stopped" | "starting" | "not_configured";
+  detector_ready: boolean;
+  last_heartbeat_at: string | null;
+  last_update_at: string | null;
+}
+
+export interface ProtectedIngestionRecord {
+  source_record_id: string;
+  source_system: string;
+  record_type: string | null;
+  content_excerpt: string;
+  summary: string | null;
+  structured_summary: {
+    category?: string;
+    priority?: string;
+    action_required?: boolean;
+  } | null;
+  processing_status: ProcessingStatus;
+  enrichment_mode: string | null;
+  occurred_at: string | null;
+  created_at: string;
+  updated_at: string;
+  safe_metadata: Record<string, string>;
+}
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 async function parse<T>(response: Response): Promise<T> {
@@ -82,5 +110,17 @@ export async function ingestRecord(payload: IngestionRequest): Promise<Ingestion
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  );
+}
+
+export async function fetchTelegramStatus(): Promise<TelegramIntegrationStatus> {
+  return parse<TelegramIntegrationStatus>(
+    await fetch(`${BASE_URL}/integrations/telegram/status`),
+  );
+}
+
+export async function fetchTelegramRecords(): Promise<ProtectedIngestionRecord[]> {
+  return parse<ProtectedIngestionRecord[]>(
+    await fetch(`${BASE_URL}/ingestion-records?source_system=telegram&limit=12`),
   );
 }

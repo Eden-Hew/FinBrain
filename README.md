@@ -12,13 +12,14 @@ raw record (memory only)
   → regex + optional GLiNER detection
   → deterministic tokens + encrypted vault
   → sanitized embeddings and retrieval
-  → Gemini reasoning over tokens
+  → Morpheus reasoning over tokens
   → role-gated detokenization
   → verifiable audit trail
 ```
 
 Questions pass through the same tokenization boundary as ingested records, so user-supplied PII is
-not sent directly to Gemini either.
+not sent directly to an external model either. Morpheus handles protected reasoning and summaries;
+Gemini produces protected retrieval embeddings.
 
 ## Local setup with uv
 
@@ -55,6 +56,35 @@ Set-Location frontend; npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictP
 Open <http://127.0.0.1:5173>. API documentation is available at
 <http://127.0.0.1:8000/docs>. `--strictPort` prevents Vite from silently starting a different
 copy of the application on another port.
+
+### Telegram capture bot
+
+The hackathon prototype can run a private Telegram capture bot locally using long polling. No
+public URL, tunnel, webhook, or hosted frontend is required. Configure the ignored `backend/.env`:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=your-botfather-token
+TELEGRAM_OPERATOR_ROLES=123456789:owner_director
+```
+
+Before adding an operator ID, run the bot and send `/whoami`; the bootstrap command returns only
+the caller's numeric Telegram ID. Start the worker from the repository root:
+
+```powershell
+Set-Location backend
+& ..\.venv\Scripts\python.exe -m app.integrations.telegram.runner
+```
+
+Or start the backend, frontend, and bot together:
+
+```powershell
+& .\scripts\run_demo.ps1
+```
+
+Stop and check the demo with `scripts/stop_demo.ps1` and `scripts/check_demo.ps1`. The bot accepts
+private-chat text, forwarded text, TXT, Markdown, CSV, EML, text-based PDF, and DOCX input. It
+shows a protected preview before confirmation and stores the protected record before starting
+Morpheus summarization and Gemini embedding. Scanned-document OCR is not included.
 
 ## Unified protected ingestion
 

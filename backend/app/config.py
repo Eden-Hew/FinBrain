@@ -1,6 +1,9 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.schemas import UserRole
 
 
 class Settings(BaseSettings):
@@ -12,16 +15,85 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_reasoning_model: str = "gemini-3.6-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
+    morpheus_api_key: str | None = None
+    morpheus_base_url: str = "https://api.mor.org/api/v1"
+    morpheus_model: str = "deepseek-v4-flash"
     enable_gliner: bool = True
     gliner_model_name: str = "urchade/gliner_multi_pii-v1"
     gliner_device: str = "cpu"
     allow_offline_demo: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1):517[3-9]$"
+    telegram_bot_token: str | None = None
+    telegram_mode: str = "polling"
+    telegram_operator_roles: str = ""
+    telegram_allowed_chat_types: str = "private"
+    telegram_draft_ttl_seconds: int = 600
+    telegram_max_file_bytes: int = 10_000_000
+    telegram_max_extracted_chars: int = 100_000
+    telegram_max_pdf_pages: int = 50
+    telegram_max_docx_members: int = 1_000
+    telegram_max_docx_uncompressed_bytes: int = 25_000_000
+    telegram_delete_source_after_ingest: bool = False
+    telegram_status_limit: int = 5
+    telegram_heartbeat_seconds: int = 30
+    telegram_preview_chars: int = 1_200
+    telegram_enrichment_concurrency: int = 1
+
+    @field_validator(
+        "telegram_draft_ttl_seconds",
+        "telegram_max_file_bytes",
+        "telegram_max_extracted_chars",
+        "telegram_max_pdf_pages",
+        "telegram_max_docx_members",
+        "telegram_max_docx_uncompressed_bytes",
+        "telegram_status_limit",
+        "telegram_heartbeat_seconds",
+        "telegram_preview_chars",
+        "telegram_enrichment_concurrency",
+    )
+    @classmethod
+    def positive_telegram_limits(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Telegram limits must be positive")
+        return value
+
+    @field_validator("telegram_mode")
+    @classmethod
+    def supported_telegram_mode(cls, value: str) -> str:
+        if value != "polling":
+            raise ValueError("Only Telegram polling mode is supported locally")
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def telegram_allowed_chat_type_set(self) -> set[str]:
+        return {
+            item.strip() for item in self.telegram_allowed_chat_types.split(",") if item.strip()
+        }
+
+    @property
+    def telegram_operator_role_map(self) -> dict[int, UserRole]:
+        result: dict[int, UserRole] = {}
+        for item in self.telegram_operator_roles.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                user_id_text, role_text = item.split(":", 1)
+                user_id = int(user_id_text)
+                role = UserRole(role_text)
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    "TELEGRAM_OPERATOR_ROLES must contain user_id:role entries"
+                ) from error
+            if user_id <= 0 or user_id in result:
+                raise ValueError("Telegram operator IDs must be unique positive integers")
+            result[user_id] = role
+        return result
 
     @property
     def database_backend(self) -> str:

@@ -3,6 +3,7 @@ import re
 from app.config import get_settings
 from app.schemas import ProtectedSummary, SummaryPriority
 from app.security.detect import contains_known_pii
+from app.services.morpheus import morpheus_chat
 
 TOKEN_PATTERN = re.compile(r"(?:[A-Z]+_[0-9a-f]{10}|AMOUNT_BAND_\d+)")
 
@@ -67,6 +68,28 @@ def summarize_protected_text(text: str) -> tuple[ProtectedSummary, str]:
     if contains_known_pii(text):
         raise ValueError("Refusing to summarize text containing recognized PII")
     settings = get_settings()
+    if settings.morpheus_api_key:
+        try:
+            schema = ProtectedSummary.model_json_schema()
+            response = morpheus_chat(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"{SYSTEM_INSTRUCTION} Return only JSON matching this schema: {schema}"
+                        ),
+                    },
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.1,
+            )
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
+            result = ProtectedSummary.model_validate_json(cleaned)
+            _validate_summary(result, text)
+            return result, "morpheus"
+        except Exception:
+            if not settings.allow_offline_demo:
+                raise
     if settings.gemini_api_key:
         try:
             from google import genai
@@ -94,7 +117,7 @@ def summarize_protected_text(text: str) -> tuple[ProtectedSummary, str]:
             if not settings.allow_offline_demo:
                 raise
     if not settings.allow_offline_demo:
-        raise RuntimeError("GEMINI_API_KEY is required when offline demo mode is disabled")
+        raise RuntimeError("A reasoning API key is required when offline demo mode is disabled")
     result = _offline_summary(text)
     _validate_summary(result, text)
     return result, "offline-demo"

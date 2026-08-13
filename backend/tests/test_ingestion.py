@@ -67,6 +67,35 @@ def test_unified_ingestion_sends_only_protected_content_to_enrichment(monkeypatc
         engine.dispose()
 
 
+def test_protect_stage_commits_without_external_enrichment(monkeypatch):
+    engine, db = _database()
+    monkeypatch.setattr(
+        ingestion,
+        "summarize_protected_text",
+        lambda _text: (_ for _ in ()).throw(AssertionError("summary called")),
+    )
+    monkeypatch.setattr(
+        ingestion,
+        "embed_text",
+        lambda _text: (_ for _ in ()).throw(AssertionError("embedding called")),
+    )
+    record = CanonicalIngestionRecord(
+        source_record_id="telegram:protected-stage",
+        source_system="telegram",
+        record_type="customer_message",
+        text="Call 012-345 6789 tomorrow.",
+    )
+    try:
+        result = ingestion.protect_canonical_record(db, record)
+        stored = db.scalar(select(TokenizedContent))
+        assert result.processing_status is ProcessingStatus.PROTECTED
+        assert stored.processing_status == ProcessingStatus.PROTECTED
+        assert "012-345 6789" not in stored.content_text
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_identical_record_is_idempotent(monkeypatch):
     engine, db = _database()
     calls = {"summaries": 0}

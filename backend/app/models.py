@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Boolean, DateTime, Integer, LargeBinary, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, LargeBinary, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -121,3 +121,35 @@ class AuditLogEntry(Base):
     authorized: Mapped[bool] = mapped_column(Boolean, nullable=False)
     query_hash: Mapped[str] = mapped_column(String, nullable=False)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class TelegramUpdateReceipt(Base):
+    """Privacy-safe idempotency receipt; raw Telegram payloads are never stored."""
+
+    __tablename__ = "telegram_update_receipts"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    message_ref_hash: Mapped[str | None] = mapped_column(String, unique=True)
+    actor_ref: Mapped[str] = mapped_column(String, nullable=False)
+    source_record_id: Mapped[str | None] = mapped_column(String)
+    update_kind: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="received")
+    failure_code: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class IntegrationStatus(Base):
+    """Operational heartbeat containing no credentials or external identities."""
+
+    __tablename__ = "integration_status"
+
+    integration_key: Mapped[str] = mapped_column(String, primary_key=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    mode: Mapped[str] = mapped_column(String, nullable=False)
+    detector_ready: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_update_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_code: Mapped[str | None] = mapped_column(String)

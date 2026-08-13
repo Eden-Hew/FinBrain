@@ -108,3 +108,27 @@ class AuditEntryResponse(BaseModel):
 class AuditResponse(BaseModel):
     entries: list[AuditEntryResponse]
     chain_valid: bool
+
+
+class TelegramIntegrationStatusResponse(BaseModel):
+    configured: bool
+    mode: str
+    status: str
+    detector_ready: bool
+    last_heartbeat_at: datetime | None
+    last_update_at: datetime | None
+
+
+class ProtectedIngestionRecordResponse(BaseModel):
+    source_record_id: str
+    source_system: str
+    record_type: str | None
+    content_excerpt: str
+    summary: str | None
+    structured_summary: dict | None
+    processing_status: ProcessingStatus
+    enrichment_mode: str | None
+    occurred_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    safe_metadata: dict

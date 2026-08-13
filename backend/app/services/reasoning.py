@@ -2,6 +2,7 @@ import re
 
 from app.config import get_settings
 from app.security.detect import contains_known_pii
+from app.services.morpheus import morpheus_chat
 
 SYSTEM_INSTRUCTION = (
     "You are FinBrain OS's reasoning assistant. Answer only from the supplied context. "
@@ -26,6 +27,21 @@ def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
     if contains_known_pii(question) or contains_known_pii(context):
         raise ValueError("Refusing to send recognized PII to the reasoning service")
     settings = get_settings()
+    if settings.morpheus_api_key:
+        try:
+            response = morpheus_chat(
+                [
+                    {"role": "system", "content": SYSTEM_INSTRUCTION},
+                    {
+                        "role": "user",
+                        "content": f"Context:\n{context}\n\nQuestion: {question}",
+                    },
+                ]
+            )
+            return response, "morpheus"
+        except Exception:
+            if not settings.allow_offline_demo:
+                raise
     if settings.gemini_api_key:
         try:
             from google import genai
@@ -41,7 +57,7 @@ def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
             if not settings.allow_offline_demo:
                 raise
     if not settings.allow_offline_demo:
-        raise RuntimeError("GEMINI_API_KEY is required when offline demo mode is disabled")
+        raise RuntimeError("A reasoning API key is required when offline demo mode is disabled")
     return _offline_answer(question, chunks), "offline-demo"
 
 

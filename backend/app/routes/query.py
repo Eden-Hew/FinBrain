@@ -42,7 +42,7 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
     final_answer = detokenize_response(
         db, raw_answer, payload.role.value, hash_query(payload.question)
     )
-    mode = "gemini" if embedding_mode == reasoning_mode == "gemini" else "offline-demo"
+    mode = reasoning_mode if embedding_mode != "offline-demo" else "offline-demo"
     return QueryResponse(
         answer=final_answer,
         model_answer=raw_answer,

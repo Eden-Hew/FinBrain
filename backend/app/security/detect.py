@@ -14,6 +14,15 @@ class Span:
     source: str
 
 
+@dataclass(frozen=True, slots=True)
+class DetectorStatus:
+    configured: bool
+    loaded: bool
+    device: str
+    model_name: str
+    failure_code: str | None = None
+
+
 REGEX_PATTERNS = [
     (re.compile(r"\b\d{6}-\d{2}-\d{4}\b"), "national id"),
     (re.compile(r"\b(?:\+?60|0)1[0-46-9][\-\s]?\d{3,4}[\-\s]?\d{4}\b"), "phone number"),
@@ -98,3 +107,34 @@ def detect_spans(text: str) -> list[Span]:
 def contains_known_pii(text: str) -> bool:
     """Fast safety-net used immediately before any external model call."""
     return bool(_regex_detect(text))
+
+
+def warm_detector() -> DetectorStatus:
+    settings = get_settings()
+    if not settings.enable_gliner:
+        return DetectorStatus(
+            configured=False,
+            loaded=False,
+            device=settings.gliner_device,
+            model_name=settings.gliner_model_name,
+            failure_code="disabled",
+        )
+    model = _get_model()
+    return DetectorStatus(
+        configured=True,
+        loaded=model is not None,
+        device=settings.gliner_device,
+        model_name=settings.gliner_model_name,
+        failure_code=None if model is not None else "model_load_failed",
+    )
+
+
+def get_detector_status() -> DetectorStatus:
+    settings = get_settings()
+    return DetectorStatus(
+        configured=settings.enable_gliner,
+        loaded=_model is not None,
+        device=settings.gliner_device,
+        model_name=settings.gliner_model_name,
+        failure_code="model_load_failed" if _model_failed else None,
+    )

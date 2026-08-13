@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import engine
 from app.models import Base
-from app.routes import audit_log, ingestion, query
+from app.routes import audit_log, ingestion, integrations, query
 
 
 @asynccontextmanager
@@ -28,13 +28,20 @@ app.add_middleware(
 app.include_router(query.router)
 app.include_router(audit_log.router)
 app.include_router(ingestion.router)
+app.include_router(integrations.router)
 
 
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str | bool]:
     return {
         "status": "ok",
-        "mode": "gemini" if settings.gemini_api_key else "offline-demo",
+        "mode": (
+            "morpheus"
+            if settings.morpheus_api_key
+            else "gemini"
+            if settings.gemini_api_key
+            else "offline-demo"
+        ),
         "database": settings.database_backend,
         "gliner_enabled": settings.enable_gliner,
         "production_secret_configured": settings.production_secret_configured,

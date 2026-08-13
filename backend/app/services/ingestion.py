@@ -74,8 +74,31 @@ def ingest_canonical_record(
     record: CanonicalIngestionRecord,
     *,
     refresh: bool = False,
+    enrich: bool = True,
 ) -> IngestionResult:
-    """Persist protected source text before any retryable external enrichment."""
+    """Compatibility wrapper around protected persistence and optional enrichment."""
+    result = protect_canonical_record(db, record, refresh=refresh)
+    if not enrich or (
+        not result.created
+        and not result.refreshed
+        and result.processing_status == ProcessingStatus.READY
+    ):
+        return result
+    return enrich_protected_record(
+        db,
+        result.source_record_id,
+        created=result.created,
+        refreshed=result.refreshed,
+    )
+
+
+def protect_canonical_record(
+    db: Session,
+    record: CanonicalIngestionRecord,
+    *,
+    refresh: bool = False,
+) -> IngestionResult:
+    """Protect and commit source content without making any external model call."""
     if contains_known_pii(record.source_record_id):
         raise ValueError("source_record_id must be an opaque identifier without recognizable PII")
     fingerprint = _content_fingerprint(record)
@@ -120,6 +143,26 @@ def ingest_canonical_record(
         db.add(row)
     db.commit()
 
+    return _result(row, created=created, refreshed=not created)
+
+
+def enrich_protected_record(
+    db: Session,
+    source_record_id: str,
+    *,
+    created: bool = False,
+    refreshed: bool = False,
+) -> IngestionResult:
+    """Enrich an already-protected record; raw source content is never available here."""
+    row = db.scalar(
+        select(TokenizedContent).where(TokenizedContent.source_record_id == source_record_id)
+    )
+    if row is None:
+        raise ValueError("Protected record not found")
+    protected_text = row.content_text
+    if contains_known_pii(protected_text):
+        raise ValueError("Refusing to enrich a record containing recognized PII")
+
     stage = "summarization"
     try:
         summary, summary_mode = summarize_protected_text(protected_text)
@@ -142,7 +185,7 @@ def ingest_canonical_record(
         db.rollback()
         row = db.scalar(
             select(TokenizedContent).where(
-                TokenizedContent.source_record_id == record.source_record_id
+                TokenizedContent.source_record_id == source_record_id
             )
         )
         if row is None:
@@ -152,7 +195,22 @@ def ingest_canonical_record(
         row.enrichment_mode = None
         db.commit()
 
-    return _result(row, created=created, refreshed=not created)
+    return _result(row, created=created, refreshed=refreshed)
+
+
+def retry_pending_enrichment(db: Session, *, limit: int = 20) -> list[IngestionResult]:
+    """Retry a bounded set of records using only their protected persisted content."""
+    rows = db.scalars(
+        select(TokenizedContent)
+        .where(
+            TokenizedContent.processing_status.in_(
+                [ProcessingStatus.PROTECTED, ProcessingStatus.FAILED_ENRICHMENT]
+            )
+        )
+        .order_by(TokenizedContent.updated_at)
+        .limit(limit)
+    ).all()
+    return [enrich_protected_record(db, row.source_record_id) for row in rows]
 
 
 def ingest_record(
