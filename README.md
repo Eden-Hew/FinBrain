@@ -1,148 +1,284 @@
 # FinBrain OS
 
-FinBrain OS is a privacy-first customer-intelligence prototype for Malaysian MSMEs. It ingests
-business records, replaces sensitive values before AI processing, retrieves relevant protected
-context, and restores values only when the requesting role is authorized. Answers retain citations
-to protected source records, and recurring patterns can become evidence-backed process
-recommendations with human approval. Every disclosure and recommendation decision is written to a
-dedicated hash-chained audit log.
+FinBrain OS is a privacy-first customer-intelligence and process-optimization prototype for
+Malaysian MSMEs. It brings protected records from email, Telegram, manual entry, CRM-style data,
+bank exports, meeting notes, and support tickets into one queryable workspace.
 
-## Architecture
+Sensitive values are detected and tokenized inside the backend before any external AI call.
+Morpheus analyzes protected content, Gemini creates protected embeddings, and exact values are
+restored only when the selected demonstration role is authorized. Answers retain protected source
+citations, while recurring issues can become evidence-backed recommendations with approval and
+audit history.
+
+## What is implemented
+
+- Unified, source-neutral protected ingestion through FastAPI.
+- Manual ingestion workspace in the React frontend.
+- Private Telegram capture bot using local long polling.
+- Read-only IMAP ingestion of new unread email and supported attachments.
+- Regex and optional GLiNER sensitive-data detection.
+- Deterministic tenant-secret tokens and an AES-256-GCM encrypted token vault.
+- Reversible, band-aware amount tokens with role-gated exact disclosure.
+- Supabase Postgres, pgvector, HNSW indexing, forced RLS, and revoked Data API grants.
+- SQL-first counts, listings, source filters, and complete analytical record selection.
+- Protected Morpheus reasoning with validated `SOURCE-n` citations.
+- Protected 20-record batching and final synthesis for larger analytical result sets.
+- Persistent process recommendations, evidence, approval decisions, and workflow audit events.
+- Separate hash-chained disclosure and workflow audit logs.
+- Twelve-record reset-safe demonstration dataset spanning six source systems.
+
+## Current architecture
 
 ```text
-raw record (memory only)
-  → regex + optional GLiNER detection
-  → deterministic tokens + encrypted vault
-  → sanitized embeddings and retrieval
-  → Morpheus reasoning with protected citations
-  → role-gated detokenization
-  → recurring-problem analysis and human approval
-  → verifiable disclosure and workflow audit trails
+Telegram / unread IMAP / manual UI / seed adapters
+                         |
+                         v
+              CanonicalIngestionRecord
+                         |
+                         v
+              FastAPI privacy boundary
+                 |               |
+                 | detect PII    | raw input remains in memory only
+                 | tokenize      |
+                 | encrypt vault |
+                 v               v
+          protected content + protected metadata
+                         |
+             +-----------+-----------+
+             |                       |
+             v                       v
+       Morpheus summary       Gemini embedding
+             |                       |
+             +-----------+-----------+
+                         v
+                 Supabase / SQLite
+                         |
+                         v
+                  SQL query planner
+             +-----------+-----------+
+             |                       |
+             v                       v
+      exact count/list      all eligible protected records
+                                     |
+                                     v
+                         Morpheus analysis and citations
+                                     |
+                                     v
+                         role-gated detokenization
+                                     |
+                                     v
+                              audited response
 ```
 
-Questions pass through the same tokenization boundary as ingested records, so user-supplied PII is
-not sent directly to an external model either. Morpheus handles protected reasoning and summaries;
-Gemini produces protected retrieval embeddings.
+The current proof-of-concept deliberately does not apply a top-five vector cap in `/query`.
+Analytical questions use every ready record matching the trusted SQL source filter. If no source is
+mentioned, every ready record across all source systems is eligible. Sets larger than 20 are
+processed in protected batches before final synthesis. Stored embeddings and pgvector remain
+available for a future scale-oriented retrieval policy.
 
-## Local setup with uv
+## Prerequisites
 
-The conventional `.venv` environment uses `FinBrain` as its displayed prompt name. This standard
-setup installs PyTorch along with GLiNER, so it works without a pre-existing global Torch install:
+- Windows PowerShell
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/)
+- Node.js and npm
+- A Morpheus API key for protected reasoning
+- A Gemini API key for 768-dimensional Supabase embeddings
+- Optional: Supabase CLI, Telegram bot token, and Gmail app password
+
+## 1. Install the project
+
+From the repository root:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 uv venv .venv --prompt FinBrain
 & .\.venv\Scripts\Activate.ps1
 Copy-Item backend\.env.example backend\.env
-cd backend
+
+Set-Location backend
 uv sync --active --extra dev
-uv run --active --no-sync python -m seed.seed_data
 
-cd ..\frontend
+Set-Location ..\frontend
 npm.cmd ci
+Set-Location ..
 ```
 
-## Launch
+The standard installation includes GLiNER and PyTorch. GLiNER defaults to CPU for portability.
+Set `GLINER_DEVICE=cuda` for a compatible CUDA environment or `GLINER_DEVICE=auto` for automatic
+selection.
 
-Backend, from the repository root:
+### Reuse a workstation CUDA build of PyTorch
+
+This project can inherit an already installed global PyTorch build, which is useful for RTX
+50-series systems that require a specific CUDA build:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process RemoteSigned; & .\.venv\Scripts\Activate.ps1; Set-Location backend; uv run --active --no-sync uvicorn app.main:app --reload --port 8000
+uv venv .venv --system-site-packages --prompt FinBrain
+& .\.venv\Scripts\Activate.ps1
+Set-Location backend
+uv sync --active --extra dev --no-install-package torch
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
-Frontend, in another terminal from the repository root:
+Use `uv run --active --no-sync ...` afterward so uv does not replace the inherited Torch build.
+
+## 2. Configure `backend/.env`
+
+`backend/.env` is ignored by Git. Never commit API keys, Telegram tokens, email credentials,
+database passwords, or `TOKEN_ROOT_SECRET`.
+
+Generate a stable 32-byte root secret in PowerShell:
 
 ```powershell
-Set-Location frontend; npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
+[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
 ```
 
-Open <http://127.0.0.1:5173>. API documentation is available at
-<http://127.0.0.1:8000/docs>. `--strictPort` prevents Vite from silently starting a different
-copy of the application on another port.
+Copy the output into `TOKEN_ROOT_SECRET`. Changing this secret later makes existing vault entries
+undecryptable unless they are re-encrypted.
 
-### Telegram capture bot
-
-The hackathon prototype can run a private Telegram capture bot locally using long polling. No
-public URL, tunnel, webhook, or hosted frontend is required. Configure the ignored `backend/.env`:
+Minimum local AI configuration:
 
 ```dotenv
-TELEGRAM_BOT_TOKEN=your-botfather-token
-TELEGRAM_OPERATOR_ROLES=123456789:owner_director
+TOKEN_ROOT_SECRET=your-generated-secret
+MORPHEUS_API_KEY=your-morpheus-key
+MORPHEUS_BASE_URL=https://api.mor.org/api/v1
+MORPHEUS_MODEL=deepseek-v4-flash
+GEMINI_API_KEY=your-gemini-key
+GEMINI_REASONING_MODEL=gemini-3.6-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+ALLOW_OFFLINE_DEMO=true
 ```
 
-Before adding an operator ID, run the bot and send `/whoami`; the bootstrap command returns only
-the caller's numeric Telegram ID. Start the worker from the repository root:
+Morpheus is preferred for protected summaries, cited answers, and recommendations. Gemini is the
+fallback reasoning provider and is currently required for 768-dimensional Supabase embeddings.
+With no API keys, SQLite can use deterministic offline summaries and 128-dimensional embeddings.
+Those offline embeddings are not compatible with Supabase's `vector(768)` column.
+
+Verify Gemini from `backend`:
 
 ```powershell
-Set-Location backend
-& ..\.venv\Scripts\python.exe -m app.integrations.telegram.runner
+uv run --active --no-sync python -m scripts.check_gemini
 ```
 
-Or start the backend, frontend, and bot together:
+## 3. Choose the database
+
+### Local SQLite
+
+The default environment value is:
+
+```dotenv
+DATABASE_URL=sqlite:///./finbrain.db
+```
+
+SQLite tables are initialized by application startup. Seed the demonstration records from
+`backend`:
+
+```powershell
+uv run --active --no-sync python -m seed.seed_data
+```
+
+### Supabase Postgres
+
+1. Create a Supabase project near the intended users.
+2. Keep **Enable Data API** enabled if desired, disable automatic table exposure, and enable
+   automatic RLS. FinBrain's migrations also force RLS and revoke Data API grants.
+3. From the repository root, authenticate and link the CLI:
+
+```powershell
+npx.cmd supabase login
+npx.cmd supabase link --project-ref YOUR_PROJECT_REF
+npx.cmd supabase db push
+```
+
+Alternatively, apply every file in `supabase/migrations` through the SQL editor in timestamp order.
+
+4. Copy the exact URI from **Supabase Dashboard > Connect** into `backend/.env`. Use SQLAlchemy's
+   psycopg scheme and TLS:
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@POOLER_HOST:5432/postgres?sslmode=require
+```
+
+Use the direct connection when IPv6 is available or Supavisor session mode on port 5432 for a
+persistent IPv4 backend. Do not place the project URL, publishable key, or database URI in the
+frontend; this backend uses the Postgres connection string.
+
+5. Verify the schema and seed from `backend`:
+
+```powershell
+uv run --active --no-sync python -m scripts.check_supabase
+uv run --active --no-sync python -m seed.seed_data
+```
+
+The migration set creates protected content, token vault, audit, connector, recommendation,
+evidence, decision, and workflow-audit tables. It also installs pgvector, the `vector(768)` column,
+the HNSW index, JSONB role lists, and forced RLS.
+
+See [infra/supabase/README.md](./infra/supabase/README.md) for connection and security details.
+
+## 4. Run FinBrain
+
+### One-command demonstration
+
+From the repository root:
 
 ```powershell
 & .\scripts\run_demo.ps1
 ```
 
-Stop and check the demo with `scripts/stop_demo.ps1` and `scripts/check_demo.ps1`. The bot accepts
-private-chat text, forwarded text, TXT, Markdown, CSV, EML, text-based PDF, and DOCX input. It
-shows a protected preview before confirmation and stores the protected record before starting
-Morpheus summarization and Gemini embedding. Scanned-document OCR is not included.
+This starts:
 
-### Read-only email connector
+- Frontend: <http://127.0.0.1:5173>
+- API and Swagger documentation: <http://127.0.0.1:8000/docs>
+- Telegram long-polling worker
+- Email polling worker when `EMAIL_CONNECTOR_ENABLED=true`
 
-The optional IMAP connector incrementally imports unread email from `INBOX` into the same canonical
-ingestion boundary. It hashes mailbox and message references, never persists raw email payloads,
-and can reuse the safe attachment extractors for supported files. The mailbox is opened read-only,
-so importing a message does not mark it as read; durable receipts and the UID cursor prevent repeat
-ingestion. Configure only the ignored `backend/.env`:
-
-```dotenv
-EMAIL_CONNECTOR_ENABLED=true
-EMAIL_IMAP_HOST=imap.example.com
-EMAIL_IMAP_PORT=993
-EMAIL_IMAP_USERNAME=your-mailbox@example.com
-EMAIL_IMAP_PASSWORD=your-provider-app-password
-EMAIL_IMAP_FOLDER=INBOX
-EMAIL_IMAP_USE_SSL=true
-EMAIL_SYNC_INTERVAL_SECONDS=60
-EMAIL_MAX_MESSAGES_PER_SYNC=25
-EMAIL_INCLUDE_ATTACHMENTS=true
-```
-
-Only unread messages newer than the connector's saved UID cursor are eligible. Marking an older
-message unread after the cursor has passed it does not cause a historical rescan.
-
-For the hackathon connector, use a dedicated read-only mailbox or provider app password. Production
-deployments should replace password authentication with provider OAuth. Start the optional polling
-worker from `backend`:
+Check and stop the tracked processes:
 
 ```powershell
-& ..\.venv\Scripts\python.exe -m app.integrations.email_connector.runner
+& .\scripts\check_demo.ps1
+& .\scripts\stop_demo.ps1
 ```
 
-When `EMAIL_CONNECTOR_ENABLED=true`, `scripts/run_demo.ps1` starts this worker automatically. The
-ingestion workspace also exposes a local-only **Sync now** control. No email credential or mailbox
-address is returned to the frontend.
+The launcher requires `backend/.env`, the root `.venv`, installed frontend dependencies, and free
+ports 8000 and 5173.
+
+### Run backend and frontend separately
+
+Backend, from the repository root:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+& .\.venv\Scripts\Activate.ps1
+Set-Location backend
+uv run --active --no-sync uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Frontend, in a second terminal:
+
+```powershell
+Set-Location frontend
+npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
 
 ## Unified protected ingestion
 
-Every source adapter must convert its input into the same `CanonicalIngestionRecord` contract:
+Every adapter produces the same canonical fields:
 
 ```text
 source_record_id + source_system + record_type + text + occurred_at + metadata
 ```
 
-Connectors and the manual frontend submit that contract to the generic `POST /ingestion` boundary.
-The HTTP request adds the proof-of-concept `role` and `refresh` fields:
+The manual proof-of-concept endpoint also accepts `role` and `refresh`:
 
 ```json
 {
   "source_record_id": "crm:record-123",
   "source_system": "crm",
   "record_type": "customer_note",
-  "text": "Original source text that may contain sensitive values.",
-  "occurred_at": "2026-08-12T10:30:00+08:00",
+  "text": "Customer Ahmad called about invoice INV-1024 for RM 4,500.",
+  "occurred_at": "2026-08-14T10:30:00+08:00",
   "metadata": {
     "channel": "support"
   },
@@ -151,243 +287,200 @@ The HTTP request adds the proof-of-concept `role` and `refresh` fields:
 }
 ```
 
-Source-specific connectors are responsible only for extracting text and producing this normalized
-JSON. Detection and tokenization remain inside FinBrain's backend and must not be duplicated in a
-browser or connector.
+`source_record_id` must be an opaque connector identifier, never a customer name, phone number, or
+email address. Adapter-defined metadata values pass through the same protection boundary as source
+text. Connectors must not tokenize in the browser or duplicate backend privacy logic.
 
-`source_record_id` must be an opaque connector identifier, never a phone number, email address, or
-customer name. Metadata keys must be fixed adapter-defined identifiers; metadata values pass
-through the same detection and tokenization boundary as content.
-
-The shared ingestion service then runs one ordered boundary:
+The ingestion service performs:
 
 ```text
 validate and fingerprint
-  -> detect and tokenize content and metadata
+  -> detect and tokenize text and metadata
+  -> encrypt sensitive values in the vault
   -> persist protected source
-  -> summarize protected text
+  -> summarize protected content
   -> validate summary tokens and residual PII
-  -> embed protected source and summary
+  -> embed protected content
   -> mark ready
 ```
 
-Raw source text exists only in process memory during extraction and detection. It must never be
-written to a database, log, retry queue, error message, or temporary file. Only protected content
-may cross the external AI boundary or be retried. A keyed HMAC fingerprint makes repeated delivery idempotent without
-storing a reversible hash of the raw record.
+Raw inbound content exists only in process memory during extraction and protection. It is not
+written to the database, retry state, logs, or temporary files. A keyed HMAC fingerprint provides
+idempotency without storing a reversible raw-content hash.
 
-Records use the following enrichment states:
+Processing states are:
 
-- `protected`: tokenization is safely persisted and enrichment is pending.
+- `protected`: safe persistence succeeded and enrichment is pending.
 - `ready`: protected summary and embedding are available.
-- `failed_enrichment`: protected source is retained for a safe retry; raw input is not retained.
+- `failed_enrichment`: the protected source remains available for safe retry.
 
-The seed module is the first adapter and exercises this same service. Refresh its known sample
-records after a detector, summarizer, or embedding change:
+## Telegram connector
+
+Create a bot with BotFather and configure:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=your-botfather-token
+TELEGRAM_OPERATOR_ROLES=123456789:owner_director
+```
+
+Run the worker and send `/whoami` before adding an operator ID. Telegram access is restricted to
+private chats and explicitly allowlisted numeric user IDs. Drafts remain in memory for ten minutes
+by default and show a protected preview before confirmation.
 
 ```powershell
+Set-Location backend
+& ..\.venv\Scripts\python.exe -m app.integrations.telegram.runner
+```
+
+Supported inputs include text, forwarded text, TXT, Markdown, CSV, EML, text-based PDF, and DOCX.
+OCR for scanned images and scanned PDFs is not implemented.
+
+## Gmail and IMAP connector
+
+The connector opens the configured folder read-only and imports only unread messages newer than
+its saved UID cursor. Importing does not mark a message as read. Durable HMAC receipts and the UID
+cursor prevent duplicate ingestion across repeated synchronization.
+
+For Gmail, enable two-step verification and create an app password, then configure:
+
+```dotenv
+EMAIL_CONNECTOR_ENABLED=true
+EMAIL_IMAP_HOST=imap.gmail.com
+EMAIL_IMAP_PORT=993
+EMAIL_IMAP_USERNAME=your-account@gmail.com
+EMAIL_IMAP_PASSWORD=your-16-character-app-password
+EMAIL_IMAP_FOLDER=INBOX
+EMAIL_IMAP_USE_SSL=true
+EMAIL_SYNC_INTERVAL_SECONDS=60
+EMAIL_MAX_MESSAGES_PER_SYNC=25
+EMAIL_INCLUDE_ATTACHMENTS=true
+```
+
+Start the worker from `backend`:
+
+```powershell
+& ..\.venv\Scripts\python.exe -m app.integrations.email_connector.runner
+```
+
+The frontend also provides a local **Sync now** action. Marking an older message unread after the
+saved UID cursor has passed it does not trigger a historical rescan. For production, replace app
+password authentication with provider OAuth.
+
+## Tokenization and role views
+
+Names, identifiers, contact details, accounts, addresses, organizations, and monetary values use
+deterministic tenant-scoped tokens. Equivalent amounts such as `RM4,500` and `RM 4500.00` produce
+the same reversible token:
+
+```text
+AMOUNT_BAND_3_b6d35bfc3e
+```
+
+The external model sees the approximate band and opaque reference, not the exact value. A general
+employee sees a safe label such as `RM2.5K-5K`; finance/operations, owner/director, and compliance
+roles can recover the normalized exact value through the encrypted vault. Authorized and denied
+disclosures are both audited.
+
+The frontend's model-view toggle compares:
+
+- **User view:** original question and role-authorized answer.
+- **Model view:** tokenized question, protected answer, and protected citations exactly as the
+  external model received them.
+
+## SQL-first questions and cited analysis
+
+The backend interprets trusted source-system filters before question tokenization changes the text.
+It does not ask Morpheus to generate or execute SQL.
+
+Examples:
+
+| Question | Execution |
+| --- | --- |
+| `How many email records are there?` | SQL count; no model call |
+| `Show all email sources` | SQL listing; no model call |
+| `Summarize email sources` | SQL selects every ready email record, then Morpheus |
+| `What issues need attention?` | SQL selects every ready record across all sources, then Morpheus |
+
+Morpheus may cite only supplied `SOURCE-n` identifiers. The backend rejects unknown citations,
+invented protected tokens, and recognizable PII before detokenization. The response exposes the
+number of records used, protected excerpts, source systems, record types, and timestamps.
+
+## Process recommendations
+
+An owner/director can use the Approvals workspace to analyze protected, action-required records and
+persist a recommendation with its evidence, expected benefit, suggested owner, success metric,
+priority, and confidence. Finance/operations, owner/director, and compliance roles can view the
+result. Only the owner/director demonstration role can make recommendation decisions. Supported
+state changes are:
+
+```text
+proposed -> approved -> implemented
+         -> rejected
+```
+
+Decision events are appended to a separate hash-chained workflow audit log.
+
+## Reset and verify demonstration data
+
+Refresh known seed records after changing detection or enrichment behavior:
+
+```powershell
+Set-Location backend
 uv run --active --no-sync python -m seed.seed_data --refresh
 ```
 
-To deliberately replace all FinBrain application rows with the clean twelve-record Track 2 demo
-dataset while preserving the Supabase schema, migrations, pgvector indexes, and RLS configuration:
+To clear FinBrain application rows and recreate the clean twelve-record Track 2 dataset while
+preserving migrations, schema, indexes, and RLS:
 
 ```powershell
 uv run --active --no-sync python -m seed.seed_data --reset --yes
 uv run --active --no-sync python -m scripts.check_demo_data
 ```
 
-The reset dataset spans email, Telegram, CRM, bank CSV, meeting notes, and support tickets. The
-explicit `--yes` guard is required because reset removes connector cursors, receipts,
-recommendations, vault entries, and audit history together with protected content.
-
-Supabase stores the sanitized source, sanitized metadata, structured protected summary, embedding,
-provenance, and processing state. Reversible sensitive fragments are stored separately as
-encrypted vault entries. Exact monetary values use reversible band-aware tokens: external models
-see only the safe band and opaque reference, general employees see the band, and finance,
-owner/director, or compliance roles can recover the exact normalized value through an audited
-vault disclosure. The complete raw source record is never stored.
-
-### SQL-first query retrieval
-
-`POST /query` plans trusted source-system filters before PII tokenization. Exact requests such as
-`show all email sources` or `show all content where source_system is email` use direct metadata
-filtering and return matching protected records without embeddings or an LLM call. Analytical
-requests such as `what payment issues came from email?` apply the same SQL source filter before
-reasoning, so Morpheus receives every ready email record. Questions that do not identify a source
-use every ready record across all source systems.
-
-Count questions such as `what is the total number of email sources?` use the ready-record inventory
-directly and report the complete database count. Questions such as `how many source systems are
-available?` count distinct ready source systems instead of records.
-
-Every analytical request first selects all matching ready records through SQL, then sends the
-complete protected evidence set to the reasoning service. Sets of up to 20 records are analyzed
-directly; larger sets are summarized in protected 20-record batches and synthesized with the
-original `SOURCE-n` evidence identifiers. This proof-of-concept deliberately favors complete
-answers over top-k vector truncation.
-
-### Cited cross-source answers
-
-`POST /query` retrieves structured evidence instead of anonymous text chunks. Each protected hit
-retains its source system, record type, timestamp, and opaque record ID. Morpheus must
-return only supplied `SOURCE-n` citation identifiers; unknown citations, unknown privacy tokens,
-and residual recognizable PII are rejected before role-gated detokenization. The frontend can
-toggle between the authorized answer and exact protected model view, then inspect every cited
-protected excerpt. When no evidence is available, the response explicitly sets
-`insufficient_evidence=true`.
-
-### Process recommendations and approval
-
-An owner/director can run bounded analysis over recent ready Telegram and email records. FinBrain
-groups action-required structured summaries deterministically before asking Morpheus to formulate a
-recommendation from the supplied `EVIDENCE-n` records. Each persisted recommendation includes its
-protected evidence, expected benefit, suggested owner, success metric, priority, and confidence.
-The live Approvals workspace supports proposed → approved/rejected and approved → implemented
-transitions. Every transition is persisted and appended to a separate hash-chained workflow audit
-log. Roles remain proof-of-concept request fields until verified authentication is implemented.
-
-### Proof-of-concept ingestion UI
-
-Open the **Ingest records** workspace in the frontend to submit manual text through the backend's
-`POST /ingestion` endpoint. The form accepts source provenance, an opaque record ID, optional
-metadata, occurrence time, and source text. Its result compares the user-submitted text with the
-protected downstream text and shows the protected summary and processing status.
-
-For this proof of concept, the endpoint accepts the role selected in the existing UI and returns it
-as `submitted_as` together with `authorization_mode: demo-role`. The ingestion service currently
-removes this field before processing, so it does not authorize ingestion or change tokenization,
-storage, enrichment, or vault permissions. It is an informational demonstration field and must be
-replaced by a verified server-side session and ingestion authorization before commercial or
-multi-user use.
-
-## Configuration
-
-Set `GEMINI_API_KEY` in `backend/.env` to use Gemini. Without it, the backend runs in explicit
-`offline-demo` mode using deterministic local embeddings and protected-record output. The current
-offline embedding is 128-dimensional and therefore supports the complete local SQLite demo, but it
-is not compatible with Supabase's `vector(768)` column. A Supabase deployment must currently use
-the configured Gemini embedding model; if Gemini enrichment is unavailable, protected ingestion is
-retained with `failed_enrichment` status for a later retry.
-
-Create an API key in [Google AI Studio](https://aistudio.google.com/app/apikey), then edit the
-ignored `backend/.env` file locally:
-
-```dotenv
-GEMINI_API_KEY=your-key-here
-GEMINI_REASONING_MODEL=gemini-3.6-flash
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-```
-
-`gemini-3.6-flash` is the tracked project default. The ignored local environment may override it
-with another model available to the configured API key, such as `gemini-3.1-flash-lite`. Run the
-connectivity checker after changing either model instead of assuming an account or region supports
-the default.
-
-Do not paste the key into source files or commit `backend/.env`. Verify both models from the
-`backend` directory:
-
-```powershell
-uv run --active --no-sync python -m scripts.check_gemini
-```
-
-The local database seeded in offline mode contains incompatible fallback embeddings. After the
-connectivity check succeeds, recreate the sample-only database once from the `backend` directory:
-
-```powershell
-Remove-Item -LiteralPath '.\finbrain.db' -Force
-uv run --active --no-sync python -m seed.seed_data
-```
-
-GLiNER is part of the protected ingestion boundary:
-
-```powershell
-cd backend
-uv sync --active --extra dev
-```
-
-GLiNER and PyTorch are both explicit project dependencies. GLiNER defaults to CPU for wider device
-compatibility; this changes inference speed rather than the intended detections. Set
-`GLINER_DEVICE=cuda` on a CUDA-capable workstation to accelerate it, or `GLINER_DEVICE=auto` to
-select CUDA when available.
-
-For a workstation that already has a compatible CUDA PyTorch build, such as this RTX 50-series
-machine, reuse that build without changing dependency resolution for everyone else:
-
-```powershell
-uv venv .venv --system-site-packages --prompt FinBrain
-& .\.venv\Scripts\Activate.ps1
-cd backend
-uv sync --active --extra dev --no-install-package torch
-python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
-```
-
-Use `uv run --active --no-sync ...` after this RTX-specific sync so a later command does not install
-the locked default Torch package over the inherited CUDA build.
-
-Set `ENABLE_GLINER=false` to use only deterministic structured-data detection. Before production,
-replace `TOKEN_ROOT_SECRET` with at least 32 random characters, disable offline fallback, add real
-authentication, and migrate the supplied schema and RLS policies to Supabase.
-
-## Supabase/Postgres
-
-The backend supports both SQLite and Supabase Postgres. Supabase uses native `vector(768)` storage,
-an HNSW cosine index, psycopg 3, JSON role lists, and SQL-side nearest-neighbor retrieval.
-
-1. Create a Supabase project.
-2. Apply all migrations in timestamp order in the SQL editor:
-   `202608110001_finbrain_initial.sql`, `202608110002_unified_ingestion.sql`,
-   `202608130001_telegram_capture.sql`, and
-   `202608130002_track2_recommendations.sql`, followed by
-   `202608130003_connector_rls.sql`. Alternatively, link the CLI and run
-   `npx supabase db push` to apply all pending migrations. PostgreSQL tables are never created by
-   application startup; only SQLite uses automatic `create_all()` initialization.
-3. Copy the exact **Connect** URI into the ignored `backend/.env`, using the
-   `postgresql+psycopg://` scheme and `sslmode=require`.
-4. For a persistent IPv4 backend, prefer Supavisor session mode on port 5432. Direct connections
-   require IPv6 unless the project has the IPv4 add-on.
-5. Verify and seed from `backend`:
-
-```powershell
-uv sync --active --extra dev
-uv run --active --no-sync python -m scripts.check_supabase
-uv run --active --no-sync python -m seed.seed_data
-```
-
-See [`infra/supabase/README.md`](./infra/supabase/README.md) for connection modes, RLS boundaries,
-and deployment details.
+The reset removes protected content, vault entries, connector cursors and receipts,
+recommendations, and audit history. It then seeds email, Telegram, CRM, bank CSV, meeting-note, and
+support-ticket records through the real protected ingestion service.
 
 ## Verification
 
-```powershell
-cd backend
-uv run --active --no-sync python -m pytest
-uv run --active --no-sync python -m ruff check .
+Backend:
 
-cd ..\frontend
+```powershell
+Set-Location backend
+uv run --active --no-sync python -m pytest
+uv run --active --no-sync python -m ruff check app tests seed scripts
+uv run --active --no-sync python -m scripts.check_supabase
+uv run --active --no-sync python -m scripts.check_demo_data
+```
+
+Frontend:
+
+```powershell
+Set-Location frontend
 npm.cmd run lint
 npm.cmd run build
 ```
 
-## Current prototype boundaries
+Latest verified local result: **54 backend tests passed**, Ruff passed, and the frontend production
+build passed. The live six-record email query returned six cited sources through Morpheus.
 
-- The UI role selector demonstrates authorization behavior; it is not authentication.
-- The ingestion role is currently informational; it is not an ingestion authorization check.
-- SQLite remains available for local development; Supabase uses native pgvector retrieval.
-- Offline 128-dimensional embeddings are currently SQLite-only; Supabase enrichment requires the
-  configured 768-dimensional Gemini embedding model.
-- Manual, Telegram, and configured email ingestion call the live backend. Finance and e-invoice
-  screens remain in-memory demonstration data.
-- Chat answers now call the backend first, expose protected citations, and retain scripted content
-  only as a fallback when the local backend is unavailable.
-- Process recommendations, evidence, approvals, and workflow audit events are persisted. Their
-  request roles are still demo fields rather than verified identities.
-- The Audit screen now reads live disclosure and workflow chains as compliance. It no longer claims
-  sample rows are cryptographically verified.
-- Chat file selection currently attaches only a filename chip, and the web-search control is a UI
-  demonstration; neither performs file ingestion or web browsing yet.
-- Live WhatsApp, banking, and OCR connectors remain deferred.
-- The default secret is for local demonstrations only and is reported by `/health`.
+## Important proof-of-concept boundaries
 
-See [the implementation plan](./finbrain-os-implementation-plan.md) for the original scope and the
-Supabase migration notes in [`infra/supabase`](./infra/supabase).
+- The frontend role selector and request role fields demonstrate authorization; they are not
+  authentication.
+- There is no tenant isolation or verified Supabase Auth/JWT role boundary yet.
+- The FastAPI backend uses a trusted server-side database connection.
+- Raw input is protected in process memory, but production threat modeling and operational controls
+  remain necessary.
+- Finance and e-invoice screens still contain demonstration-only data.
+- Chat file selection currently shows a filename chip; it does not ingest the file.
+- The web-search control is visual only.
+- Live WhatsApp Business, banking APIs, generic document connectors, and OCR are deferred.
+- Email uses IMAP app-password authentication rather than provider OAuth.
+- The current complete-record analytical policy prioritizes demo correctness over production-scale
+  latency and context cost.
+- Production still requires managed secrets, key rotation, backups, monitoring, rate limits,
+  incident response, formal PDPA review, and adversarial privacy testing.
+
+For implementation history, see [PROGRESS.md](./PROGRESS.md) and
+[finbrain-os-implementation-plan.md](./finbrain-os-implementation-plan.md).
