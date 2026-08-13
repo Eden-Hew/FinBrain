@@ -11,11 +11,17 @@ def test_offline_embedding_is_deterministic():
 
 
 def test_offline_reasoning_preserves_tokens():
-    answer, mode = answer_query("Who needs attention?", ["PHONE_aabbccddee owes AMOUNT_BAND_2"])
+    answer, mode = answer_query(
+        "Who needs attention?", ["PHONE_aabbccddee owes AMOUNT_BAND_2_0011223344"]
+    )
     assert mode == "offline-demo"
     assert "PHONE_aabbccddee" in answer
-    assert "AMOUNT_BAND_2" in answer
+    assert "AMOUNT_BAND_2_0011223344" in answer
 
 
 def test_unknown_token_detection():
     assert unknown_tokens("Contact PHONE_aabbccddee", {"PHONE_0011223344"}) == {"PHONE_aabbccddee"}
+    assert unknown_tokens(
+        "Amount AMOUNT_BAND_3_aabbccddee",
+        {"AMOUNT_BAND_3_0011223344"},
+    ) == {"AMOUNT_BAND_3_aabbccddee"}

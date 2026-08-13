@@ -91,10 +91,11 @@ Morpheus summarization and Gemini embedding. Scanned-document OCR is not include
 
 ### Read-only email connector
 
-The optional IMAP connector incrementally imports email into the same canonical ingestion
-boundary. It hashes mailbox and message references, never persists raw email payloads, and can
-reuse the safe attachment extractors for supported files. Configure only the ignored
-`backend/.env`:
+The optional IMAP connector incrementally imports unread email from `INBOX` into the same canonical
+ingestion boundary. It hashes mailbox and message references, never persists raw email payloads,
+and can reuse the safe attachment extractors for supported files. The mailbox is opened read-only,
+so importing a message does not mark it as read; durable receipts and the UID cursor prevent repeat
+ingestion. Configure only the ignored `backend/.env`:
 
 ```dotenv
 EMAIL_CONNECTOR_ENABLED=true
@@ -108,6 +109,9 @@ EMAIL_SYNC_INTERVAL_SECONDS=60
 EMAIL_MAX_MESSAGES_PER_SYNC=25
 EMAIL_INCLUDE_ATTACHMENTS=true
 ```
+
+Only unread messages newer than the connector's saved UID cursor are eligible. Marking an older
+message unread after the cursor has passed it does not cause a historical rescan.
 
 For the hackathon connector, use a dedicated read-only mailbox or provider app password. Production
 deployments should replace password authentication with provider OAuth. Start the optional polling
@@ -185,15 +189,48 @@ records after a detector, summarizer, or embedding change:
 uv run --active --no-sync python -m seed.seed_data --refresh
 ```
 
+To deliberately replace all FinBrain application rows with the clean twelve-record Track 2 demo
+dataset while preserving the Supabase schema, migrations, pgvector indexes, and RLS configuration:
+
+```powershell
+uv run --active --no-sync python -m seed.seed_data --reset --yes
+uv run --active --no-sync python -m scripts.check_demo_data
+```
+
+The reset dataset spans email, Telegram, CRM, bank CSV, meeting notes, and support tickets. The
+explicit `--yes` guard is required because reset removes connector cursors, receipts,
+recommendations, vault entries, and audit history together with protected content.
+
 Supabase stores the sanitized source, sanitized metadata, structured protected summary, embedding,
 provenance, and processing state. Reversible sensitive fragments are stored separately as
-encrypted vault entries; monetary values are generalized into non-reversible amount bands. The
-complete raw source record is never stored.
+encrypted vault entries. Exact monetary values use reversible band-aware tokens: external models
+see only the safe band and opaque reference, general employees see the band, and finance,
+owner/director, or compliance roles can recover the exact normalized value through an audited
+vault disclosure. The complete raw source record is never stored.
+
+### SQL-first query retrieval
+
+`POST /query` plans trusted source-system filters before PII tokenization. Exact requests such as
+`show all email sources` or `show all content where source_system is email` use direct metadata
+filtering and return matching protected records without embeddings or an LLM call. Analytical
+requests such as `what payment issues came from email?` apply the same SQL source filter before
+reasoning, so Morpheus receives every ready email record. Questions that do not identify a source
+use every ready record across all source systems.
+
+Count questions such as `what is the total number of email sources?` use the ready-record inventory
+directly and report the complete database count. Questions such as `how many source systems are
+available?` count distinct ready source systems instead of records.
+
+Every analytical request first selects all matching ready records through SQL, then sends the
+complete protected evidence set to the reasoning service. Sets of up to 20 records are analyzed
+directly; larger sets are summarized in protected 20-record batches and synthesized with the
+original `SOURCE-n` evidence identifiers. This proof-of-concept deliberately favors complete
+answers over top-k vector truncation.
 
 ### Cited cross-source answers
 
 `POST /query` retrieves structured evidence instead of anonymous text chunks. Each protected hit
-retains its source system, record type, timestamp, similarity, and opaque record ID. Morpheus must
+retains its source system, record type, timestamp, and opaque record ID. Morpheus must
 return only supplied `SOURCE-n` citation identifiers; unknown citations, unknown privacy tokens,
 and residual recognizable PII are rejected before role-gated detokenization. The frontend can
 toggle between the authorized answer and exact protected model view, then inspect every cited

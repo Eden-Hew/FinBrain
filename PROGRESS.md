@@ -20,7 +20,8 @@ Telegram user IDs, creates expiring in-memory drafts, displays protected preview
 and supported documents into the canonical ingestion contract, and persists protected records
 before asynchronous Morpheus/Gemini enrichment.
 
-A read-only IMAP adapter now normalizes email and supported attachments into that same boundary.
+A read-only IMAP adapter now selects new unread email and normalizes messages and supported
+attachments into that same boundary.
 Structured retrieval preserves protected citations across Telegram and email, while recurring
 action-required patterns can be converted into persistent evidence-backed recommendations. The
 live approval and compliance audit screens now operate on database-backed recommendation and
@@ -33,7 +34,8 @@ workflow-audit records rather than only sample state.
 - FastAPI application with health, query, proof-of-concept ingestion, and compliance audit-log
   endpoints.
 - Portable SQLAlchemy data model supporting SQLite locally and Supabase Postgres remotely.
-- Seed ingestion pipeline that never persists raw inbound text.
+- Reset-safe twelve-record seed ingestion pipeline spanning six source systems and never persisting
+  raw inbound text.
 - Canonical source-neutral ingestion contract shared by seed data and future connectors.
 - Protected metadata tokenization, keyed content fingerprints, automatic change detection, and
   idempotent delivery handling.
@@ -49,7 +51,8 @@ workflow-audit records rather than only sample state.
 - Portable GLiNER device configuration defaults to CPU, with explicit `cuda` and automatic
   selection available for accelerated deployments.
 - AES-256-GCM token vault with HKDF-derived encryption keys.
-- Amount generalization into non-reversible value bands.
+- Reversible band-aware amount tokens that reveal only magnitude to external models, preserve exact
+  encrypted MYR values for authorized roles, and audit both authorized and denied disclosures.
 - Role-based detokenization for general employee, finance/operations, owner/director, and compliance
   roles.
 - Query-side tokenization so sensitive values typed by a user are also hidden before external model
@@ -73,6 +76,12 @@ workflow-audit records rather than only sample state.
   calls.
 - Structured cross-source retrieval hits with source provenance, similarity, timestamps, and
   validated `SOURCE-n` citations.
+- SQL-first query planning that resolves exact listings and counts without an LLM, applies trusted
+  source-system filters, and selects every eligible ready record for analytical questions.
+- Uncapped protected analysis with 20-record batching for larger result sets and end-to-end
+  citation preservation; top-k vector truncation is disabled in the proof-of-concept query route.
+- GLiNER output validation that rejects bare channel words such as `email` and known organizational
+  roles such as `named approver` when incorrectly labeled as sensitive values.
 - Read-only incremental IMAP ingestion with HMAC message receipts, mailbox cursors, safe attachment
   extraction, and optional polling.
 - Recurring-problem analysis over protected structured summaries with bounded evidence selection.
@@ -127,10 +136,11 @@ workflow-audit records rather than only sample state.
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **39 tests passed**, including protected-boundary privacy, metadata
+- Backend test suite: **54 tests passed**, including protected-boundary privacy, metadata
   tokenization, idempotency, automatic refresh, failed-enrichment persistence, summary validation,
   opaque source-ID enforcement, cited cross-source retrieval, email normalization, recommendation
-  state transitions, workflow audit verification, and SQLite/Postgres portability coverage.
+  state transitions, hybrid source-system planning, reversible amount role gates, GLiNER
+  false-positive rejection, workflow audit verification, and SQLite/Postgres portability coverage.
 - Telegram token connectivity: verified through `getMe` without printing the token.
 - Telegram detector heartbeat: verified healthy with GLiNER loaded on CPU.
 - Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
@@ -150,9 +160,12 @@ The latest local checks completed successfully:
   decision, and audit tables; `vector(768)`; JSONB roles; HNSW index; and forced RLS verified.
 - Migrations through `202608130003` are synchronized in local and remote Supabase history. The
   final forward-only migration closes the missing Telegram operational-table RLS boundary.
-- Remote seed state after GLiNER refresh: **4 tokenized content rows**, **11 encrypted vault
-  entries** (including **4 PERSON tokens**), and **0 audit events** before application queries.
-- Remote sample-name verification: **0 original sample names** remain in tokenized content.
+- Clean remote Track 2 seed state: **12 ready tokenized content rows** across email, Telegram, CRM,
+  bank CSV, meeting notes, and support tickets; **28 encrypted vault entries**, including **6
+  reversible amount entries**; and **0 audit events** before application queries.
+- Protected seed verification: **0 records with recognizable PII** in stored protected content or
+  summaries, with **5 action-required `payment_approval_delay` records** ready for recurring-pattern
+  analysis.
 - Unified-ingestion remote verification: all **4 records ready**, all **4 structured summaries**
   generated through Gemini, all embeddings at **768 dimensions**, and keyed fingerprints and source
   provenance populated; **0 original sample names** remain across content, summaries, and metadata.
@@ -187,7 +200,7 @@ The application is available at `http://localhost:5173`, with API documentation 
   claims.
 - Add a backup and restore procedure for the Supabase database and encrypted vault.
 - Enforce vault access through production RLS and a server-controlled detokenization boundary.
-- Implement live WhatsApp Business, email, banking, and document ingestion connectors.
+- Implement live WhatsApp Business, banking API, and general document ingestion connectors.
 - Add OCR for scanned documents.
 - Evaluate and tune GLiNER entity detection against representative Malaysian business records.
 - Add detection-quality tests, prompt-injection testing, adversarial privacy tests, and broader API

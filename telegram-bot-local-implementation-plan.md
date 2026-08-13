@@ -33,7 +33,7 @@ The following decisions are part of the implementation baseline and should not b
 7. The first version will support capture and status. It will not return detokenized customer data through Telegram.
 8. Raw drafts and downloaded attachment bytes will be held in memory only and discarded after confirmation, cancellation, expiration, or error.
 9. Text-based PDF and DOCX extraction are in scope. OCR for scanned images and scanned PDFs is deferred.
-10. Transaction notes are customer-intelligence records, not an accounting ledger. Existing non-reversible amount banding remains unchanged.
+10. Transaction notes are customer-intelligence records, not an accounting ledger. Amounts use reversible, role-gated band-aware tokens; Telegram acknowledgements expose only the protected token.
 11. The implementation remains single-tenant for the hackathon.
 12. The existing web query, role-gated detokenization, and disclosure audit flow remain the authoritative way to retrieve sensitive values.
 
@@ -1398,7 +1398,7 @@ On judging day:
 2. Open the bot on the operator phone.
 3. Run `/capture` and select `Customer message`.
 4. Forward a fictitious message containing a name, phone, email, and RM amount.
-5. Show that the bot preview contains protected tokens and an amount band.
+5. Show that the bot preview contains protected tokens, including a band-aware hashed amount token.
 6. Confirm ingestion.
 7. Show immediate protected acknowledgement.
 8. Show the local web history update from protected to ready.

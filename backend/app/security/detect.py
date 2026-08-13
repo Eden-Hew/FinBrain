@@ -31,6 +31,20 @@ REGEX_PATTERNS = [
     (re.compile(r"\bRM\s?\d[\d,]*(?:\.\d{1,2})?\b", re.IGNORECASE), "amount of money"),
 ]
 
+EMAIL_VALUE_PATTERN = REGEX_PATTERNS[2][0]
+NON_PERSON_ROLE_TERMS = {
+    "approver",
+    "approval owner",
+    "assigned approver",
+    "finance manager",
+    "manager",
+    "manager approval",
+    "named approver",
+    "owner",
+    "process owner",
+    "team",
+}
+
 PII_LABELS = [
     "person",
     "phone number",
@@ -80,10 +94,19 @@ def _regex_detect(text: str) -> list[Span]:
 def _gliner_detect(text: str, threshold: float = 0.4) -> list[Span]:
     if not get_settings().enable_gliner or not (model := _get_model()):
         return []
-    return [
-        Span(entity["start"], entity["end"], entity["text"], entity["label"], "gliner")
-        for entity in model.predict_entities(text, PII_LABELS, threshold=threshold)
-    ]
+    output: list[Span] = []
+    for entity in model.predict_entities(text, PII_LABELS, threshold=threshold):
+        value = str(entity["text"]).strip()
+        label = str(entity["label"]).casefold()
+        normalized = re.sub(r"\s+", " ", value.casefold())
+        if label == "email" and not EMAIL_VALUE_PATTERN.fullmatch(value):
+            continue
+        if label == "person" and normalized in NON_PERSON_ROLE_TERMS:
+            continue
+        output.append(
+            Span(entity["start"], entity["end"], value, str(entity["label"]), "gliner")
+        )
+    return output
 
 
 def _overlaps(left: Span, right: Span) -> bool:

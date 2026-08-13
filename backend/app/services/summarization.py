@@ -5,13 +5,14 @@ from app.schemas import ProtectedSummary, SummaryPriority
 from app.security.detect import contains_known_pii
 from app.services.morpheus import morpheus_chat
 
-TOKEN_PATTERN = re.compile(r"(?:[A-Z]+_[0-9a-f]{10}|AMOUNT_BAND_\d+)")
+TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
 
 SYSTEM_INSTRUCTION = (
     "Summarize the supplied protected business record as structured JSON. The record contains "
-    "privacy tokens representing values you cannot see. Preserve any token you use exactly as "
-    "written. Never expand, alter, infer, or invent a token or hidden value. Base the output only "
-    "on the supplied record. Use a short snake_case category."
+    "privacy tokens representing values you cannot see. An AMOUNT_BAND_n_xxxxxxxxxx token is an "
+    "exact hidden amount whose band indicates only an approximate range. Preserve every token you "
+    "use completely and exactly. Never expand, alter, infer, or invent a token or hidden value. "
+    "Base the output only on the supplied record. Use a short snake_case category."
 )
 
 

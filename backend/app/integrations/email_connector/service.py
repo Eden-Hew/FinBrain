@@ -55,6 +55,13 @@ def _connect():
     return connection
 
 
+def _unread_search_criteria(last_uid: int) -> tuple[str, ...]:
+    """Select unread deliveries without rescanning messages behind the durable cursor."""
+    if last_uid == 0:
+        return ("UNSEEN",)
+    return "UNSEEN", f"UID {last_uid + 1}:*"
+
+
 def sync_mailbox(db: Session) -> SyncResult:
     settings = get_settings()
     if not settings.email_configured:
@@ -71,8 +78,9 @@ def sync_mailbox(db: Session) -> SyncResult:
         status, _ = connection.select(settings.email_imap_folder, readonly=True)
         if status != "OK":
             raise RuntimeError("mailbox_select_failed")
-        query = "ALL" if state.last_uid == 0 else f"UID {state.last_uid + 1}:*"
-        status, data = connection.uid("search", None, query)
+        status, data = connection.uid(
+            "search", None, *_unread_search_criteria(state.last_uid)
+        )
         if status != "OK":
             raise RuntimeError("mailbox_search_failed")
         uid_values = [int(value) for value in (data[0] or b"").split()]

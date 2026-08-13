@@ -9,7 +9,7 @@ export interface QueryResponse {
   model_answer: string;
   model_question: string;
   sources_used: number;
-  mode: "morpheus" | "gemini" | "offline-demo";
+    mode: "morpheus" | "gemini" | "offline-demo" | "structured-filter";
   insufficient_evidence: boolean;
   citations: QueryCitation[];
 }

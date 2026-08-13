@@ -54,6 +54,11 @@ def test_email_reference_is_deterministic_and_hides_message_id():
     assert len(first) == 64
 
 
+def test_email_search_is_unread_and_incremental():
+    assert service._unread_search_criteria(0) == ("UNSEEN",)
+    assert service._unread_search_criteria(41) == ("UNSEEN", "UID 42:*")
+
+
 class _FailingMailbox:
     def login(self, *_):
         return "OK", []

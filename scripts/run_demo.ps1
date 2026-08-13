@@ -2,11 +2,14 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
-$npm = "C:\Program Files\nodejs\npm.cmd"
+$node = "C:\Program Files\nodejs\node.exe"
+$vite = Join-Path $repoRoot "frontend\node_modules\vite\bin\vite.js"
 $runtimeDir = Join-Path $repoRoot ".runtime"
 $pidFile = Join-Path $runtimeDir "demo-processes.json"
 
 if (-not (Test-Path -LiteralPath $python)) { throw "Project virtual environment is missing." }
+if (-not (Test-Path -LiteralPath $node)) { throw "Node.js is missing." }
+if (-not (Test-Path -LiteralPath $vite)) { throw "Frontend Vite dependency is missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "backend\.env"))) { throw "backend/.env is missing." }
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "frontend\node_modules"))) { throw "Frontend dependencies are missing." }
 if (Test-Path -LiteralPath $pidFile) { throw "A demo PID file already exists. Run scripts/stop_demo.ps1 first." }
@@ -19,8 +22,8 @@ New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
 $backend = Start-Process -FilePath $python `
   -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" `
   -WorkingDirectory (Join-Path $repoRoot "backend") -WindowStyle Hidden -PassThru
-$frontend = Start-Process -FilePath $npm `
-  -ArgumentList "run", "dev", "--", "--host", "127.0.0.1", "--port", "5173", "--strictPort" `
+$frontend = Start-Process -FilePath $node `
+  -ArgumentList "`"$vite`"", "--host", "127.0.0.1", "--port", "5173", "--strictPort" `
   -WorkingDirectory (Join-Path $repoRoot "frontend") -WindowStyle Hidden -PassThru
 $telegram = Start-Process -FilePath $python `
   -ArgumentList "-m", "app.integrations.telegram.runner" `

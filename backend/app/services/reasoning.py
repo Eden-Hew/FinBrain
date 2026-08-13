@@ -8,11 +8,36 @@ from app.services.retrieval import RetrievalHit
 
 SYSTEM_INSTRUCTION = (
     "You are FinBrain OS's reasoning assistant. Answer only from the supplied context. "
-    "Never invent values. Placeholders matching TYPE_xxxxxxxxxx or AMOUNT_BAND_n represent "
-    "hidden values. Copy every relevant token exactly; never guess or reformat it."
+    "Treat each supplied System field as authoritative source metadata; do not infer source "
+    "identity from words inside the protected record. "
+    "Never invent values. Placeholders matching TYPE_xxxxxxxxxx represent hidden values. "
+    "AMOUNT_BAND_n_xxxxxxxxxx is a hidden exact amount whose BAND_n component reveals only an "
+    "approximate range. Copy every relevant token completely and exactly; never guess or "
+    "reformat it."
 )
 
-TOKEN_PATTERN = re.compile(r"(?:[A-Z]+_[0-9a-f]{10}|AMOUNT_BAND_\d+)")
+ANALYZE_ALL_BATCH_SIZE = 20
+
+
+def structured_record_listing(hits: list[RetrievalHit]) -> CitedAnswer:
+    if not hits:
+        return CitedAnswer(
+            answer="No records match the requested source-system filter.",
+            citations=[],
+            insufficient_evidence=True,
+        )
+    source_names = ", ".join(sorted({hit.source_system for hit in hits}))
+    entries = [
+        f"{index}. [SOURCE-{index}] {hit.retrieval_text[:1_000]}"
+        for index, hit in enumerate(hits, 1)
+    ]
+    return CitedAnswer(
+        answer=f"Found {len(hits)} ready record(s) from {source_names}:\n\n" + "\n\n".join(entries),
+        citations=[f"SOURCE-{index}" for index in range(1, len(hits) + 1)],
+        insufficient_evidence=False,
+    )
+
+TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
 
 
 def _offline_answer(question: str, chunks: list[str]) -> str:
@@ -64,16 +89,16 @@ def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
 
 
 def unknown_tokens(text: str, known_tokens: set[str]) -> set[str]:
-    output_tokens = {
-        token for token in TOKEN_PATTERN.findall(text) if not token.startswith("AMOUNT_BAND_")
-    }
+    output_tokens = set(TOKEN_PATTERN.findall(text))
     return output_tokens - known_tokens
 
 
-def _cited_context(hits: list[RetrievalHit]) -> tuple[str, set[str]]:
+def _cited_context(
+    hits: list[RetrievalHit], *, citation_offset: int = 0
+) -> tuple[str, set[str]]:
     blocks: list[str] = []
     citation_ids: set[str] = set()
-    for index, hit in enumerate(hits, 1):
+    for index, hit in enumerate(hits, 1 + citation_offset):
         citation_id = f"SOURCE-{index}"
         citation_ids.add(citation_id)
         occurred_at = hit.occurred_at.isoformat() if hit.occurred_at else "unknown"
@@ -99,25 +124,21 @@ def _validate_cited_answer(
         raise ValueError("The reasoning service returned an unknown protected token")
 
 
-def answer_query_with_citations(
-    question: str, hits: list[RetrievalHit]
+def _answer_cited_context(
+    question: str,
+    context: str,
+    allowed_citations: set[str],
+    *,
+    offline_chunks: list[str],
+    protected_context: str | None = None,
 ) -> tuple[CitedAnswer, str]:
-    context, allowed_citations = _cited_context(hits)
-    if contains_known_pii(question) or contains_known_pii(context):
-        raise ValueError("Refusing to send recognized PII to the reasoning service")
-    if not hits:
-        return CitedAnswer(
-            answer="No matching protected records are available.",
-            citations=[],
-            insufficient_evidence=True,
-        ), "offline-demo"
-
     settings = get_settings()
     instruction = (
         f"{SYSTEM_INSTRUCTION} Return only JSON with keys answer, citations, and "
         "insufficient_evidence. citations must contain only supplied SOURCE-n identifiers. "
         "Set insufficient_evidence true when the context cannot support the answer."
     )
+    validation_context = protected_context if protected_context is not None else context
     if settings.morpheus_api_key:
         try:
             response = morpheus_chat(
@@ -129,7 +150,9 @@ def answer_query_with_citations(
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
             result = CitedAnswer.model_validate_json(cleaned)
             _validate_cited_answer(
-                result, allowed_citations=allowed_citations, protected_context=context
+                result,
+                allowed_citations=allowed_citations,
+                protected_context=validation_context,
             )
             return result, "morpheus"
         except Exception:
@@ -158,7 +181,9 @@ def answer_query_with_citations(
                 else CitedAnswer.model_validate_json(response.text or "")
             )
             _validate_cited_answer(
-                result, allowed_citations=allowed_citations, protected_context=context
+                result,
+                allowed_citations=allowed_citations,
+                protected_context=validation_context,
             )
             return result, "gemini"
         except Exception:
@@ -167,9 +192,81 @@ def answer_query_with_citations(
     if not settings.allow_offline_demo:
         raise RuntimeError("A reasoning API key is required when offline demo mode is disabled")
     result = CitedAnswer(
-        answer=_offline_answer(question, [hit.retrieval_text for hit in hits]),
-        citations=[f"SOURCE-{index}" for index in range(1, len(hits) + 1)],
+        answer=_offline_answer(question, offline_chunks),
+        citations=sorted(
+            allowed_citations,
+            key=lambda value: int(value.removeprefix("SOURCE-")),
+        ),
         insufficient_evidence=False,
     )
-    _validate_cited_answer(result, allowed_citations=allowed_citations, protected_context=context)
+    _validate_cited_answer(
+        result,
+        allowed_citations=allowed_citations,
+        protected_context=validation_context,
+    )
     return result, "offline-demo"
+
+
+def answer_query_with_citations(
+    question: str, hits: list[RetrievalHit]
+) -> tuple[CitedAnswer, str]:
+    context, allowed_citations = _cited_context(hits)
+    if contains_known_pii(question) or contains_known_pii(context):
+        raise ValueError("Refusing to send recognized PII to the reasoning service")
+    if not hits:
+        return CitedAnswer(
+            answer="No matching protected records are available.",
+            citations=[],
+            insufficient_evidence=True,
+        ), "offline-demo"
+
+    return _answer_cited_context(
+        question,
+        context,
+        allowed_citations,
+        offline_chunks=[hit.retrieval_text for hit in hits],
+    )
+
+
+def answer_all_query_with_citations(
+    question: str, hits: list[RetrievalHit]
+) -> tuple[CitedAnswer, str]:
+    """Analyze every SQL-eligible record, batching before synthesis when necessary."""
+    if len(hits) <= ANALYZE_ALL_BATCH_SIZE:
+        return answer_query_with_citations(question, hits)
+
+    full_context, _all_citations = _cited_context(hits)
+    partial_answers: list[CitedAnswer] = []
+    modes: list[str] = []
+    for offset in range(0, len(hits), ANALYZE_ALL_BATCH_SIZE):
+        batch = hits[offset : offset + ANALYZE_ALL_BATCH_SIZE]
+        batch_context, batch_citations = _cited_context(batch, citation_offset=offset)
+        partial, mode = _answer_cited_context(
+            (
+                "Produce a concise partial analysis for this batch. Preserve important protected "
+                f"tokens and evidence needed to answer: {question}"
+            ),
+            batch_context,
+            batch_citations,
+            offline_chunks=[hit.retrieval_text for hit in batch],
+        )
+        partial_answers.append(partial)
+        modes.append(mode)
+
+    synthesis_context = "\n\n".join(
+        f"Batch {index} analysis:\n{partial.answer}\nEvidence: {', '.join(partial.citations)}"
+        for index, partial in enumerate(partial_answers, 1)
+    )
+    synthesis_citations = {
+        citation for partial in partial_answers for citation in partial.citations
+    }
+    result, final_mode = _answer_cited_context(
+        question,
+        synthesis_context,
+        synthesis_citations,
+        offline_chunks=[partial.answer for partial in partial_answers],
+        protected_context=full_context,
+    )
+    modes.append(final_mode)
+    mode = final_mode if len(set(modes)) == 1 else "mixed"
+    return result, mode

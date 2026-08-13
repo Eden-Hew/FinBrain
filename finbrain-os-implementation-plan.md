@@ -366,8 +366,10 @@ missed, with a different failure mode than GLiNER's own.
 
 Same real value → same token, always, so Gemini can still notice "this
 person appears in five different chats" without ever seeing who they are.
-Amounts are bucketed into bands rather than opaque tokens so numeric
-reasoning (comparing deal sizes, summing a quarter) still works.
+Amounts use deterministic, band-aware tokens such as
+`AMOUNT_BAND_3_a1b2c3d4e5`. The band remains safe for model-side reasoning,
+while the hash distinguishes exact values and the encrypted vault permits
+authorized recovery of the original normalized amount.
 
 ```python
 # backend/app/security/tokenize.py
@@ -384,8 +386,8 @@ LABEL_TOKEN_MAP = {
     "amount of money": "AMOUNT", "company name": "ORG",
 }
 
-# Who can see the real value behind each entity type. Amount bands are
-# intentionally absent — they're already generalized, so no gate is needed.
+# Who can see the real value behind each entity type. Amounts remain banded
+# for unauthorized roles and are exact only for the roles listed below.
 ACL_POLICY = {
     "NRIC": ["compliance", "owner_director"],
     "CARD": ["compliance"],
@@ -394,6 +396,7 @@ ACL_POLICY = {
     "PERSON": ["finance_ops", "owner_director", "compliance", "general_employee"],
     "ADDR": ["compliance", "owner_director"],
     "EMAIL": ["finance_ops", "owner_director", "compliance", "general_employee"],
+    "AMOUNT": ["finance_ops", "owner_director", "compliance"],
 }
 
 AMOUNT_BANDS = [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
@@ -402,16 +405,18 @@ def _parse_amount(text: str) -> float:
     digits = "".join(c for c in text if c.isdigit() or c == ".")
     return float(digits) if digits else 0.0
 
-def _band_amount(value: float) -> str:
+def _band_index(value: float) -> int:
     for i, upper in enumerate(AMOUNT_BANDS):
         if value < upper:
-            return f"AMOUNT_BAND_{i}"
-    return f"AMOUNT_BAND_{len(AMOUNT_BANDS)}"
+            return i
+    return len(AMOUNT_BANDS)
 
 def _token_for(span, source_record_id: str) -> str:
     label_key = LABEL_TOKEN_MAP.get(span.label, "MISC")
     if label_key == "AMOUNT":
-        return _band_amount(_parse_amount(span.text))
+        normalized = f"MYR:{_parse_amount(span.text):.2f}"
+        digest = hmac.new(TENANT_SALT, normalized.encode(), hashlib.sha256).hexdigest()[:10]
+        return f"AMOUNT_BAND_{_band_index(_parse_amount(span.text))}_{digest}"
     digest = hmac.new(
         TENANT_SALT, span.text.strip().lower().encode(), hashlib.sha256
     ).hexdigest()[:10]
@@ -426,11 +431,9 @@ def tokenize_record(text: str, spans: list, source_record_id: str):
         sanitized = sanitized[:span.start] + token + sanitized[span.end:]
 
         label_key = LABEL_TOKEN_MAP.get(span.label, "MISC")
-        if label_key == "AMOUNT":
-            continue  # bands need no vault entry — they're already safe to show
-
-        key = derive_key(info=f"vault:{source_record_id}".encode())
-        ciphertext, nonce = encrypt_value(span.text, key)
+        key = derive_key(info=f"vault:{token}".encode())
+        vault_value = normalize_amount(span.text) if label_key == "AMOUNT" else span.text
+        ciphertext, nonce = encrypt_value(vault_value, key)
         vault_entries.append(TokenVaultEntry(
             token=token,
             entity_type=label_key,
@@ -539,7 +542,8 @@ client = genai.Client()
 SYSTEM_INSTRUCTION = (
     "You are FinBrain OS's reasoning assistant. Answer only using the "
     "provided context. Never invent values. Every placeholder in the "
-    "context matching the pattern TYPE_xxxxxxxxxx or AMOUNT_BAND_n is a "
+    "context matching the pattern TYPE_xxxxxxxxxx or "
+    "AMOUNT_BAND_n_xxxxxxxxxx is a "
     "token standing in for a real value you cannot see. Copy these tokens "
     "exactly as written into your answer — never translate, reformat, "
     "guess at, or omit them."
@@ -570,28 +574,29 @@ from app.models import TokenVaultEntry
 from app.security.crypto import derive_key, decrypt_value
 from app.services.audit import write_audit_entry
 
-TOKEN_PATTERN = re.compile(r"[A-Z_]+_(?:[0-9a-f]{6,10}|BAND_\d)")
+TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
 
 def hash_query(question: str) -> str:
     return hashlib.sha256(question.encode()).hexdigest()[:16]
 
 def detokenize_response(db, text: str, role: str, query_hash: str) -> str:
     for token in set(TOKEN_PATTERN.findall(text)):
-        if token.startswith("AMOUNT_BAND_"):
-            text = text.replace(token, _band_label(token))
-            continue
-
         entry = db.query(TokenVaultEntry).filter_by(token=token).first()
         if not entry:
             continue  # unknown token — leave for manual review, don't guess
 
         authorized = role in json.loads(entry.allowed_roles)
         if authorized:
-            key = derive_key(info=f"vault:{entry.source_record_id}".encode())
+            key = derive_key(info=f"vault:{token}".encode())
             value = decrypt_value(entry.encrypted_value, entry.nonce, key)
             text = text.replace(token, value)
         else:
-            text = text.replace(token, f"[{entry.entity_type.lower()} — restricted]")
+            replacement = (
+                _band_label(token)
+                if entry.entity_type == "AMOUNT"
+                else f"[{entry.entity_type.lower()} — restricted]"
+            )
+            text = text.replace(token, replacement)
 
         write_audit_entry(db, role, token, authorized, query_hash)
     return text
@@ -599,7 +604,7 @@ def detokenize_response(db, text: str, role: str, query_hash: str) -> str:
 def _band_label(token: str) -> str:
     bands = ["<RM500", "RM500–1K", "RM1K–2.5K", "RM2.5K–5K", "RM5K–10K",
              "RM10K–25K", "RM25K–50K", "RM50K–100K", "RM100K+"]
-    idx = int(token.split("_")[-1])
+    idx = int(token.split("_")[2])
     return bands[idx] if idx < len(bands) else "RM100K+"
 ```
 

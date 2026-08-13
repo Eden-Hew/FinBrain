@@ -102,6 +102,37 @@ def retrieve_hits(
     ]
 
 
+def list_filtered_hits(
+    db: Session,
+    *,
+    source_systems: list[str] | None = None,
+    limit: int | None = 50,
+) -> list[RetrievalHit]:
+    """List exact metadata matches without semantic ranking."""
+    statement = select(TokenizedContent).where(TokenizedContent.processing_status == "ready")
+    if source_systems:
+        statement = statement.where(TokenizedContent.source_system.in_(source_systems))
+    statement = statement.order_by(
+        TokenizedContent.occurred_at.desc(), TokenizedContent.id.desc()
+    )
+    if limit is not None:
+        statement = statement.limit(limit)
+    rows = db.scalars(statement).all()
+    return [
+        RetrievalHit(
+            content_id=row.id,
+            source_record_id=row.source_record_id,
+            source_system=row.source_system,
+            record_type=row.record_type,
+            occurred_at=row.occurred_at,
+            protected_excerpt=row.content_text,
+            protected_summary=row.summary,
+            similarity=1.0,
+        )
+        for row in rows
+    ]
+
+
 def retrieve_top_k(db: Session, query_embedding: list[float], k: int = 5) -> list[str]:
     """Compatibility API returning protected text rather than structured evidence."""
     return [hit.retrieval_text for hit in retrieve_hits(db, query_embedding, k)]

@@ -2,8 +2,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models import Base, TokenizedContent
-from app.services.reasoning import answer_query_with_citations
-from app.services.retrieval import retrieve_hits
+from app.services import reasoning
+from app.services.reasoning import answer_all_query_with_citations, answer_query_with_citations
+from app.services.retrieval import RetrievalHit, retrieve_hits
 
 
 def test_structured_retrieval_preserves_cross_source_provenance(monkeypatch):
@@ -49,3 +50,38 @@ def test_cited_answer_reports_insufficient_evidence_without_hits():
     assert answer.insufficient_evidence
     assert answer.citations == []
     assert mode == "offline-demo"
+
+
+def test_analyze_all_batches_every_eligible_record(monkeypatch):
+    monkeypatch.setattr(
+        reasoning,
+        "get_settings",
+        lambda: type(
+            "OfflineSettings",
+            (),
+            {
+                "morpheus_api_key": None,
+                "gemini_api_key": None,
+                "allow_offline_demo": True,
+            },
+        )(),
+    )
+    hits = [
+        RetrievalHit(
+            content_id=index,
+            source_record_id=f"email:{index}",
+            source_system="email",
+            record_type="email",
+            occurred_at=None,
+            protected_excerpt=f"Protected email record {index}.",
+            protected_summary=f"Summary {index}.",
+            similarity=1.0,
+        )
+        for index in range(1, 22)
+    ]
+
+    answer, mode = answer_all_query_with_citations("Summarize all email records", hits)
+
+    assert mode == "offline-demo"
+    assert answer.citations == [f"SOURCE-{index}" for index in range(1, 22)]
+    assert "Protected email record 21" in answer.answer
