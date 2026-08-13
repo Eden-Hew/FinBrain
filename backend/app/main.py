@@ -4,14 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.db import engine
-from app.models import Base
-from app.routes import audit_log, ingestion, integrations, query
+from app.db import initialize_local_schema
+from app.routes import audit_log, ingestion, integrations, query, recommendations
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(engine)
+    initialize_local_schema()
     yield
 
 
@@ -29,6 +28,7 @@ app.include_router(query.router)
 app.include_router(audit_log.router)
 app.include_router(ingestion.router)
 app.include_router(integrations.router)
+app.include_router(recommendations.router)
 
 
 @app.get("/health", tags=["system"])

@@ -3,7 +3,19 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Integer, LargeBinary, String, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -153,3 +165,111 @@ class IntegrationStatus(Base):
     last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_update_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_code: Mapped[str | None] = mapped_column(String)
+
+
+class EmailSyncState(Base):
+    """Incremental IMAP cursor containing no mailbox address or credentials."""
+
+    __tablename__ = "email_sync_state"
+
+    connector_key: Mapped[str] = mapped_column(String, primary_key=True)
+    mailbox_ref: Mapped[str] = mapped_column(String, nullable=False)
+    folder_name: Mapped[str] = mapped_column(String, nullable=False)
+    last_uid: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String, default="idle", nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class EmailIngestionReceipt(Base):
+    """HMAC-addressed email delivery receipt; raw headers are never persisted."""
+
+    __tablename__ = "email_ingestion_receipts"
+
+    message_ref_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    source_record_id: Mapped[str | None] = mapped_column(String, unique=True)
+    status: Mapped[str] = mapped_column(String, default="received", nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProcessRecommendation(Base):
+    __tablename__ = "process_recommendations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fingerprint: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    problem_statement: Mapped[str] = mapped_column(Text, nullable=False)
+    recommendation: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_benefit: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_owner: Mapped[str] = mapped_column(String, nullable=False)
+    success_metric: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    priority: Mapped[str] = mapped_column(String, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="proposed", nullable=False)
+    analysis_window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    analysis_window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_systems: Mapped[list[str]] = mapped_column(RoleListType(), nullable=False)
+    enrichment_mode: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class RecommendationEvidence(Base):
+    __tablename__ = "recommendation_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "recommendation_id",
+            "tokenized_content_id",
+            name="recommendation_evidence_record_unique",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recommendation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("process_recommendations.id", ondelete="CASCADE"), nullable=False
+    )
+    tokenized_content_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT"), nullable=False
+    )
+    evidence_excerpt: Mapped[str] = mapped_column(Text, nullable=False)
+    relevance_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RecommendationDecision(Base):
+    __tablename__ = "recommendation_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recommendation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("process_recommendations.id", ondelete="CASCADE"), nullable=False
+    )
+    decision: Mapped[str] = mapped_column(String, nullable=False)
+    actor_role: Mapped[str] = mapped_column(String, nullable=False)
+    actor_ref: Mapped[str] = mapped_column(String, nullable=False)
+    protected_comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WorkflowAuditEntry(Base):
+    __tablename__ = "workflow_audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    prev_hash: Mapped[str] = mapped_column(String, nullable=False)
+    event_hash: Mapped[str] = mapped_column(String, nullable=False)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    actor_role: Mapped[str] = mapped_column(String, nullable=False)
+    actor_ref: Mapped[str] = mapped_column(String, nullable=False)
+    resource_type: Mapped[str] = mapped_column(String, nullable=False)
+    resource_id: Mapped[str] = mapped_column(String, nullable=False)
+    event_payload: Mapped[dict[str, Any]] = mapped_column(ObjectType(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -2,8 +2,10 @@
 
 FinBrain OS is a privacy-first customer-intelligence prototype for Malaysian MSMEs. It ingests
 business records, replaces sensitive values before AI processing, retrieves relevant protected
-context, and restores values only when the requesting role is authorized. Every disclosure decision
-is written to a hash-chained audit log.
+context, and restores values only when the requesting role is authorized. Answers retain citations
+to protected source records, and recurring patterns can become evidence-backed process
+recommendations with human approval. Every disclosure and recommendation decision is written to a
+dedicated hash-chained audit log.
 
 ## Architecture
 
@@ -12,9 +14,10 @@ raw record (memory only)
   → regex + optional GLiNER detection
   → deterministic tokens + encrypted vault
   → sanitized embeddings and retrieval
-  → Morpheus reasoning over tokens
+  → Morpheus reasoning with protected citations
   → role-gated detokenization
-  → verifiable audit trail
+  → recurring-problem analysis and human approval
+  → verifiable disclosure and workflow audit trails
 ```
 
 Questions pass through the same tokenization boundary as ingested records, so user-supplied PII is
@@ -86,6 +89,38 @@ private-chat text, forwarded text, TXT, Markdown, CSV, EML, text-based PDF, and 
 shows a protected preview before confirmation and stores the protected record before starting
 Morpheus summarization and Gemini embedding. Scanned-document OCR is not included.
 
+### Read-only email connector
+
+The optional IMAP connector incrementally imports email into the same canonical ingestion
+boundary. It hashes mailbox and message references, never persists raw email payloads, and can
+reuse the safe attachment extractors for supported files. Configure only the ignored
+`backend/.env`:
+
+```dotenv
+EMAIL_CONNECTOR_ENABLED=true
+EMAIL_IMAP_HOST=imap.example.com
+EMAIL_IMAP_PORT=993
+EMAIL_IMAP_USERNAME=your-mailbox@example.com
+EMAIL_IMAP_PASSWORD=your-provider-app-password
+EMAIL_IMAP_FOLDER=INBOX
+EMAIL_IMAP_USE_SSL=true
+EMAIL_SYNC_INTERVAL_SECONDS=60
+EMAIL_MAX_MESSAGES_PER_SYNC=25
+EMAIL_INCLUDE_ATTACHMENTS=true
+```
+
+For the hackathon connector, use a dedicated read-only mailbox or provider app password. Production
+deployments should replace password authentication with provider OAuth. Start the optional polling
+worker from `backend`:
+
+```powershell
+& ..\.venv\Scripts\python.exe -m app.integrations.email_connector.runner
+```
+
+When `EMAIL_CONNECTOR_ENABLED=true`, `scripts/run_demo.ps1` starts this worker automatically. The
+ingestion workspace also exposes a local-only **Sync now** control. No email credential or mailbox
+address is returned to the frontend.
+
 ## Unified protected ingestion
 
 Every source adapter must convert its input into the same `CanonicalIngestionRecord` contract:
@@ -132,9 +167,9 @@ validate and fingerprint
   -> mark ready
 ```
 
-Raw source text exists only in process memory during detection. It must never be written to a
-database, log, retry queue, error message, or temporary file. Only protected content may cross the
-Gemini boundary or be retried. A keyed HMAC fingerprint makes repeated delivery idempotent without
+Raw source text exists only in process memory during extraction and detection. It must never be
+written to a database, log, retry queue, error message, or temporary file. Only protected content
+may cross the external AI boundary or be retried. A keyed HMAC fingerprint makes repeated delivery idempotent without
 storing a reversible hash of the raw record.
 
 Records use the following enrichment states:
@@ -154,6 +189,26 @@ Supabase stores the sanitized source, sanitized metadata, structured protected s
 provenance, and processing state. Reversible sensitive fragments are stored separately as
 encrypted vault entries; monetary values are generalized into non-reversible amount bands. The
 complete raw source record is never stored.
+
+### Cited cross-source answers
+
+`POST /query` retrieves structured evidence instead of anonymous text chunks. Each protected hit
+retains its source system, record type, timestamp, similarity, and opaque record ID. Morpheus must
+return only supplied `SOURCE-n` citation identifiers; unknown citations, unknown privacy tokens,
+and residual recognizable PII are rejected before role-gated detokenization. The frontend can
+toggle between the authorized answer and exact protected model view, then inspect every cited
+protected excerpt. When no evidence is available, the response explicitly sets
+`insufficient_evidence=true`.
+
+### Process recommendations and approval
+
+An owner/director can run bounded analysis over recent ready Telegram and email records. FinBrain
+groups action-required structured summaries deterministically before asking Morpheus to formulate a
+recommendation from the supplied `EVIDENCE-n` records. Each persisted recommendation includes its
+protected evidence, expected benefit, suggested owner, success metric, priority, and confidence.
+The live Approvals workspace supports proposed → approved/rejected and approved → implemented
+transitions. Every transition is persisted and appended to a separate hash-chained workflow audit
+log. Roles remain proof-of-concept request fields until verified authentication is implemented.
 
 ### Proof-of-concept ingestion UI
 
@@ -243,10 +298,13 @@ The backend supports both SQLite and Supabase Postgres. Supabase uses native `ve
 an HNSW cosine index, psycopg 3, JSON role lists, and SQL-side nearest-neighbor retrieval.
 
 1. Create a Supabase project.
-2. Apply both migrations in timestamp order in the SQL editor:
-   `supabase/migrations/202608110001_finbrain_initial.sql`, followed by
-   `supabase/migrations/202608110002_unified_ingestion.sql`. Alternatively, link the CLI and run
-   `npx supabase db push` to apply all pending migrations.
+2. Apply all migrations in timestamp order in the SQL editor:
+   `202608110001_finbrain_initial.sql`, `202608110002_unified_ingestion.sql`,
+   `202608130001_telegram_capture.sql`, and
+   `202608130002_track2_recommendations.sql`, followed by
+   `202608130003_connector_rls.sql`. Alternatively, link the CLI and run
+   `npx supabase db push` to apply all pending migrations. PostgreSQL tables are never created by
+   application startup; only SQLite uses automatic `create_all()` initialization.
 3. Copy the exact **Connect** URI into the ignored `backend/.env`, using the
    `postgresql+psycopg://` scheme and `sslmode=require`.
 4. For a persistent IPv4 backend, prefer Supavisor session mode on port 5432. Direct connections
@@ -281,12 +339,14 @@ npm.cmd run build
 - SQLite remains available for local development; Supabase uses native pgvector retrieval.
 - Offline 128-dimensional embeddings are currently SQLite-only; Supabase enrichment requires the
   configured 768-dimensional Gemini embedding model.
-- Manual ingestion and selected fallback chat queries call the live backend. Finance, e-invoice,
-  approvals, recommendations, and several audit rows remain in-memory demonstration data.
-- The redesigned Audit screen currently displays its sample data because its live request uses an
-  owner/director role while the backend audit endpoint correctly requires compliance. Backend audit
-  chain verification remains implemented, but the screen still needs role wiring before it is a
-  live compliance viewer.
+- Manual, Telegram, and configured email ingestion call the live backend. Finance and e-invoice
+  screens remain in-memory demonstration data.
+- Chat answers now call the backend first, expose protected citations, and retain scripted content
+  only as a fallback when the local backend is unavailable.
+- Process recommendations, evidence, approvals, and workflow audit events are persisted. Their
+  request roles are still demo fields rather than verified identities.
+- The Audit screen now reads live disclosure and workflow chains as compliance. It no longer claims
+  sample rows are cryptographically verified.
 - Chat file selection currently attaches only a filename chip, and the web-search control is a UI
   demonstration; neither performs file ingestion or web browsing yet.
 - Live WhatsApp, banking, and OCR connectors remain deferred.

@@ -39,6 +39,16 @@ class Settings(BaseSettings):
     telegram_heartbeat_seconds: int = 30
     telegram_preview_chars: int = 1_200
     telegram_enrichment_concurrency: int = 1
+    email_connector_enabled: bool = False
+    email_imap_host: str = ""
+    email_imap_port: int = 993
+    email_imap_username: str = ""
+    email_imap_password: str = ""
+    email_imap_folder: str = "INBOX"
+    email_imap_use_ssl: bool = True
+    email_sync_interval_seconds: int = 60
+    email_max_messages_per_sync: int = 25
+    email_include_attachments: bool = True
 
     @field_validator(
         "telegram_draft_ttl_seconds",
@@ -51,9 +61,12 @@ class Settings(BaseSettings):
         "telegram_heartbeat_seconds",
         "telegram_preview_chars",
         "telegram_enrichment_concurrency",
+        "email_imap_port",
+        "email_sync_interval_seconds",
+        "email_max_messages_per_sync",
     )
     @classmethod
-    def positive_telegram_limits(cls, value: int) -> int:
+    def positive_connector_limits(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("Telegram limits must be positive")
         return value
@@ -94,6 +107,15 @@ class Settings(BaseSettings):
                 raise ValueError("Telegram operator IDs must be unique positive integers")
             result[user_id] = role
         return result
+
+    @property
+    def email_configured(self) -> bool:
+        return bool(
+            self.email_connector_enabled
+            and self.email_imap_host
+            and self.email_imap_username
+            and self.email_imap_password
+        )
 
     @property
     def database_backend(self) -> str:

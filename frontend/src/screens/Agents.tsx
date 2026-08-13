@@ -4,7 +4,7 @@ import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
 import { AppNav } from "../components/Nav";
 import { resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
-import { askQuestion, type Role } from "../api/client";
+import { askQuestion, type QueryCitation, type Role } from "../api/client";
 
 interface Message {
   id: number;
@@ -12,6 +12,10 @@ interface Message {
   text: string;
   embed?: React.ReactNode;
   thinking?: boolean;
+  protectedText?: string;
+  citations?: QueryCitation[];
+  showProtected?: boolean;
+  mode?: string;
 }
 
 interface ContextChip {
@@ -72,21 +76,40 @@ export default function Agents() {
     scrollToBottom();
 
     setTimeout(async () => {
-      const reply: ChatReply = resolveChatReply(trimmed, lang, FB_UNIFIED_FALLBACK[lang]);
-      let finalText = reply.text;
-
-      if (!reply.embed && finalText === FB_UNIFIED_FALLBACK[lang]) {
-        try {
-          const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
-          const res = await askQuestion(trimmed, backendRole);
-          finalText = res.answer;
-        } catch {
-          // backend unavailable — keep the scripted fallback
-        }
+      const fallback: ChatReply = resolveChatReply(trimmed, lang, FB_UNIFIED_FALLBACK[lang]);
+      let finalText = fallback.text;
+      let protectedText: string | undefined;
+      let citations: QueryCitation[] = [];
+      let mode = "scripted-demo";
+      let embed = fallback.embed;
+      try {
+        const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
+        const response = await askQuestion(trimmed, backendRole);
+        finalText = response.answer;
+        protectedText = response.model_answer;
+        citations = response.citations;
+        mode = response.mode;
+        embed = undefined;
+      } catch {
+        // Preserve the visual demonstration when the local backend is unavailable.
       }
 
-      const webNote = webSearchOn ? "🌐 Also checked recent web sources for this.\n\n" : "";
-      setMessages((m) => m.map((msg) => (msg.id === thinkingId ? { ...msg, thinking: false, text: webNote + finalText, embed: reply.embed } : msg)));
+      const webNote = webSearchOn
+        ? "Web search is not connected in this prototype. The answer below uses FinBrain records only.\n\n"
+        : "";
+      setMessages((messages) => messages.map((message) => (
+        message.id === thinkingId
+          ? {
+              ...message,
+              thinking: false,
+              text: webNote + finalText,
+              protectedText,
+              citations,
+              mode,
+              embed,
+            }
+          : message
+      )));
       scrollToBottom();
     }, 650);
   };
@@ -155,7 +178,38 @@ export default function Agents() {
                   <span className="fb-thinking"><span></span><span></span><span></span></span>
                 ) : (
                   <>
-                    <span style={{ whiteSpace: "pre-wrap" }}>{msg.text}</span>
+                    <span style={{ whiteSpace: "pre-wrap" }}>
+                      {msg.showProtected && msg.protectedText ? msg.protectedText : msg.text}
+                    </span>
+                    {msg.from === "agent" && msg.protectedText && (
+                      <div style={{ display: "flex", gap: ".5rem", marginTop: ".7rem", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className="fb-btn fb-btn-outline"
+                          onClick={() => setMessages((messages) => messages.map((message) => (
+                            message.id === msg.id
+                              ? { ...message, showProtected: !message.showProtected }
+                              : message
+                          )))}
+                        >
+                          {msg.showProtected ? "Show authorized answer" : "Show model view"}
+                        </button>
+                        <span className="fb-fine" style={{ marginTop: ".45rem" }}>
+                          {msg.mode} · {msg.citations?.length ?? 0} cited sources
+                        </span>
+                      </div>
+                    )}
+                    {!!msg.citations?.length && (
+                      <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
+                        {msg.citations.map((citation) => (
+                          <div className="fb-rec-evidence" key={citation.citation_id}>
+                            <strong>{citation.citation_id}</strong> · {citation.source_system} · {citation.record_type ?? "record"}
+                            {citation.occurred_at ? ` · ${new Date(citation.occurred_at).toLocaleDateString()}` : ""}
+                            <div style={{ marginTop: ".35rem" }}>{citation.protected_excerpt}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {msg.embed && <div className="fb-chat-embed">{msg.embed}</div>}
                   </>
                 )}

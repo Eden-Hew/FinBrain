@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
-import { useAppState } from "../lib/appState";
 import { AppNav } from "../components/Nav";
-import { fetchAuditLog, type AuditEntry } from "../api/client";
+import {
+  fetchAuditLog,
+  fetchWorkflowAudit,
+  type AuditEntry,
+  type WorkflowAuditEntry,
+} from "../api/client";
 
 function downloadCsv(filename: string, rows: (string | number)[][]) {
   const csv = rows
@@ -24,26 +28,72 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 
 export default function Audit() {
   const { t } = useI18n();
-  const { auditRows, auditBaseCount } = useAppState();
   const [verifying, setVerifying] = useState(false);
   const [liveEntries, setLiveEntries] = useState<AuditEntry[]>([]);
+  const [workflowEntries, setWorkflowEntries] = useState<WorkflowAuditEntry[]>([]);
+  const [chainsValid, setChainsValid] = useState<boolean | null>(null);
+
+  const load = async () => {
+    const [disclosures, workflow] = await Promise.all([
+      fetchAuditLog("compliance"),
+      fetchWorkflowAudit(),
+    ]);
+    setLiveEntries(disclosures.entries);
+    setWorkflowEntries(workflow.entries);
+    setChainsValid(disclosures.chain_valid && workflow.chain_valid);
+  };
 
   useEffect(() => {
-    fetchAuditLog("owner_director")
-      .then((res) => setLiveEntries(res.entries))
-      .catch(() => setLiveEntries([]));
+    let active = true;
+    const initialLoad = async () => {
+      try {
+        const [disclosures, workflow] = await Promise.all([
+          fetchAuditLog("compliance"),
+          fetchWorkflowAudit(),
+        ]);
+        if (!active) return;
+        setLiveEntries(disclosures.entries);
+        setWorkflowEntries(workflow.entries);
+        setChainsValid(disclosures.chain_valid && workflow.chain_valid);
+      } catch {
+        if (active) setChainsValid(null);
+      }
+    };
+    void initialLoad();
+    return () => { active = false; };
   }, []);
 
-  const entryCount = auditBaseCount + auditRows.length;
+  const entryCount = liveEntries.length + workflowEntries.length;
 
-  const verifyChain = () => {
+  const verifyChain = async () => {
     setVerifying(true);
-    setTimeout(() => setVerifying(false), 500);
+    try {
+      await load();
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const exportCsv = () => {
     const rows: (string | number)[][] = [["Time", "Actor", "Type", "Resource", "Grant", "Status", "Hash"]];
-    auditRows.forEach((r) => rows.push([r.time, r.actor, r.type, r.resource, r.grant, r.status, r.hash]));
+    liveEntries.forEach((entry) => rows.push([
+      entry.ts,
+      entry.role,
+      "Token disclosure",
+      entry.token,
+      entry.role,
+      entry.authorized ? "Allowed" : "Denied",
+      entry.query_hash,
+    ]));
+    workflowEntries.forEach((entry) => rows.push([
+      entry.created_at,
+      entry.actor_role,
+      entry.event_type,
+      `${entry.resource_type}:${entry.resource_id}`,
+      entry.actor_role,
+      "Recorded",
+      entry.actor_ref,
+    ]));
     downloadCsv("finbrain-audit-trail.csv", rows);
   };
 
@@ -63,8 +113,14 @@ export default function Audit() {
 
       <div className="fb-page-body" style={{ paddingBottom: 0 }}>
         <div className="fb-callout fb-chain-status" style={{ marginTop: 0 }}>
-          {verifying ? "Verifying…" : `Chain verified — ${entryCount} entries, 0 gaps.`}{" "}
-          <span className="fb-link" onClick={verifyChain}>Re-verify</span>
+          {verifying
+            ? "Verifying…"
+            : chainsValid === true
+              ? `Chains verified — ${entryCount} live entries, 0 gaps.`
+              : chainsValid === false
+                ? "Audit chain verification failed."
+                : "Live audit data is unavailable."}{" "}
+          <span className="fb-link" onClick={() => void verifyChain()}>Re-verify</span>
         </div>
       </div>
 
@@ -74,13 +130,6 @@ export default function Audit() {
             <tr><th>Time</th><th>Actor</th><th>Type</th><th>Resource</th><th>Grant</th><th>Status</th><th>Hash</th></tr>
           </thead>
           <tbody>
-            {auditRows.map((r, i) => (
-              <tr key={i}>
-                <td>{r.time}</td><td>{r.actor}</td><td>{r.type}</td><td>{r.resource}</td><td>{r.grant}</td>
-                <td><span className={"fb-status-pill " + (r.status === "Denied" ? "is-review" : "is-active")}><span className="fb-status-dot"></span>{r.status}</span></td>
-                <td>{r.hash}</td>
-              </tr>
-            ))}
             {liveEntries.map((e) => (
               <tr key={"live-" + e.id}>
                 <td>{new Date(e.ts).toLocaleTimeString()}</td>
@@ -90,6 +139,17 @@ export default function Audit() {
                 <td>{e.role}</td>
                 <td><span className={"fb-status-pill " + (!e.authorized ? "is-review" : "is-active")}><span className="fb-status-dot"></span>{e.authorized ? "Allowed" : "Denied"}</span></td>
                 <td>{e.query_hash.slice(0, 8)}…</td>
+              </tr>
+            ))}
+            {workflowEntries.map((entry) => (
+              <tr key={`workflow-${entry.id}`}>
+                <td>{new Date(entry.created_at).toLocaleTimeString()}</td>
+                <td>{entry.actor_role}</td>
+                <td>{entry.event_type.replaceAll("_", " ")}</td>
+                <td>{entry.resource_type}:{entry.resource_id}</td>
+                <td>{entry.actor_role}</td>
+                <td><span className="fb-status-pill is-active"><span className="fb-status-dot"></span>Recorded</span></td>
+                <td>{entry.actor_ref.slice(0, 8)}…</td>
               </tr>
             ))}
           </tbody>

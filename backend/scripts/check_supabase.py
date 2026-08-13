@@ -3,7 +3,19 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import engine
 
-REQUIRED_TABLES = ("tokenized_content", "token_vault", "audit_log")
+REQUIRED_TABLES = (
+    "tokenized_content",
+    "token_vault",
+    "audit_log",
+    "telegram_update_receipts",
+    "integration_status",
+    "email_sync_state",
+    "email_ingestion_receipts",
+    "process_recommendations",
+    "recommendation_evidence",
+    "recommendation_decisions",
+    "workflow_audit_log",
+)
 REQUIRED_INGESTION_COLUMNS = {
     "source_system",
     "occurred_at",
@@ -67,6 +79,9 @@ def main() -> None:
         vector_index = connection.scalar(
             text("select to_regclass('public.tokenized_content_embedding_idx')")
         )
+        workflow_index = connection.scalar(
+            text("select to_regclass('public.workflow_audit_created_idx')")
+        )
         rls_status = connection.execute(
             text(
                 "select c.relname, c.relrowsecurity, c.relforcerowsecurity "
@@ -99,6 +114,8 @@ def main() -> None:
         raise SystemExit(f"Expected allowed_roles jsonb, found {role_list_type!r}.")
     if vector_index is None:
         raise SystemExit("The HNSW embedding index is missing.")
+    if workflow_index is None:
+        raise SystemExit("The Track 2 recommendation migration is incomplete.")
     insecure_tables = [name for name, enabled, forced in rls_status if not enabled or not forced]
     if insecure_tables:
         raise SystemExit(f"RLS is not enabled and forced for: {', '.join(insecure_tables)}")
@@ -112,6 +129,7 @@ def main() -> None:
     print("Unified ingestion columns: present")
     print(f"Role-list column: {role_list_type}")
     print("HNSW index: present")
+    print("Track 2 recommendation schema: present")
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 

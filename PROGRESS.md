@@ -1,15 +1,15 @@
 # FinBrain OS — Project Progress
 
 **Last updated:** 13 August 2026
-**Current phase:** Local-first Telegram remote capture prototype
+**Current phase:** Cited cross-source intelligence and process-optimization vertical slice
 
 ## Summary
 
 FinBrain OS has progressed from an implementation plan to a runnable privacy-first customer
 intelligence prototype. The system ingests sample business records, detects and encrypts sensitive
-values, stores only tokenized content for retrieval, sends sanitized context to Gemini, restores
-values according to the selected role, and records every disclosure decision in a tamper-evident
-audit chain.
+values, stores only tokenized content for retrieval, sends sanitized context to Morpheus and Gemini,
+restores values according to the selected role, and records disclosure and workflow decisions in
+separate tamper-evident audit chains.
 
 Both the backend and frontend are implemented and verified locally. Gemini is configurable through
 the ignored `backend/.env` file, while an explicit offline demonstration mode remains available.
@@ -19,6 +19,12 @@ A private Telegram capture adapter now runs locally through long polling. It aut
 Telegram user IDs, creates expiring in-memory drafts, displays protected previews, normalizes text
 and supported documents into the canonical ingestion contract, and persists protected records
 before asynchronous Morpheus/Gemini enrichment.
+
+A read-only IMAP adapter now normalizes email and supported attachments into that same boundary.
+Structured retrieval preserves protected citations across Telegram and email, while recurring
+action-required patterns can be converted into persistent evidence-backed recommendations. The
+live approval and compliance audit screens now operate on database-backed recommendation and
+workflow-audit records rather than only sample state.
 
 ## Completed
 
@@ -65,6 +71,13 @@ before asynchronous Morpheus/Gemini enrichment.
 - Privacy-safe Telegram update receipts and integration heartbeat tables.
 - Split protection and enrichment stages so protected persistence completes before external AI
   calls.
+- Structured cross-source retrieval hits with source provenance, similarity, timestamps, and
+  validated `SOURCE-n` citations.
+- Read-only incremental IMAP ingestion with HMAC message receipts, mailbox cursors, safe attachment
+  extraction, and optional polling.
+- Recurring-problem analysis over protected structured summaries with bounded evidence selection.
+- Persistent recommendations, protected evidence, owner decisions, and a separate hash-chained
+  workflow audit log.
 
 ### Frontend
 
@@ -84,12 +97,20 @@ before asynchronous Morpheus/Gemini enrichment.
   implemented.
 - Production frontend build configuration and ESLint checks.
 - Live Telegram integration health and protected recent-record history in the ingestion workspace.
+- Live email connector health, manual synchronization, and protected recent-record history.
+- Cited backend-first chat answers with authorized/protected view switching.
+- Live recommendation analysis, evidence inspection, approval, rejection, and implementation.
+- Live compliance verification of both disclosure and workflow audit chains.
 
 ### Infrastructure and documentation
 
 - Deployable timestamped Supabase migration with pgvector and HNSW cosine indexing.
 - Unified-ingestion Supabase migration with provenance, JSONB metadata and summaries, processing
   status, nullable retry-safe embeddings, and operational indexes.
+- Track 2 migration for email cursors/receipts, recommendations, evidence, decisions, and workflow
+  audit events with forced RLS and revoked Data API grants.
+- Forward-only connector hardening migration enabling forced RLS and revoking Data API access for
+  the Telegram receipt and heartbeat tables introduced by the earlier connector migration.
 - Supabase CLI project configuration with synchronized local and remote migration history.
 - Default-deny Data API grants with forced RLS on business, vault, and audit tables.
 - Role-aware vault and compliance audit policy templates using verified `user_role` JWT claims.
@@ -106,10 +127,10 @@ before asynchronous Morpheus/Gemini enrichment.
 The latest local checks completed successfully:
 
 - Backend Ruff lint: passed.
-- Backend test suite: **32 tests passed**, including protected-boundary privacy, metadata
+- Backend test suite: **39 tests passed**, including protected-boundary privacy, metadata
   tokenization, idempotency, automatic refresh, failed-enrichment persistence, summary validation,
-  opaque source-ID enforcement, ingestion-route behavior, retrieval composition, and
-  SQLite/Postgres portability coverage.
+  opaque source-ID enforcement, cited cross-source retrieval, email normalization, recommendation
+  state transitions, workflow audit verification, and SQLite/Postgres portability coverage.
 - Telegram token connectivity: verified through `getMe` without printing the token.
 - Telegram detector heartbeat: verified healthy with GLiNER loaded on CPU.
 - Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
@@ -125,10 +146,10 @@ The latest local checks completed successfully:
 - Unauthorized audit access: correctly returns HTTP 403.
 - Multi-token disclosure audit chain: verified as valid.
 - User/Gemini comparison response contract: backend and frontend compile successfully.
-- Live Supabase schema: all three tables, `vector(768)`, JSONB roles, HNSW index, and forced RLS
-  verified.
-- Migrations `202608110001` and `202608110002` are synchronized in local and remote Supabase CLI
-  history.
+- Live Supabase schema: all eleven protected business, connector, recommendation, evidence,
+  decision, and audit tables; `vector(768)`; JSONB roles; HNSW index; and forced RLS verified.
+- Migrations through `202608130003` are synchronized in local and remote Supabase history. The
+  final forward-only migration closes the missing Telegram operational-table RLS boundary.
 - Remote seed state after GLiNER refresh: **4 tokenized content rows**, **11 encrypted vault
   entries** (including **4 PERSON tokens**), and **0 audit events** before application queries.
 - Remote sample-name verification: **0 original sample names** remain in tokenized content.

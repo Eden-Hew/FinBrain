@@ -29,6 +29,15 @@ engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=Tr
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
+def initialize_local_schema() -> None:
+    """Create zero-config SQLite tables; PostgreSQL schemas are migration-controlled."""
+    if settings.database_backend != "sqlite":
+        return
+    from app.models import Base
+
+    Base.metadata.create_all(engine)
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

@@ -2,9 +2,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useI18n } from "../lib/i18n";
 import { AppNav } from "../components/Nav";
 import {
+  fetchEmailRecords,
+  fetchEmailStatus,
   fetchTelegramRecords,
   fetchTelegramStatus,
   ingestRecord,
+  syncEmail,
+  type EmailIntegrationStatus,
   type IngestionResponse,
   type ProcessingStatus,
   type ProtectedIngestionRecord,
@@ -45,7 +49,115 @@ function newRecordId() {
 }
 
 function shortReference(sourceRecordId: string) {
-  return `TG-${sourceRecordId.split(":").at(-1)?.slice(0, 6).toUpperCase() ?? "RECORD"}`;
+  const prefix = sourceRecordId.startsWith("email:") ? "EM" : "TG";
+  return `${prefix}-${sourceRecordId.split(":").at(-1)?.slice(0, 6).toUpperCase() ?? "RECORD"}`;
+}
+
+function EmailCapturePanel() {
+  const [status, setStatus] = useState<EmailIntegrationStatus | null>(null);
+  const [records, setRecords] = useState<ProtectedIngestionRecord[]>([]);
+  const [error, setError] = useState("");
+  const [syncing, setSyncing] = useState(false);
+
+  const refresh = async () => {
+    const [nextStatus, nextRecords] = await Promise.all([
+      fetchEmailStatus(),
+      fetchEmailRecords(),
+    ]);
+    setStatus(nextStatus);
+    setRecords(nextRecords);
+  };
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const [nextStatus, nextRecords] = await Promise.all([
+          fetchEmailStatus(),
+          fetchEmailRecords(),
+        ]);
+        if (!active) return;
+        setStatus(nextStatus);
+        setRecords(nextRecords);
+        setError("");
+      } catch {
+        if (active) setError("Email integration status is temporarily unavailable.");
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const runSync = async () => {
+    setSyncing(true);
+    setError("");
+    try {
+      await syncEmail();
+      await refresh();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Email sync failed.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <section style={{ marginBottom: "2rem" }} aria-labelledby="email-capture-title">
+      <div className="fb-answer-card" style={{ marginBottom: "1rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <div className="fb-eyebrow">Connected source</div>
+            <h2 id="email-capture-title" style={{ margin: ".35rem 0" }}>Email integration</h2>
+            <p className="fb-fine" style={{ maxWidth: "650px" }}>
+              Read-only IMAP synchronization converts email and supported attachments into protected records.
+            </p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <span className={"fb-status-pill " + (status?.status === "healthy" ? "is-active" : "is-review")}>
+              <span className="fb-status-dot"></span>{status?.status.replaceAll("_", " ") ?? "checking"}
+            </span>
+            <div className="fb-fine" style={{ marginTop: ".5rem" }}>
+              {status?.folder_name ?? "INBOX"} · UID {status?.last_uid ?? 0}
+            </div>
+            <button
+              type="button"
+              className="fb-btn fb-btn-outline"
+              style={{ marginTop: ".6rem" }}
+              disabled={!status?.configured || syncing}
+              onClick={runSync}
+            >
+              {syncing ? "Synchronizing…" : "Sync now"}
+            </button>
+          </div>
+        </div>
+        {error && <div role="status" className="fb-fine" style={{ color: "var(--chart-attn)", marginTop: ".7rem" }}>{error}</div>}
+      </div>
+      <div className="fb-eyebrow" style={{ marginBottom: ".7rem" }}>Recent email records</div>
+      {records.length === 0 ? (
+        <div className="fb-callout">No protected email records yet. Configure IMAP and run a synchronization.</div>
+      ) : (
+        <div style={{ display: "grid", gap: ".65rem" }}>
+          {records.map((record) => (
+            <article className="fb-answer-card" key={record.source_record_id} style={{ padding: "1rem 1.1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", flexWrap: "wrap" }}>
+                <strong className="fb-sans">{shortReference(record.source_record_id)} · email</strong>
+                <span className={"fb-status-pill " + STATUS_PILL_CLASS[record.processing_status]}>
+                  <span className="fb-status-dot"></span>{record.processing_status.replaceAll("_", " ")}
+                </span>
+              </div>
+              <p className="fb-fine" style={{ margin: ".65rem 0 0", overflowWrap: "anywhere" }}>
+                {record.summary ?? record.content_excerpt}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function TelegramCapturePanel() {
@@ -198,6 +310,7 @@ export default function Ingestion() {
 
       <div className="fb-page-body">
         <TelegramCapturePanel />
+        <EmailCapturePanel />
         <div className="fb-callout">
           The selected <strong>{ROLE_OPTIONS.find((r) => r.value === role)?.label}</strong> role is trusted for this demo.
           Raw text goes only to FinBrain's backend; AI services and Supabase receive only protected content.

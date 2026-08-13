@@ -10,6 +10,18 @@ export interface QueryResponse {
   model_question: string;
   sources_used: number;
   mode: "morpheus" | "gemini" | "offline-demo";
+  insufficient_evidence: boolean;
+  citations: QueryCitation[];
+}
+
+export interface QueryCitation {
+  citation_id: string;
+  source_record_id: string;
+  source_system: string;
+  record_type: string | null;
+  occurred_at: string | null;
+  protected_excerpt: string;
+  similarity: number;
 }
 
 export interface AuditEntry {
@@ -79,6 +91,71 @@ export interface ProtectedIngestionRecord {
   safe_metadata: Record<string, string>;
 }
 
+export interface EmailIntegrationStatus {
+  configured: boolean;
+  status: string;
+  folder_name: string;
+  last_uid: number;
+  last_sync_at: string | null;
+  failure_code: string | null;
+}
+
+export interface EmailSyncResponse {
+  examined: number;
+  protected: number;
+  ready: number;
+  failed: number;
+  last_uid: number;
+}
+
+export interface RecommendationEvidence {
+  citation_id: string;
+  source_record_id: string;
+  source_system: string;
+  record_type: string | null;
+  occurred_at: string | null;
+  evidence_excerpt: string;
+  relevance_reason: string;
+}
+
+export interface ProcessRecommendation {
+  id: number;
+  title: string;
+  problem_statement: string;
+  recommendation: string;
+  expected_benefit: string;
+  suggested_owner: string;
+  success_metric: string;
+  category: string;
+  priority: "low" | "medium" | "high";
+  confidence: number;
+  status: "proposed" | "approved" | "rejected" | "implemented" | "dismissed";
+  analysis_window_start: string;
+  analysis_window_end: string;
+  record_count: number;
+  source_systems: string[];
+  enrichment_mode: string;
+  evidence: RecommendationEvidence[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowAuditEntry {
+  id: number;
+  event_type: string;
+  actor_role: string;
+  actor_ref: string;
+  resource_type: string;
+  resource_id: string;
+  event_payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface WorkflowAuditResponse {
+  entries: WorkflowAuditEntry[];
+  chain_valid: boolean;
+}
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 async function parse<T>(response: Response): Promise<T> {
@@ -122,5 +199,62 @@ export async function fetchTelegramStatus(): Promise<TelegramIntegrationStatus> 
 export async function fetchTelegramRecords(): Promise<ProtectedIngestionRecord[]> {
   return parse<ProtectedIngestionRecord[]>(
     await fetch(`${BASE_URL}/ingestion-records?source_system=telegram&limit=12`),
+  );
+}
+
+export async function fetchEmailStatus(): Promise<EmailIntegrationStatus> {
+  return parse<EmailIntegrationStatus>(await fetch(`${BASE_URL}/integrations/email/status`));
+}
+
+export async function syncEmail(): Promise<EmailSyncResponse> {
+  return parse<EmailSyncResponse>(
+    await fetch(`${BASE_URL}/integrations/email/sync`, { method: "POST" }),
+  );
+}
+
+export async function fetchEmailRecords(): Promise<ProtectedIngestionRecord[]> {
+  return parse<ProtectedIngestionRecord[]>(
+    await fetch(`${BASE_URL}/ingestion-records?source_system=email&limit=12`),
+  );
+}
+
+export async function analyzeProcesses(): Promise<ProcessRecommendation> {
+  return parse<ProcessRecommendation>(
+    await fetch(`${BASE_URL}/process-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        window_days: 30,
+        source_systems: ["telegram", "email"],
+        minimum_evidence: 3,
+        role: "owner_director",
+      }),
+    }),
+  );
+}
+
+export async function fetchRecommendations(
+  role: Role = "owner_director",
+): Promise<ProcessRecommendation[]> {
+  return parse<ProcessRecommendation[]>(await fetch(`${BASE_URL}/recommendations?role=${role}`));
+}
+
+export async function decideRecommendation(
+  id: number,
+  decision: "approve" | "reject" | "mark-implemented",
+  comment = "",
+): Promise<ProcessRecommendation> {
+  return parse<ProcessRecommendation>(
+    await fetch(`${BASE_URL}/recommendations/${id}/${decision}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "owner_director", comment }),
+    }),
+  );
+}
+
+export async function fetchWorkflowAudit(): Promise<WorkflowAuditResponse> {
+  return parse<WorkflowAuditResponse>(
+    await fetch(`${BASE_URL}/workflow-audit?role=compliance`),
   );
 }

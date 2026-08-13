@@ -6,13 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import TokenVaultEntry
-from app.schemas import QueryRequest, QueryResponse
+from app.schemas import QueryCitation, QueryRequest, QueryResponse
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.detokenize import detokenize_response, hash_query
 from app.security.tokenize import tokenize_record
 from app.services.embeddings import embed_text
-from app.services.reasoning import answer_query, unknown_tokens
-from app.services.retrieval import retrieve_top_k
+from app.services.reasoning import answer_query_with_citations, unknown_tokens
+from app.services.retrieval import retrieve_hits
 
 router = APIRouter(tags=["query"])
 
@@ -33,8 +33,9 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
     db.commit()
 
     query_embedding, embedding_mode = embed_text(sanitized_question)
-    chunks = retrieve_top_k(db, query_embedding, k=5)
-    raw_answer, reasoning_mode = answer_query(sanitized_question, chunks)
+    hits = retrieve_hits(db, query_embedding, k=5)
+    cited_answer, reasoning_mode = answer_query_with_citations(sanitized_question, hits)
+    raw_answer = cited_answer.answer
     known_tokens = set(db.scalars(select(TokenVaultEntry.token)).all())
     invented = unknown_tokens(raw_answer, known_tokens)
     if invented:
@@ -47,6 +48,20 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         answer=final_answer,
         model_answer=raw_answer,
         model_question=sanitized_question,
-        sources_used=len(chunks),
+        sources_used=len(hits),
         mode=mode,
+        insufficient_evidence=cited_answer.insufficient_evidence,
+        citations=[
+            QueryCitation(
+                citation_id=f"SOURCE-{index}",
+                source_record_id=hit.source_record_id,
+                source_system=hit.source_system,
+                record_type=hit.record_type,
+                occurred_at=hit.occurred_at,
+                protected_excerpt=hit.retrieval_text[:1_000],
+                similarity=hit.similarity,
+            )
+            for index, hit in enumerate(hits, 1)
+            if f"SOURCE-{index}" in cited_answer.citations
+        ],
     )

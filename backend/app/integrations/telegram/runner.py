@@ -4,10 +4,10 @@ import logging
 from telegram import Update
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import SessionLocal, initialize_local_schema
 from app.integrations.telegram.bot import build_application
 from app.integrations.telegram.drafts import draft_store
-from app.models import Base, IntegrationStatus, utcnow
+from app.models import IntegrationStatus, utcnow
 from app.security.detect import warm_detector
 
 
@@ -50,8 +50,7 @@ def main() -> None:
     settings = get_settings()
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
-    # Local prototype convenience; hosted environments must apply explicit migrations.
-    Base.metadata.create_all(engine)
+    initialize_local_schema()
     _write_status("starting", False)
     detector = warm_detector()
     if not detector.loaded:

@@ -26,11 +26,26 @@ $telegram = Start-Process -FilePath $python `
   -ArgumentList "-m", "app.integrations.telegram.runner" `
   -WorkingDirectory (Join-Path $repoRoot "backend") -WindowStyle Hidden -PassThru
 
-@(
+$processes = @(
   @{ name = "backend"; pid = $backend.Id; started = $backend.StartTime.ToString("O") },
   @{ name = "frontend"; pid = $frontend.Id; started = $frontend.StartTime.ToString("O") },
   @{ name = "telegram"; pid = $telegram.Id; started = $telegram.StartTime.ToString("O") }
-) | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
+)
+$emailEnabled = Select-String `
+  -LiteralPath (Join-Path $repoRoot "backend\.env") `
+  -Pattern '^EMAIL_CONNECTOR_ENABLED\s*=\s*true\s*$' `
+  -CaseSensitive:$false -Quiet
+if ($emailEnabled) {
+  $email = Start-Process -FilePath $python `
+    -ArgumentList "-m", "app.integrations.email_connector.runner" `
+    -WorkingDirectory (Join-Path $repoRoot "backend") -WindowStyle Hidden -PassThru
+  $processes += @{
+    name = "email"
+    pid = $email.Id
+    started = $email.StartTime.ToString("O")
+  }
+}
+$processes | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
 
 $ready = $false
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
@@ -46,3 +61,4 @@ if (-not $ready) { throw "Demo processes started, but local health checks did no
 Write-Output "FinBrain frontend: http://127.0.0.1:5173"
 Write-Output "FinBrain API docs: http://127.0.0.1:8000/docs"
 Write-Output "Telegram worker started in polling mode."
+if ($emailEnabled) { Write-Output "Email worker started in read-only polling mode." }

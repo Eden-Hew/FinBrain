@@ -1,13 +1,19 @@
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.integrations.email_connector.service import get_state, sync_mailbox
 from app.models import IntegrationStatus, TokenizedContent
-from app.schemas import ProtectedIngestionRecordResponse, TelegramIntegrationStatusResponse
+from app.schemas import (
+    EmailIntegrationStatusResponse,
+    EmailSyncResponse,
+    ProtectedIngestionRecordResponse,
+    TelegramIntegrationStatusResponse,
+)
 
 router = APIRouter(tags=["integrations"])
 
@@ -66,3 +72,32 @@ def ingestion_records(
         )
         for row in rows
     ]
+
+
+@router.get("/integrations/email/status", response_model=EmailIntegrationStatusResponse)
+def email_status(db: Session = Depends(get_db)) -> EmailIntegrationStatusResponse:
+    settings = get_settings()
+    row = get_state(db)
+    return EmailIntegrationStatusResponse(
+        configured=settings.email_configured,
+        status=row.status if row else "not_configured",
+        folder_name=settings.email_imap_folder,
+        last_uid=row.last_uid if row else 0,
+        last_sync_at=row.last_sync_at if row else None,
+        failure_code=row.failure_code if row else None,
+    )
+
+
+@router.post("/integrations/email/sync", response_model=EmailSyncResponse)
+def email_sync(db: Session = Depends(get_db)) -> EmailSyncResponse:
+    try:
+        result = sync_mailbox(db)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return EmailSyncResponse(
+        examined=result.examined,
+        protected=result.protected,
+        ready=result.ready,
+        failed=result.failed,
+        last_uid=result.last_uid,
+    )

@@ -8,14 +8,17 @@ SQLite remains the zero-configuration local default.
 Create a project, then apply the migration using either method:
 
 - Supabase CLI: from the repository root, link the project and run `npx supabase db push`.
-- SQL Editor: run `../../supabase/migrations/202608110001_finbrain_initial.sql`, then
-  `../../supabase/migrations/202608110002_unified_ingestion.sql`, in timestamp order as the
-  database owner.
+- SQL Editor: run all files under `../../supabase/migrations/` in timestamp order as the database
+  owner, including the Telegram capture and Track 2 recommendation migrations.
 
 The migrations install pgvector, create the three FinBrain tables, add the unified-ingestion
 columns and constraints, build the operational indexes, enable and force RLS, and default the Data
 API to no table access. `npx supabase db push` applies every pending timestamped migration after the
 project is linked.
+
+Application startup creates tables only for SQLite. Supabase/PostgreSQL schema changes must always
+be applied through timestamped migrations so the remote schema and CLI migration history cannot
+drift apart.
 
 ## 2. Configure the backend connection
 

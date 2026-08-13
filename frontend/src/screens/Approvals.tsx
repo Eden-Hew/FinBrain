@@ -1,6 +1,13 @@
+import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { AppNav } from "../components/Nav";
+import {
+  analyzeProcesses,
+  decideRecommendation,
+  fetchRecommendations,
+  type ProcessRecommendation,
+} from "../api/client";
 
 export default function Approvals() {
   const { t } = useI18n();
@@ -9,25 +16,124 @@ export default function Approvals() {
     sops, approveSop, rejectSop,
     pendingActions, approveAction, rejectAction,
   } = useAppState();
+  const [recommendations, setRecommendations] = useState<ProcessRecommendation[]>([]);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
+
+  const refreshRecommendations = async () => {
+    const rows = await fetchRecommendations();
+    setRecommendations(rows);
+  };
+
+  useEffect(() => {
+    let active = true;
+    const initialLoad = async () => {
+      try {
+        const rows = await fetchRecommendations();
+        if (active) setRecommendations(rows);
+      } catch {
+        if (active) setRecommendations([]);
+      }
+    };
+    void initialLoad();
+    return () => { active = false; };
+  }, []);
+
+  const analyze = async () => {
+    setLoadingAnalysis(true);
+    setRecommendationError("");
+    try {
+      await analyzeProcesses();
+      await refreshRecommendations();
+    } catch (error) {
+      setRecommendationError(error instanceof Error ? error.message : "Process analysis failed.");
+    } finally {
+      setLoadingAnalysis(false);
+    }
+  };
+
+  const decide = async (
+    id: number,
+    decision: "approve" | "reject" | "mark-implemented",
+  ) => {
+    setRecommendationError("");
+    try {
+      const updated = await decideRecommendation(id, decision);
+      setRecommendations((rows) => rows.map((row) => row.id === id ? updated : row));
+    } catch (error) {
+      setRecommendationError(error instanceof Error ? error.message : "Decision failed.");
+    }
+  };
 
   const pendingInvoices = Object.values(einvoices).filter((inv) => inv.status === "pending");
   const draftSops = sops.filter((s) => s.status === "draft");
   const activeActions = pendingActions.filter((a) => a.active);
 
-  const isEmpty = pendingInvoices.length === 0 && draftSops.length === 0 && activeActions.length === 0;
+  const openRecommendations = recommendations.filter((item) => (
+    item.status === "proposed" || item.status === "approved"
+  ));
+  const isEmpty = pendingInvoices.length === 0
+    && draftSops.length === 0
+    && activeActions.length === 0
+    && openRecommendations.length === 0;
 
   return (
     <div className="fb-root">
       <AppNav current="approvals" />
 
       <header className="fb-app-header">
-        <h1>{t("approvals.title")}</h1>
-        <p>{t("approvals.desc")}</p>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <h1>{t("approvals.title")}</h1>
+            <p>{t("approvals.desc")}</p>
+          </div>
+          <button className="fb-btn fb-btn-solid" type="button" onClick={analyze} disabled={loadingAnalysis}>
+            {loadingAnalysis ? "Analyzing protected records…" : "Analyze recurring problems"}
+          </button>
+        </div>
       </header>
 
       <div className="fb-page-body">
+        {recommendationError && <div className="fb-callout" role="alert">{recommendationError}</div>}
         <div className="fb-card-list">
           {isEmpty && <p className="fb-sans" style={{ color: "var(--ink-soft)", fontSize: ".8rem" }}>Nothing waiting on you right now — you're fully caught up.</p>}
+
+          {openRecommendations.map((item) => (
+            <article className="fb-rec-card" key={`process-${item.id}`}>
+              <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>
+                Process optimization · {item.priority} priority · {Math.round(item.confidence * 100)}% confidence
+              </div>
+              <h3>{item.title}</h3>
+              <p>{item.problem_statement}</p>
+              <div className="fb-rec-evidence">
+                <strong>Recommended change:</strong> {item.recommendation}
+                <br /><strong>Success metric:</strong> {item.success_metric}
+                <br /><strong>Owner:</strong> {item.suggested_owner}
+                <br /><strong>Evidence:</strong> {item.record_count} protected records across {item.source_systems.join(", ")}
+              </div>
+              <details style={{ marginTop: ".8rem" }}>
+                <summary className="fb-link">Inspect protected evidence</summary>
+                <div style={{ display: "grid", gap: ".5rem", marginTop: ".6rem" }}>
+                  {item.evidence.map((evidence) => (
+                    <div className="fb-rec-evidence" key={`${item.id}-${evidence.citation_id}`}>
+                      <strong>{evidence.citation_id}</strong> · {evidence.source_system} · {evidence.record_type ?? "record"}
+                      <div style={{ marginTop: ".3rem" }}>{evidence.evidence_excerpt}</div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", marginTop: ".8rem" }}>
+                {item.status === "proposed" ? (
+                  <>
+                    <button className="fb-btn fb-btn-solid" type="button" onClick={() => decide(item.id, "approve")}>Approve recommendation</button>
+                    <button className="fb-btn fb-btn-outline" type="button" onClick={() => decide(item.id, "reject")}>Reject</button>
+                  </>
+                ) : (
+                  <button className="fb-btn fb-btn-solid" type="button" onClick={() => decide(item.id, "mark-implemented")}>Mark implemented</button>
+                )}
+              </div>
+            </article>
+          ))}
 
           {pendingInvoices.map((inv) => (
             <div className="fb-rec-card is-financial" key={inv.id}>

@@ -88,12 +88,30 @@ class QueryRequest(BaseModel):
     role: UserRole
 
 
+class QueryCitation(BaseModel):
+    citation_id: str
+    source_record_id: str
+    source_system: str
+    record_type: str | None
+    occurred_at: datetime | None
+    protected_excerpt: str
+    similarity: float
+
+
+class CitedAnswer(BaseModel):
+    answer: str = Field(min_length=1, max_length=8_000)
+    citations: list[str] = Field(default_factory=list)
+    insufficient_evidence: bool = False
+
+
 class QueryResponse(BaseModel):
     answer: str
     model_answer: str
     model_question: str
     sources_used: int
     mode: str
+    insufficient_evidence: bool = False
+    citations: list[QueryCitation] = Field(default_factory=list)
 
 
 class AuditEntryResponse(BaseModel):
@@ -132,3 +150,111 @@ class ProtectedIngestionRecordResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     safe_metadata: dict
+
+
+class EmailIntegrationStatusResponse(BaseModel):
+    configured: bool
+    status: str
+    folder_name: str
+    last_uid: int
+    last_sync_at: datetime | None
+    failure_code: str | None
+
+
+class EmailSyncResponse(BaseModel):
+    examined: int
+    protected: int
+    ready: int
+    failed: int
+    last_uid: int
+
+
+class ProcessAnalysisRequest(BaseModel):
+    window_days: int = Field(default=30, ge=1, le=365)
+    source_systems: list[str] = Field(default_factory=lambda: ["telegram", "email"])
+    minimum_evidence: int = Field(default=3, ge=2, le=20)
+    role: UserRole
+
+    @field_validator("source_systems")
+    @classmethod
+    def validate_source_systems(cls, values: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(values))
+        if not cleaned or len(cleaned) > 10:
+            raise ValueError("source_systems must contain between 1 and 10 values")
+        if any(
+            not value
+            or len(value) > 64
+            or not all(
+                character.islower() or character.isdigit() or character in "_.-"
+                for character in value
+            )
+            for value in cleaned
+        ):
+            raise ValueError("source_systems must contain identifier-like values")
+        return cleaned
+
+
+class RecommendationDraft(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    problem_statement: str = Field(min_length=1, max_length=2_000)
+    recommendation: str = Field(min_length=1, max_length=2_000)
+    expected_benefit: str = Field(min_length=1, max_length=1_000)
+    suggested_owner: str = Field(min_length=1, max_length=100)
+    success_metric: str = Field(min_length=1, max_length=1_000)
+    category: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9_]+$")
+    priority: SummaryPriority
+    confidence: float = Field(ge=0, le=1)
+    evidence_ids: list[str] = Field(min_length=2, max_length=20)
+
+
+class RecommendationEvidenceResponse(BaseModel):
+    citation_id: str
+    source_record_id: str
+    source_system: str
+    record_type: str | None
+    occurred_at: datetime | None
+    evidence_excerpt: str
+    relevance_reason: str
+
+
+class RecommendationResponse(BaseModel):
+    id: int
+    title: str
+    problem_statement: str
+    recommendation: str
+    expected_benefit: str
+    suggested_owner: str
+    success_metric: str
+    category: str
+    priority: SummaryPriority
+    confidence: float
+    status: str
+    analysis_window_start: datetime
+    analysis_window_end: datetime
+    record_count: int
+    source_systems: list[str]
+    enrichment_mode: str
+    evidence: list[RecommendationEvidenceResponse]
+    created_at: datetime
+    updated_at: datetime
+
+
+class RecommendationDecisionRequest(BaseModel):
+    role: UserRole
+    comment: str = Field(default="", max_length=2_000)
+
+
+class WorkflowAuditResponse(BaseModel):
+    id: int
+    event_type: str
+    actor_role: str
+    actor_ref: str
+    resource_type: str
+    resource_id: str
+    event_payload: dict
+    created_at: datetime
+
+
+class WorkflowAuditListResponse(BaseModel):
+    entries: list[WorkflowAuditResponse]
+    chain_valid: bool
