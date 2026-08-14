@@ -12,6 +12,8 @@ export interface QueryResponse {
     mode: "morpheus" | "gemini" | "offline-demo" | "structured-filter";
   insufficient_evidence: boolean;
   citations: QueryCitation[];
+  conversation_id: string | null;
+  turn_id: number | null;
 }
 
 export interface QueryCitation {
@@ -207,12 +209,16 @@ async function parse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function askQuestion(question: string, role: Role): Promise<QueryResponse> {
+export async function askQuestion(
+  question: string,
+  role: Role,
+  conversationId?: string | null,
+): Promise<QueryResponse> {
   return parse<QueryResponse>(
     await fetch(`${BASE_URL}/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, role }),
+      body: JSON.stringify({ question, role, conversation_id: conversationId || null }),
     }),
   );
 }

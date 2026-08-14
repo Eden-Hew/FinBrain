@@ -219,6 +219,62 @@ class StructuredIngestionBatch(Base):
     )
 
 
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConversationTurn(Base):
+    __tablename__ = "conversation_turns"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "sequence_number", name="conversation_turn_sequence_unique"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_role: Mapped[str] = mapped_column(String, nullable=False)
+    protected_question: Mapped[str] = mapped_column(Text, nullable=False)
+    protected_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    query_intent: Mapped[str] = mapped_column(String, nullable=False)
+    source_systems: Mapped[list[str]] = mapped_column(RoleListType(), nullable=False)
+    reasoning_mode: Mapped[str] = mapped_column(String, nullable=False)
+    insufficient_evidence: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ConversationTurnCitation(Base):
+    __tablename__ = "conversation_turn_citations"
+    __table_args__ = (
+        UniqueConstraint("turn_id", "ordinal", name="conversation_citation_ordinal_unique"),
+        UniqueConstraint(
+            "turn_id",
+            "tokenized_content_id",
+            name="conversation_citation_record_unique",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    turn_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("conversation_turns.id", ondelete="CASCADE"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    tokenized_content_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT"), nullable=False
+    )
+
+
 class ProcessRecommendation(Base):
     __tablename__ = "process_recommendations"
 

@@ -64,6 +64,7 @@ export default function Agents() {
   const [uploadPreview, setUploadPreview] = useState<UploadPreviewResponse | null>(null);
   const [uploadResult, setUploadResult] = useState<UploadCommitResponse | null>(null);
   const [uploadError, setUploadError] = useState("");
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const voiceIndexRef = useRef(0);
@@ -99,7 +100,8 @@ export default function Agents() {
       let embed = fallback.embed;
       try {
         const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
-        const response = await askQuestion(trimmed, backendRole);
+        const response = await askQuestion(trimmed, backendRole, conversationId);
+        setConversationId(response.conversation_id);
         finalText = response.answer;
         protectedText = response.model_answer;
         citations = response.citations;
@@ -130,6 +132,17 @@ export default function Agents() {
   };
 
   const handleSuggestion = (text: string) => send(text);
+
+  const startNewConversation = () => {
+    setConversationId(null);
+    setMessages([
+      {
+        id: msgId++,
+        from: "agent",
+        text: "New protected conversation started. What would you like to investigate?",
+      },
+    ]);
+  };
 
   const clearUpload = () => {
     setSelectedFile(null);
@@ -389,6 +402,14 @@ export default function Agents() {
 
             <div className="fb-composer2-toolbar-row">
               <div className="fb-composer2-tools">
+                <button
+                  className="fb-btn fb-btn-outline"
+                  type="button"
+                  onClick={startNewConversation}
+                  title={conversationId ? "Clear protected conversation context" : "Start a new conversation"}
+                >
+                  New chat
+                </button>
                 <div style={{ position: "relative" }}>
                   <button className="fb-icon-btn" type="button" onClick={() => setContextMenuOpen((v) => !v)} aria-haspopup="true" aria-label="Add context">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>

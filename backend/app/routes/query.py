@@ -10,6 +10,13 @@ from app.schemas import CitedAnswer, QueryCitation, QueryRequest, QueryResponse
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.detokenize import detokenize_response, hash_query
 from app.security.tokenize import tokenize_record
+from app.services.conversations import (
+    get_or_create_conversation,
+    is_referential_question,
+    persist_turn,
+    prior_citation_hits,
+    protected_history,
+)
 from app.services.query_planning import QueryIntent, plan_query, source_inventory
 from app.services.reasoning import (
     answer_all_query_with_citations,
@@ -25,6 +32,15 @@ router = APIRouter(tags=["query"])
 def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse:
     inventory = source_inventory(db)
     plan = plan_query(payload.question, [source for source, _count in inventory])
+    try:
+        conversation = get_or_create_conversation(db, payload.conversation_id)
+    except ValueError as error:
+        code = str(error)
+        raise HTTPException(
+            status_code=410 if code == "conversation_expired" else 404,
+            detail=code,
+        ) from error
+    history = protected_history(db, conversation.id)
     query_id = f"query-{uuid.uuid4()}"
     sanitized_question, query_entries = tokenize_record(
         payload.question, detect_spans(payload.question), query_id
@@ -37,6 +53,23 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         if db.get(TokenVaultEntry, entry.token) is None:
             db.add(entry)
     db.commit()
+
+    referential = bool(payload.conversation_id) and is_referential_question(payload.question)
+    prior_hits = (
+        prior_citation_hits(
+            db,
+            conversation.id,
+            payload.question,
+            source_systems=plan.source_systems,
+        )
+        if referential
+        else None
+    )
+    reasoning_question = (
+        f"{history}\n\nCurrent protected question: {sanitized_question}"
+        if history
+        else sanitized_question
+    )
 
     hits: list[RetrievalHit]
     if plan.intent is QueryIntent.LIST_SOURCES:
@@ -59,13 +92,17 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         )
         reasoning_mode = "structured-filter"
     elif plan.intent is QueryIntent.COUNT_RECORDS:
-        hits = []
-        selected_counts = [
-            (source, count)
-            for source, count in inventory
-            if not plan.source_systems or source in plan.source_systems
-        ]
-        total = sum(count for _source, count in selected_counts)
+        hits = prior_hits or [] if referential else []
+        selected_counts = (
+            []
+            if referential
+            else [
+                (source, count)
+                for source, count in inventory
+                if not plan.source_systems or source in plan.source_systems
+            ]
+        )
+        total = len(hits) if referential else sum(count for _source, count in selected_counts)
         scope = (
             ", ".join(plan.source_systems)
             if plan.source_systems
@@ -73,28 +110,57 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         )
         cited_answer = CitedAnswer(
             answer=f"{scope}: {total} ready record(s).",
-            citations=[],
+            citations=(
+                [f"SOURCE-{index}" for index in range(1, len(hits) + 1)]
+                if referential
+                else []
+            ),
             insufficient_evidence=total == 0,
         )
         reasoning_mode = "structured-filter"
     elif plan.intent is QueryIntent.LIST_RECORDS:
-        hits = list_filtered_hits(
-            db, source_systems=list(plan.source_systems), limit=50
+        hits = (
+            prior_hits or []
+            if referential
+            else list_filtered_hits(
+                db, source_systems=list(plan.source_systems), limit=50
+            )
         )
         cited_answer = structured_record_listing(hits)
         reasoning_mode = "structured-filter"
     else:
-        hits = list_filtered_hits(
-            db, source_systems=list(plan.source_systems) or None, limit=None
+        hits = (
+            prior_hits or []
+            if referential
+            else list_filtered_hits(
+                db, source_systems=list(plan.source_systems) or None, limit=None
+            )
         )
         cited_answer, reasoning_mode = answer_all_query_with_citations(
-            sanitized_question, hits
+            reasoning_question, hits
         )
     raw_answer = cited_answer.answer
     known_tokens = set(db.scalars(select(TokenVaultEntry.token)).all())
     invented = unknown_tokens(raw_answer, known_tokens)
     if invented:
         raise HTTPException(status_code=502, detail="The model returned an unknown protected token")
+    cited_hits = [
+        hit
+        for index, hit in enumerate(hits, 1)
+        if f"SOURCE-{index}" in cited_answer.citations
+    ]
+    turn = persist_turn(
+        db,
+        conversation,
+        user_role=payload.role.value,
+        protected_question=sanitized_question,
+        protected_answer=raw_answer,
+        query_intent=plan.intent.value,
+        source_systems=list(plan.source_systems),
+        reasoning_mode=reasoning_mode,
+        insufficient_evidence=cited_answer.insufficient_evidence,
+        cited_hits=cited_hits,
+    )
     final_answer = detokenize_response(
         db, raw_answer, payload.role.value, hash_query(payload.question)
     )
@@ -118,4 +184,6 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
             for index, hit in enumerate(hits, 1)
             if f"SOURCE-{index}" in cited_answer.citations
         ],
+        conversation_id=conversation.id,
+        turn_id=turn.id,
     )

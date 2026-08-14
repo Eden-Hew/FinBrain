@@ -160,6 +160,7 @@ class UploadCommitResponse(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     role: UserRole
+    conversation_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
 class QueryCitation(BaseModel):
@@ -186,6 +187,40 @@ class QueryResponse(BaseModel):
     mode: str
     insufficient_evidence: bool = False
     citations: list[QueryCitation] = Field(default_factory=list)
+    conversation_id: str | None = None
+    turn_id: int | None = None
+
+
+class ConversationCreateResponse(BaseModel):
+    conversation_id: str
+    status: str
+    expires_at: datetime
+
+
+class ConversationTurnResponse(BaseModel):
+    turn_id: int
+    sequence_number: int
+    user_role: UserRole
+    protected_question: str
+    protected_answer: str
+    query_intent: str
+    source_systems: list[str]
+    reasoning_mode: str
+    insufficient_evidence: bool
+    citation_source_record_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+
+
+class ConversationResponse(BaseModel):
+    conversation_id: str
+    status: str
+    expires_at: datetime
+    turns: list[ConversationTurnResponse] = Field(default_factory=list)
+
+
+class ConversationDeleteResponse(BaseModel):
+    conversation_id: str
+    status: str
 
 
 class AuditEntryResponse(BaseModel):

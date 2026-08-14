@@ -5,7 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import initialize_local_schema
-from app.routes import audit_log, ingestion, integrations, query, recommendations, uploads
+from app.routes import (
+    audit_log,
+    conversations,
+    ingestion,
+    integrations,
+    query,
+    recommendations,
+    uploads,
+)
 
 
 @asynccontextmanager
@@ -36,6 +44,7 @@ app.include_router(ingestion.router)
 app.include_router(integrations.router)
 app.include_router(recommendations.router)
 app.include_router(uploads.router)
+app.include_router(conversations.router)
 
 
 @app.get("/health", tags=["system"])
