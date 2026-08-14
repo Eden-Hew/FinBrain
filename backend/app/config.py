@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     structured_csv_max_rows: int = 500
     structured_csv_max_columns: int = 20
     structured_csv_max_cell_chars: int = 4_000
+    application_timezone: str = "Asia/Kuala_Lumpur"
 
     @field_validator(
         "telegram_draft_ttl_seconds",

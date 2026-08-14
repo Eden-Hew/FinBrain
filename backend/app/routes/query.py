@@ -17,13 +17,14 @@ from app.services.conversations import (
     prior_citation_hits,
     protected_history,
 )
+from app.services.query_filters import count_eligible_records, list_eligible_hits
 from app.services.query_planning import QueryIntent, plan_query, source_inventory
 from app.services.reasoning import (
     answer_all_query_with_citations,
     structured_record_listing,
     unknown_tokens,
 )
-from app.services.retrieval import RetrievalHit, list_filtered_hits
+from app.services.retrieval import RetrievalHit
 
 router = APIRouter(tags=["query"])
 
@@ -60,11 +61,15 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
             db,
             conversation.id,
             payload.question,
-            source_systems=plan.source_systems,
         )
         if referential
         else None
     )
+    if prior_hits is not None:
+        prior_ids = [hit.content_id for hit in prior_hits]
+        prior_hits = (
+            list_eligible_hits(db, plan.filters.with_content_ids(prior_ids)) if prior_ids else []
+        )
     reasoning_question = (
         f"{history}\n\nCurrent protected question: {sanitized_question}"
         if history
@@ -93,61 +98,30 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         reasoning_mode = "structured-filter"
     elif plan.intent is QueryIntent.COUNT_RECORDS:
         hits = prior_hits or [] if referential else []
-        selected_counts = (
-            []
-            if referential
-            else [
-                (source, count)
-                for source, count in inventory
-                if not plan.source_systems or source in plan.source_systems
-            ]
-        )
-        total = len(hits) if referential else sum(count for _source, count in selected_counts)
-        scope = (
-            ", ".join(plan.source_systems)
-            if plan.source_systems
-            else "all source systems"
-        )
+        total = len(hits) if referential else count_eligible_records(db, plan.filters)
+        scope = ", ".join(plan.source_systems) if plan.source_systems else "all source systems"
         cited_answer = CitedAnswer(
             answer=f"{scope}: {total} ready record(s).",
             citations=(
-                [f"SOURCE-{index}" for index in range(1, len(hits) + 1)]
-                if referential
-                else []
+                [f"SOURCE-{index}" for index in range(1, len(hits) + 1)] if referential else []
             ),
             insufficient_evidence=total == 0,
         )
         reasoning_mode = "structured-filter"
     elif plan.intent is QueryIntent.LIST_RECORDS:
-        hits = (
-            prior_hits or []
-            if referential
-            else list_filtered_hits(
-                db, source_systems=list(plan.source_systems), limit=50
-            )
-        )
+        hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters, limit=50)
         cited_answer = structured_record_listing(hits)
         reasoning_mode = "structured-filter"
     else:
-        hits = (
-            prior_hits or []
-            if referential
-            else list_filtered_hits(
-                db, source_systems=list(plan.source_systems) or None, limit=None
-            )
-        )
-        cited_answer, reasoning_mode = answer_all_query_with_citations(
-            reasoning_question, hits
-        )
+        hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters)
+        cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
     raw_answer = cited_answer.answer
     known_tokens = set(db.scalars(select(TokenVaultEntry.token)).all())
     invented = unknown_tokens(raw_answer, known_tokens)
     if invented:
         raise HTTPException(status_code=502, detail="The model returned an unknown protected token")
     cited_hits = [
-        hit
-        for index, hit in enumerate(hits, 1)
-        if f"SOURCE-{index}" in cited_answer.citations
+        hit for index, hit in enumerate(hits, 1) if f"SOURCE-{index}" in cited_answer.citations
     ]
     turn = persist_turn(
         db,
