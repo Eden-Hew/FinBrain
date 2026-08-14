@@ -130,6 +130,7 @@ def test_adapter_uses_only_safe_derived_metadata():
 
     assert record.source_system == "spreadsheet"
     assert record.record_type == "invoice_row"
+    assert record.metadata["protection_profile"] == "structured_invoice_v2"
     assert record.metadata["amount_band"] == "3"
     assert record.metadata["has_assigned_owner"] == "false"
     assert "Ahmad Rahman" not in record.metadata.values()

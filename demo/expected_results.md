@@ -8,7 +8,7 @@ These expectations intentionally omit generated token hashes and environment-spe
 - The fixture contains two `pending_approval` invoices, one `overdue` invoice, and one
   `refund_requested` invoice.
 - Two invoices have no assigned owner.
-- General employee sees a protected amount band for DEMO-INV-1001.
+- General employee sees a protected amount band for CHAT-INV-4001.
 - Finance operator sees the authorized normalized value `RM 4,500` after a fresh query.
 - Compliance reviewer can verify the disclosure and workflow hash chains.
 - Owner / director can generate, approve, and mark a cross-source recommendation implemented.

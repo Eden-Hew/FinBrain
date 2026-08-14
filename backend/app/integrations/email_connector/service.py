@@ -62,6 +62,11 @@ def _unread_search_criteria(last_uid: int) -> tuple[str, ...]:
     return "UNSEEN", f"UID {last_uid + 1}:*"
 
 
+def _new_uid_values(raw: bytes, *, last_uid: int, limit: int) -> list[int]:
+    """Defend against servers returning the terminal UID for an empty n:* range."""
+    return [uid for value in raw.split() if (uid := int(value)) > last_uid][:limit]
+
+
 def sync_mailbox(db: Session) -> SyncResult:
     settings = get_settings()
     if not settings.email_configured:
@@ -83,8 +88,11 @@ def sync_mailbox(db: Session) -> SyncResult:
         )
         if status != "OK":
             raise RuntimeError("mailbox_search_failed")
-        uid_values = [int(value) for value in (data[0] or b"").split()]
-        uid_values = uid_values[: settings.email_max_messages_per_sync]
+        uid_values = _new_uid_values(
+            data[0] or b"",
+            last_uid=state.last_uid,
+            limit=settings.email_max_messages_per_sync,
+        )
         for uid in uid_values:
             examined += 1
             try:

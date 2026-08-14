@@ -57,6 +57,22 @@ def test_planner_recognizes_source_count_questions():
     assert source_count.source_systems == ()
 
 
+def test_generic_csv_means_uploaded_spreadsheet_while_bank_csv_stays_explicit():
+    available = ["bank_csv", "spreadsheet", "email"]
+
+    generic_listing = plan_query("show all csv", available)
+    generic_count = plan_query("count number of csv rows", available)
+    bank_listing = plan_query("show all bank csv records", available)
+
+    assert generic_listing.intent is QueryIntent.LIST_RECORDS
+    assert generic_listing.source_systems == ("spreadsheet",)
+    assert generic_count.intent is QueryIntent.COUNT_RECORDS
+    assert generic_count.source_systems == ("spreadsheet",)
+    assert generic_count.filters.record_types == ("invoice_row",)
+    assert bank_listing.intent is QueryIntent.LIST_RECORDS
+    assert bank_listing.source_systems == ("bank_csv",)
+
+
 def test_planner_treats_each_source_analysis_as_exhaustive():
     plan = plan_query(
         "summarize each email source formatted nicely",
@@ -255,13 +271,15 @@ class _FakeDetector:
         return self.entities
 
 
-def test_gliner_rejects_bare_email_and_organizational_roles(monkeypatch):
-    text = "email named approver Ahmad Faizal lim@example.com"
+def test_gliner_rejects_bare_email_and_structural_or_organizational_roles(monkeypatch):
+    text = "email customer unassigned named approver Ahmad Faizal lim@example.com"
     entities = [
         {"start": 0, "end": 5, "text": "email", "label": "email"},
-        {"start": 6, "end": 20, "text": "named approver", "label": "person"},
-        {"start": 21, "end": 33, "text": "Ahmad Faizal", "label": "person"},
-        {"start": 34, "end": 49, "text": "lim@example.com", "label": "email"},
+        {"start": 6, "end": 14, "text": "customer", "label": "person"},
+        {"start": 15, "end": 25, "text": "unassigned", "label": "person"},
+        {"start": 26, "end": 40, "text": "named approver", "label": "person"},
+        {"start": 41, "end": 53, "text": "Ahmad Faizal", "label": "person"},
+        {"start": 54, "end": 69, "text": "lim@example.com", "label": "email"},
     ]
     monkeypatch.setattr(
         detect,

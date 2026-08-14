@@ -110,6 +110,12 @@ function ProtectedFilePanel({ role }: { role: Role }) {
               <div key={item.source_record_id}>{item.content_text}</div>
             ))}
           </div>
+          {preview.valid_rows > Math.min(3, preview.protected_preview.length) && (
+            <div className="fb-fine">
+              Showing {Math.min(3, preview.protected_preview.length)} of {preview.valid_rows} protected rows<br />
+              + {preview.valid_rows - Math.min(3, preview.protected_preview.length)} additional row{preview.valid_rows - Math.min(3, preview.protected_preview.length) === 1 ? "" : "s"} will be ingested
+            </div>
+          )}
           <div className="fb-upload-actions">
             <button className="fb-btn fb-btn-solid" type="button" onClick={commit} disabled={state === "committing"}>
               {state === "committing" ? "Ingesting..." : "Protect and ingest"}

@@ -1,0 +1,4 @@
+invoice_id,customer,amount,status,assigned_owner,due_date
+DEMO-INV-DUP,Demo Validation One,380.00,overdue,,2026-08-12
+DEMO-INV-DUP,Demo Validation Two,420.00,paid,Demo Owner,2026-08-13
+DEMO-INV-BAD,Demo Validation Three,not-an-amount,pending approval,,not-a-date

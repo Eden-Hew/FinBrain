@@ -1,0 +1,5 @@
+invoice_id,customer,amount,status,assigned_owner,due_date
+CHAT-INV-4001,Fictional Maple Supplies,"RM 4,500",pending approval,,2026-08-18
+CHAT-INV-4002,Sample Horizon Retail,"RM 980",overdue,Demo Finance Operator,2026-08-10
+CHAT-INV-4003,Imaginary Pine Services,"RM 12,750",pending approval,,2026-08-21
+CHAT-INV-4004,Synthetic Bay Trading,"RM 380",refund requested,Demo Refund Owner,2026-08-25

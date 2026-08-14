@@ -16,7 +16,7 @@ from app.services.retrieval import RetrievalHit
 CONVERSATION_TTL = timedelta(hours=24)
 HISTORY_TURN_LIMIT = 6
 REFERENCE_PATTERN = re.compile(
-    r"\b(?:those|these|them|it|that record|the (?:first|second|third|previous) "
+    r"\b(?:those|these|them|it|that|that record|the (?:first|second|third|previous) "
     r"(?:one|result)|(?:first|second|third) one)\b",
     re.IGNORECASE,
 )
@@ -109,26 +109,29 @@ def prior_citation_hits(
     *,
     source_systems: tuple[str, ...] = (),
 ) -> list[RetrievalHit]:
-    prior_turn = db.scalar(
+    prior_turns = db.scalars(
         select(ConversationTurn)
         .where(ConversationTurn.conversation_id == conversation_id)
         .order_by(ConversationTurn.sequence_number.desc())
-        .limit(1)
-    )
-    if prior_turn is None:
-        return []
-    citations = db.execute(
-        select(ConversationTurnCitation, TokenizedContent)
-        .join(
-            TokenizedContent,
-            TokenizedContent.id == ConversationTurnCitation.tokenized_content_id,
-        )
-        .where(ConversationTurnCitation.turn_id == prior_turn.id)
-        .order_by(ConversationTurnCitation.ordinal)
+        .limit(HISTORY_TURN_LIMIT)
     ).all()
     ordinal = _requested_ordinal(question)
-    if ordinal is not None:
-        citations = [pair for pair in citations if pair[0].ordinal == ordinal]
+    citations = []
+    for prior_turn in prior_turns:
+        candidates = db.execute(
+            select(ConversationTurnCitation, TokenizedContent)
+            .join(
+                TokenizedContent,
+                TokenizedContent.id == ConversationTurnCitation.tokenized_content_id,
+            )
+            .where(ConversationTurnCitation.turn_id == prior_turn.id)
+            .order_by(ConversationTurnCitation.ordinal)
+        ).all()
+        if ordinal is not None:
+            candidates = [pair for pair in candidates if pair[0].ordinal == ordinal]
+        if candidates:
+            citations = candidates
+            break
     if source_systems:
         citations = [pair for pair in citations if pair[1].source_system in source_systems]
     return [

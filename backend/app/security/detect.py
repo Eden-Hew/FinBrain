@@ -36,6 +36,8 @@ NON_PERSON_ROLE_TERMS = {
     "approver",
     "approval owner",
     "assigned approver",
+    "assigned owner",
+    "customer",
     "finance manager",
     "manager",
     "manager approval",
@@ -43,6 +45,7 @@ NON_PERSON_ROLE_TERMS = {
     "owner",
     "process owner",
     "team",
+    "unassigned",
 }
 
 PII_LABELS = [

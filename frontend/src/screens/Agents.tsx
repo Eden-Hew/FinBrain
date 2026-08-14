@@ -325,6 +325,12 @@ export default function Agents() {
                       </div>
                     ))}
                   </div>
+                  {uploadPreview.valid_rows > Math.min(3, uploadPreview.protected_preview.length) && (
+                    <div className="fb-fine">
+                      Showing {Math.min(3, uploadPreview.protected_preview.length)} of {uploadPreview.valid_rows} protected rows<br />
+                      + {uploadPreview.valid_rows - Math.min(3, uploadPreview.protected_preview.length)} additional row{uploadPreview.valid_rows - Math.min(3, uploadPreview.protected_preview.length) === 1 ? "" : "s"} will be ingested
+                    </div>
+                  )}
                   {[...uploadPreview.issues.map((issue) => issue.code), ...uploadPreview.warnings]
                     .map((notice) => <div className="fb-fine" key={notice}>{notice.replaceAll("_", " ")}</div>)}
                 </>

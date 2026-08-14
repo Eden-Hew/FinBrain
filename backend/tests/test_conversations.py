@@ -11,7 +11,7 @@ from app.models import (
     TokenizedContent,
 )
 from app.routes.query import query
-from app.schemas import QueryRequest, UserRole
+from app.schemas import CitedAnswer, QueryRequest, UserRole
 from app.services.conversations import (
     create_conversation,
     delete_conversation,
@@ -134,12 +134,53 @@ def test_referential_follow_up_reuses_prior_citations_with_filters_and_ordinals(
         )
 
         assert is_referential_question("Which of those came from email?")
+        assert is_referential_question("Yes, describe that")
         email_hits = prior_citation_hits(
             db, conversation.id, "Which of those came from email?", source_systems=("email",)
         )
         second = prior_citation_hits(db, conversation.id, "Tell me about the second one")
         assert [hit.source_record_id for hit in email_hits] == ["email:1"]
         assert [hit.source_record_id for hit in second] == ["telegram:1"]
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_ordinal_falls_back_to_nearest_turn_that_contains_requested_position():
+    engine, db = _database()
+    first = _ready_record(db, "email:1", "email")
+    second = _ready_record(db, "email:2", "email")
+    third = _ready_record(db, "email:3", "email")
+    try:
+        conversation = create_conversation(db)
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Describe each email",
+            protected_answer="Three protected emails.",
+            query_intent="semantic",
+            source_systems=["email"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(first), _hit(second), _hit(third)],
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Tell me about a named customer",
+            protected_answer="One protected customer.",
+            query_intent="semantic",
+            source_systems=["email"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(second)],
+        )
+
+        hits = prior_citation_hits(db, conversation.id, "Tell me about the third one")
+
+        assert [hit.source_record_id for hit in hits] == ["email:3"]
     finally:
         db.close()
         engine.dispose()
@@ -182,7 +223,7 @@ def test_expiry_and_delete_remove_replayable_turns():
         engine.dispose()
 
 
-def test_query_route_creates_context_and_intersects_follow_up_sources():
+def test_query_route_creates_context_and_intersects_follow_up_sources(monkeypatch):
     engine, db = _database()
     _ready_record(db, "email:context", "email")
     _ready_record(db, "telegram:context", "telegram")
@@ -193,6 +234,23 @@ def test_query_route_creates_context_and_intersects_follow_up_sources():
                 role=UserRole.GENERAL_EMPLOYEE,
             ),
             db,
+        )
+        captured: dict[str, str] = {}
+
+        def answer_follow_up(question, hits):
+            captured["question"] = question
+            return (
+                CitedAnswer(
+                    answer="The selected protected email is relevant [SOURCE-1].",
+                    citations=["SOURCE-1"],
+                    insufficient_evidence=False,
+                ),
+                "test",
+            )
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_follow_up,
         )
         second = query(
             QueryRequest(
@@ -212,6 +270,41 @@ def test_query_route_creates_context_and_intersects_follow_up_sources():
         assert len(turns) == 2
         assert turns[1].protected_question == "Which of those came from email?"
         assert "Protected conversation history" not in turns[1].protected_question
+        assert "deterministic conversation resolver has already selected" in captured["question"]
+        assert captured["question"].endswith(
+            "User follow-up: Which of those came from email?"
+        )
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_count_turn_preserves_hidden_record_context_for_follow_up():
+    engine, db = _database()
+    _ready_record(db, "email:count-1", "email")
+    _ready_record(db, "email:count-2", "email")
+    try:
+        first = query(
+            QueryRequest(
+                question="How many email records are ready?",
+                role=UserRole.GENERAL_EMPLOYEE,
+            ),
+            db,
+        )
+        second = query(
+            QueryRequest(
+                question="Tell me what each of them means",
+                role=UserRole.GENERAL_EMPLOYEE,
+                conversation_id=first.conversation_id,
+            ),
+            db,
+        )
+
+        assert first.sources_used == 0
+        assert first.citations == []
+        assert first.answer == "email: 2 ready record(s)."
+        assert second.sources_used == 2
+        assert len(second.citations) == 2
     finally:
         db.close()
         engine.dispose()

@@ -17,7 +17,7 @@ from app.services.conversations import (
     prior_citation_hits,
     protected_history,
 )
-from app.services.query_filters import count_eligible_records, list_eligible_hits
+from app.services.query_filters import list_eligible_hits
 from app.services.query_planning import QueryIntent, plan_query, source_inventory
 from app.services.reasoning import (
     answer_all_query_with_citations,
@@ -70,13 +70,26 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         prior_hits = (
             list_eligible_hits(db, plan.filters.with_content_ids(prior_ids)) if prior_ids else []
         )
+    # Referential scope is resolved deterministically to current hits above.
+    # Do not expose historical SOURCE-n labels to the model after those hits
+    # have been remapped to the current turn's SOURCE-n namespace.
     reasoning_question = (
-        f"{history}\n\nCurrent protected question: {sanitized_question}"
+        (
+            "FinBrain's deterministic conversation resolver has already selected the "
+            "protected evidence supplied with this request as the user's intended referent. "
+            "Answer about that selected evidence directly; do not say the referent or its "
+            "ordinal is missing merely because the earlier list is not repeated. Use only the "
+            "current SOURCE-n citation identifiers.\n\n"
+            f"User follow-up: {sanitized_question}"
+        )
+        if referential
+        else f"{history}\n\nCurrent protected question: {sanitized_question}"
         if history
         else sanitized_question
     )
 
     hits: list[RetrievalHit]
+    conversation_context_hits: list[RetrievalHit] | None = None
     if plan.intent is QueryIntent.LIST_SOURCES:
         hits = []
         cited_answer = CitedAnswer(
@@ -97,8 +110,13 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         )
         reasoning_mode = "structured-filter"
     elif plan.intent is QueryIntent.COUNT_RECORDS:
-        hits = prior_hits or [] if referential else []
-        total = len(hits) if referential else count_eligible_records(db, plan.filters)
+        if referential:
+            hits = prior_hits or []
+            conversation_context_hits = hits
+        else:
+            hits = []
+            conversation_context_hits = list_eligible_hits(db, plan.filters)
+        total = len(conversation_context_hits)
         scope = ", ".join(plan.source_systems) if plan.source_systems else "all source systems"
         cited_answer = CitedAnswer(
             answer=f"{scope}: {total} ready record(s).",
@@ -133,7 +151,11 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         source_systems=list(plan.source_systems),
         reasoning_mode=reasoning_mode,
         insufficient_evidence=cited_answer.insufficient_evidence,
-        cited_hits=cited_hits,
+        cited_hits=(
+            conversation_context_hits
+            if conversation_context_hits is not None
+            else cited_hits
+        ),
     )
     final_answer = detokenize_response(
         db, raw_answer, payload.role.value, hash_query(payload.question)

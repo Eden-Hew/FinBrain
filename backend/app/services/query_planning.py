@@ -67,6 +67,24 @@ def _mentioned_sources(question: str, available_sources: list[str]) -> tuple[str
             for alias in _source_aliases(source)
         ):
             matches.append(source)
+
+    # A direct structured CSV upload is stored as ``spreadsheet`` rows. Keep the
+    # seeded ``bank_csv`` source addressable through explicit bank wording, but
+    # make an otherwise generic "CSV" request behave like the upload UI.
+    without_bank_phrases = re.sub(
+        r"\bbank(?:[ _-]+csv| records?| transactions?)\b",
+        "",
+        lowered,
+    )
+    if (
+        "spreadsheet" in available_sources
+        and "spreadsheet" not in matches
+        and re.search(
+            r"\b(?:(?:uploaded|invoice|structured)\s+)?csv(?:\s+(?:files?|rows?|records?))?\b",
+            without_bank_phrases,
+        )
+    ):
+        matches.append("spreadsheet")
     return tuple(matches)
 
 
@@ -109,7 +127,7 @@ def _date_range(
 def _record_types(lowered: str) -> tuple[str, ...]:
     values: list[str] = []
     rules = (
-        (r"\b(?:spreadsheet rows?|invoice rows?|invoices?)\b", "invoice_row"),
+        (r"\b(?:spreadsheet rows?|invoice rows?|csv rows?|invoices?)\b", "invoice_row"),
         (r"\bmeeting (?:notes?|minutes)\b", "operations_minutes"),
         (r"\bsupport tickets?\b", "support_ticket"),
         (r"\bcustomer emails?\b", "customer_email"),

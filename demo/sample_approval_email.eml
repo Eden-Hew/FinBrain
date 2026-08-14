@@ -1,0 +1,14 @@
+From: Demo Customer Alpha <demo.customer.alpha@example.com>
+To: finance-demo@example.com
+Date: Fri, 14 Aug 2026 10:15:00 +0800
+Message-ID: <finbrain-demo-approval-1001@example.com>
+Subject: Approval required for DEMO-INV-1001
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+SYNTHETIC DEMONSTRATION RECORD
+
+Demo Customer Alpha requested an update on invoice DEMO-INV-1001.
+The RM 4,500 payment remains pending because no approval owner is assigned.
+Finance should review this case today and reply to demo.customer.alpha@example.com.

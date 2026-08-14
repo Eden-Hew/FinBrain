@@ -257,8 +257,11 @@ ports 8000 and 5173. It records validated process ownership and writes privacy-s
 `.runtime/logs`. The stop script validates PID start time, executable, and descendant ancestry
 before stopping anything, then verifies both ports are free.
 
+The complete setup, connector, query, conversation, authorization, recommendation, audit, and
+lifecycle test procedure is in [`TESTING_GUIDE.md`](./TESTING_GUIDE.md).
+
 Synthetic judging inputs and expected outcomes are in [`demo/`](./demo). Upload
-`demo/invoice_register.csv` through the paperclip or Protected Ingestion page, confirm the
+`demo/chat_upload_invoice_register.csv` through the paperclip or Protected Ingestion page, confirm the
 protected preview, and use `demo/judging_questions.md` for the end-to-end conversation.
 
 ### Run backend and frontend separately

@@ -53,13 +53,21 @@ def reset_demo_data() -> None:
         db.commit()
 
 
-def run(*, refresh: bool = False, reset: bool = False) -> None:
+def run(
+    *,
+    refresh: bool = False,
+    reset: bool = False,
+    excluded_sources: set[str] | None = None,
+) -> None:
     initialize_local_schema()
     if reset:
         reset_demo_data()
         print("cleared FinBrain application data; schema and migrations preserved")
+    excluded = excluded_sources or set()
     with SessionLocal() as db:
         for record in SAMPLE_RECORDS:
+            if record["source_system"] in excluded:
+                continue
             canonical = adapt_seed_record(record)
             result = ingest_canonical_record(db, canonical, refresh=refresh)
             print(
@@ -85,7 +93,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Required confirmation for --reset.",
     )
+    parser.add_argument(
+        "--exclude-source",
+        action="append",
+        default=[],
+        choices=sorted({record["source_system"] for record in SAMPLE_RECORDS}),
+        help=(
+            "Omit a seeded source system; repeat for more than one. "
+            "Useful when a live connector supplies that source."
+        ),
+    )
     args = parser.parse_args()
     if args.reset and not args.yes:
         parser.error("--reset requires --yes because it deletes existing FinBrain application data")
-    run(refresh=args.refresh, reset=args.reset)
+    run(
+        refresh=args.refresh,
+        reset=args.reset,
+        excluded_sources=set(args.exclude_source),
+    )

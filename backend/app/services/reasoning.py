@@ -1,3 +1,4 @@
+import logging
 import re
 
 from app.config import get_settings
@@ -17,6 +18,16 @@ SYSTEM_INSTRUCTION = (
 )
 
 ANALYZE_ALL_BATCH_SIZE = 20
+logger = logging.getLogger(__name__)
+
+
+def _log_provider_failure(provider: str, error: Exception) -> None:
+    """Log only a safe failure class; provider messages may contain echoed content."""
+    logger.warning(
+        "reasoning_provider_failed provider=%s error_type=%s",
+        provider,
+        type(error).__name__,
+    )
 
 
 def structured_record_listing(hits: list[RetrievalHit]) -> CitedAnswer:
@@ -66,7 +77,8 @@ def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
                 ]
             )
             return response, "morpheus"
-        except Exception:
+        except Exception as error:
+            _log_provider_failure("morpheus", error)
             if not settings.allow_offline_demo:
                 raise
     if settings.gemini_api_key:
@@ -80,7 +92,8 @@ def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
                 config={"system_instruction": SYSTEM_INSTRUCTION},
             )
             return response.text or "No answer was generated.", "gemini"
-        except Exception:
+        except Exception as error:
+            _log_provider_failure("gemini", error)
             if not settings.allow_offline_demo:
                 raise
     if not settings.allow_offline_demo:
@@ -155,7 +168,8 @@ def _answer_cited_context(
                 protected_context=validation_context,
             )
             return result, "morpheus"
-        except Exception:
+        except Exception as error:
+            _log_provider_failure("morpheus", error)
             if not settings.allow_offline_demo:
                 raise
     if settings.gemini_api_key:
@@ -186,7 +200,8 @@ def _answer_cited_context(
                 protected_context=validation_context,
             )
             return result, "gemini"
-        except Exception:
+        except Exception as error:
+            _log_provider_failure("gemini", error)
             if not settings.allow_offline_demo:
                 raise
     if not settings.allow_offline_demo:

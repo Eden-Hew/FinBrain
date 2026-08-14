@@ -45,6 +45,9 @@ def adapt_invoice_row(
         text=text,
         metadata={
             "schema_name": SCHEMA_NAME,
+            # Changing the canonical protection profile should re-protect an
+            # existing stable invoice row once without creating a duplicate.
+            "protection_profile": "structured_invoice_v2",
             "batch_ref": batch_ref,
             "row_number": str(row.row_number),
             "status": row.status,
