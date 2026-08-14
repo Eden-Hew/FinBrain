@@ -1,0 +1,5 @@
+invoice_id,customer,amount,status,assigned_owner,due_date
+DEMO-INV-1001,Fictional Orchid Supplies,"RM 4,500",pending approval,,2026-08-18
+DEMO-INV-1002,Sample Northstar Retail,"RM 980",overdue,Demo Finance Operator,2026-08-10
+DEMO-INV-1003,Imaginary Cedar Services,"RM 12,750",pending approval,,2026-08-21
+DEMO-INV-1004,Synthetic Harbor Trading,"RM 380",refund requested,Demo Refund Owner,2026-08-25

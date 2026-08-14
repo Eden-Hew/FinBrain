@@ -1,0 +1,5 @@
+SYNTHETIC DEMONSTRATION RECORD
+
+Fictional customer Demo Customer Alpha asked for an update on DEMO-INV-1001.
+The RM 4,500 payment is waiting for manager approval and has no assigned approval owner.
+The finance team should review the protected queue today.

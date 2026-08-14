@@ -14,23 +14,28 @@ audit history.
 
 - Unified, source-neutral protected ingestion through FastAPI.
 - Manual ingestion workspace in the React frontend.
+- Protected file preview and confirmed upload for TXT, Markdown, invoice CSV, EML, PDF, and DOCX.
+- Strict `invoice_register_v1` CSV parsing with stable row identity and one citation per invoice.
 - Private Telegram capture bot using local long polling.
 - Read-only IMAP ingestion of new unread email and supported attachments.
 - Regex and optional GLiNER sensitive-data detection.
 - Deterministic tenant-secret tokens and an AES-256-GCM encrypted token vault.
 - Reversible, band-aware amount tokens with role-gated exact disclosure.
 - Supabase Postgres, pgvector, HNSW indexing, forced RLS, and revoked Data API grants.
-- SQL-first counts, listings, source filters, and complete analytical record selection.
+- Shared SQL-first counts, listings, date/type/category/action/metadata filters, and complete
+  analytical record selection.
+- Protected six-turn conversation context with deterministic cited-record follow-ups.
 - Protected Morpheus reasoning with validated `SOURCE-n` citations.
 - Protected 20-record batching and final synthesis for larger analytical result sets.
 - Persistent process recommendations, evidence, approval decisions, and workflow audit events.
 - Separate hash-chained disclosure and workflow audit logs.
+- Four explicit unauthenticated demonstration personas matching backend authorization roles.
 - Twelve-record reset-safe demonstration dataset spanning six source systems.
 
 ## Current architecture
 
 ```text
-Telegram / unread IMAP / manual UI / seed adapters
+Telegram / unread IMAP / manual UI / protected file upload / seed adapters
                          |
                          v
               CanonicalIngestionRecord
@@ -54,7 +59,7 @@ Telegram / unread IMAP / manual UI / seed adapters
                  Supabase / SQLite
                          |
                          v
-                  SQL query planner
+             shared SQL filter planner
              +-----------+-----------+
              |                       |
              v                       v
@@ -211,9 +216,9 @@ uv run --active --no-sync python -m scripts.check_supabase
 uv run --active --no-sync python -m seed.seed_data
 ```
 
-The migration set creates protected content, token vault, audit, connector, recommendation,
-evidence, decision, and workflow-audit tables. It also installs pgvector, the `vector(768)` column,
-the HNSW index, JSONB role lists, and forced RLS.
+The migration set creates protected content, token vault, audit, connector, structured-batch,
+conversation, recommendation, evidence, decision, and workflow-audit tables. It also installs
+pgvector, the `vector(768)` column, the HNSW index, JSONB role lists, and forced RLS.
 
 See [infra/supabase/README.md](./infra/supabase/README.md) for connection and security details.
 
@@ -224,8 +229,14 @@ See [infra/supabase/README.md](./infra/supabase/README.md) for connection and se
 From the repository root:
 
 ```powershell
+& .\scripts\prepare_demo.ps1
 & .\scripts\run_demo.ps1
 ```
+
+`prepare_demo.ps1` validates local dependencies and non-empty configuration without displaying
+secrets, prewarms GLiNER, checks configured services, runs tests, and builds the frontend. It never
+resets or seeds the database. For a local syntax/dependency rehearsal without network calls, use
+`-SkipNetworkChecks`; the normal judging preparation should run without that switch.
 
 This starts:
 
@@ -242,7 +253,13 @@ Check and stop the tracked processes:
 ```
 
 The launcher requires `backend/.env`, the root `.venv`, installed frontend dependencies, and free
-ports 8000 and 5173.
+ports 8000 and 5173. It records validated process ownership and writes privacy-safe diagnostics to
+`.runtime/logs`. The stop script validates PID start time, executable, and descendant ancestry
+before stopping anything, then verifies both ports are free.
+
+Synthetic judging inputs and expected outcomes are in [`demo/`](./demo). Upload
+`demo/invoice_register.csv` through the paperclip or Protected Ingestion page, confirm the
+protected preview, and use `demo/judging_questions.md` for the end-to-end conversation.
 
 ### Run backend and frontend separately
 

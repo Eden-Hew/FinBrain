@@ -1,67 +1,126 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "demo_processes.ps1")
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $node = "C:\Program Files\nodejs\node.exe"
 $vite = Join-Path $repoRoot "frontend\node_modules\vite\bin\vite.js"
+$envFile = Join-Path $repoRoot "backend\.env"
 $runtimeDir = Join-Path $repoRoot ".runtime"
+$logDir = Join-Path $runtimeDir "logs"
 $pidFile = Join-Path $runtimeDir "demo-processes.json"
 
-if (-not (Test-Path -LiteralPath $python)) { throw "Project virtual environment is missing." }
-if (-not (Test-Path -LiteralPath $node)) { throw "Node.js is missing." }
-if (-not (Test-Path -LiteralPath $vite)) { throw "Frontend Vite dependency is missing." }
-if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "backend\.env"))) { throw "backend/.env is missing." }
-if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "frontend\node_modules"))) { throw "Frontend dependencies are missing." }
-if (Test-Path -LiteralPath $pidFile) { throw "A demo PID file already exists. Run scripts/stop_demo.ps1 first." }
+foreach ($required in @($python, $node, $vite, $envFile)) {
+  if (-not (Test-Path -LiteralPath $required)) { throw "Required demo dependency is missing." }
+}
+if (Test-Path -LiteralPath $pidFile) {
+  throw "A demo PID file already exists. Run scripts/stop_demo.ps1 first."
+}
+if (Get-NetTCPConnection -State Listen -LocalPort 8000,5173 -ErrorAction SilentlyContinue) {
+  throw "Port 8000 or 5173 is already in use."
+}
 
-$occupied = Get-NetTCPConnection -State Listen -LocalPort 8000,5173 -ErrorAction SilentlyContinue
-if ($occupied) { throw "Port 8000 or 5173 is already in use." }
+New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+$processes = @()
 
-New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
+function Save-DemoProcesses {
+  $processes | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
+}
 
-$backend = Start-Process -FilePath $python `
-  -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" `
-  -WorkingDirectory (Join-Path $repoRoot "backend") -WindowStyle Hidden -PassThru
-$frontend = Start-Process -FilePath $node `
-  -ArgumentList "`"$vite`"", "--host", "127.0.0.1", "--port", "5173", "--strictPort" `
-  -WorkingDirectory (Join-Path $repoRoot "frontend") -WindowStyle Hidden -PassThru
-$telegram = Start-Process -FilePath $python `
-  -ArgumentList "-m", "app.integrations.telegram.runner" `
-  -WorkingDirectory (Join-Path $repoRoot "backend") -WindowStyle Hidden -PassThru
-
-$processes = @(
-  @{ name = "backend"; pid = $backend.Id; started = $backend.StartTime.ToString("O") },
-  @{ name = "frontend"; pid = $frontend.Id; started = $frontend.StartTime.ToString("O") },
-  @{ name = "telegram"; pid = $telegram.Id; started = $telegram.StartTime.ToString("O") }
-)
-$emailEnabled = Select-String `
-  -LiteralPath (Join-Path $repoRoot "backend\.env") `
-  -Pattern '^EMAIL_CONNECTOR_ENABLED\s*=\s*true\s*$' `
-  -CaseSensitive:$false -Quiet
-if ($emailEnabled) {
-  $email = Start-Process -FilePath $python `
-    -ArgumentList "-m", "app.integrations.email_connector.runner" `
-    -WorkingDirectory (Join-Path $repoRoot "backend") -WindowStyle Hidden -PassThru
-  $processes += @{
-    name = "email"
-    pid = $email.Id
-    started = $email.StartTime.ToString("O")
+function Start-DemoComponent {
+  param(
+    [Parameter(Mandatory)][string]$Name,
+    [Parameter(Mandatory)][string]$Executable,
+    [Parameter(Mandatory)][string[]]$Arguments,
+    [Parameter(Mandatory)][string]$WorkingDirectory,
+    [bool]$Required = $false
+  )
+  $stdout = Join-Path $logDir "$Name.stdout.log"
+  $stderr = Join-Path $logDir "$Name.stderr.log"
+  $process = Start-Process -FilePath $Executable -ArgumentList $Arguments `
+    -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  Start-Sleep -Milliseconds 150
+  if ($process.HasExited) { throw "$Name exited during startup. Check .runtime/logs." }
+  $script:processes += [pscustomobject]@{
+    name = $Name
+    pid = $process.Id
+    started = $process.StartTime.ToString("O")
+    executable = $process.Path
+    required = $Required
   }
-}
-$processes | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
-
-$ready = $false
-for ($attempt = 0; $attempt -lt 30; $attempt++) {
-  try {
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2
-    $page = Invoke-WebRequest -Uri "http://127.0.0.1:5173/" -UseBasicParsing -TimeoutSec 2
-    if ($health.status -eq "ok" -and $page.StatusCode -eq 200) { $ready = $true; break }
-  } catch {}
-  Start-Sleep -Milliseconds 500
+  Save-DemoProcesses
 }
 
-if (-not $ready) { throw "Demo processes started, but local health checks did not become ready." }
-Write-Output "FinBrain frontend: http://127.0.0.1:5173"
-Write-Output "FinBrain API docs: http://127.0.0.1:8000/docs"
-Write-Output "Telegram worker started in polling mode."
-if ($emailEnabled) { Write-Output "Email worker started in read-only polling mode." }
+try {
+  Start-DemoComponent -Name "backend" -Executable $python `
+    -Arguments @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000") `
+    -WorkingDirectory (Join-Path $repoRoot "backend") -Required $true
+  Start-DemoComponent -Name "frontend" -Executable $node `
+    -Arguments @("`"$vite`"", "--host", "127.0.0.1", "--port", "5173", "--strictPort") `
+    -WorkingDirectory (Join-Path $repoRoot "frontend") -Required $true
+
+  $telegramEnabled = Test-DemoEnvValue -EnvFile $envFile -Name "TELEGRAM_BOT_TOKEN"
+  if ($telegramEnabled) {
+    Start-DemoComponent -Name "telegram" -Executable $python `
+      -Arguments @("-m", "app.integrations.telegram.runner") `
+      -WorkingDirectory (Join-Path $repoRoot "backend")
+  }
+  $emailEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "EMAIL_CONNECTOR_ENABLED"
+  if ($emailEnabled) {
+    Start-DemoComponent -Name "email" -Executable $python `
+      -Arguments @("-m", "app.integrations.email_connector.runner") `
+      -WorkingDirectory (Join-Path $repoRoot "backend")
+  }
+
+  $ready = $false
+  for ($attempt = 0; $attempt -lt 40; $attempt++) {
+    try {
+      $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2
+      $page = Invoke-WebRequest -Uri "http://127.0.0.1:5173/" -UseBasicParsing -TimeoutSec 2
+      if ($health.status -eq "ok" -and $page.StatusCode -eq 200) { $ready = $true; break }
+    } catch {}
+    Start-Sleep -Milliseconds 500
+  }
+  if (-not $ready) { throw "Required local services did not become ready. Check .runtime/logs." }
+  foreach ($entry in @($processes | Where-Object { -not $_.required })) {
+    if (-not (Get-DemoValidatedProcess -Entry $entry)) {
+      throw "$($entry.name) was configured but exited during startup. Check .runtime/logs."
+    }
+  }
+  $connectorsReady = $false
+  for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    try {
+      $telegramReady = -not $telegramEnabled
+      if ($telegramEnabled) {
+        $telegramStatus = Invoke-RestMethod `
+          -Uri "http://127.0.0.1:8000/integrations/telegram/status" -TimeoutSec 2
+        $telegramReady = $telegramStatus.status -in @("healthy", "starting")
+      }
+      $emailReady = -not $emailEnabled
+      if ($emailEnabled) {
+        $emailStatus = Invoke-RestMethod `
+          -Uri "http://127.0.0.1:8000/integrations/email/status" -TimeoutSec 2
+        $emailReady = $emailStatus.status -in @("healthy", "idle", "syncing")
+      }
+      if ($telegramReady -and $emailReady) { $connectorsReady = $true; break }
+    } catch {}
+    Start-Sleep -Milliseconds 500
+  }
+  if (-not $connectorsReady) {
+    throw "A configured connector did not become ready. Check .runtime/logs."
+  }
+
+  Write-Output "FinBrain frontend: http://127.0.0.1:5173"
+  Write-Output "FinBrain API docs: http://127.0.0.1:8000/docs"
+  Write-Output "Telegram worker: $(if ($telegramEnabled) { 'started' } else { 'disabled' })"
+  Write-Output "Email worker: $(if ($emailEnabled) { 'started' } else { 'disabled' })"
+} catch {
+  $cleanupEntries = [object[]]$processes.Clone()
+  [array]::Reverse($cleanupEntries)
+  foreach ($entry in $cleanupEntries) {
+    try { Stop-DemoEntry -Entry $entry } catch { Write-Warning $_.Exception.Message }
+  }
+  if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
+  throw
+}
