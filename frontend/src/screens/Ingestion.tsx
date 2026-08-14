@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useI18n } from "../lib/i18n";
 import { AppNav } from "../components/Nav";
 import {
@@ -6,7 +6,9 @@ import {
   fetchEmailStatus,
   fetchTelegramRecords,
   fetchTelegramStatus,
+  commitUpload,
   ingestRecord,
+  previewUpload,
   syncEmail,
   type EmailIntegrationStatus,
   type IngestionResponse,
@@ -14,6 +16,7 @@ import {
   type ProtectedIngestionRecord,
   type Role,
   type TelegramIntegrationStatus,
+  type UploadPreviewResponse,
 } from "../api/client";
 
 const SOURCE_OPTIONS = [
@@ -37,6 +40,93 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: "owner_director", label: "Owner / Director" },
   { value: "compliance", label: "Compliance" },
 ];
+
+function ProtectedFilePanel({ role }: { role: Role }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<UploadPreviewResponse | null>(null);
+  const [state, setState] = useState<"idle" | "previewing" | "protected" | "committing" | "done">("idle");
+  const [message, setMessage] = useState("");
+
+  const clear = () => {
+    setFile(null);
+    setPreview(null);
+    setState("idle");
+    setMessage("");
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const select = async (selected: File | undefined) => {
+    if (!selected) return;
+    setFile(selected);
+    setPreview(null);
+    setMessage("");
+    setState("previewing");
+    try {
+      setPreview(await previewUpload(selected, role));
+      setState("protected");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Preview failed.");
+      setState("idle");
+    }
+  };
+
+  const commit = async () => {
+    if (!file || !preview) return;
+    setState("committing");
+    setMessage("");
+    try {
+      const result = await commitUpload(file, role, preview.preview_digest);
+      setMessage(`${result.ready_rows} of ${result.valid_rows} protected source(s) are ready.`);
+      setFile(null);
+      setState("done");
+      if (inputRef.current) inputRef.current.value = "";
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ingestion failed.");
+      setState("protected");
+    }
+  };
+
+  return (
+    <section className="fb-upload-preview" style={{ margin: "0 0 1.4rem", maxWidth: "920px" }}>
+      <div className="fb-upload-preview-head">
+        <div>
+          <strong>Protected file upload</strong>
+          <div className="fb-fine">Preview TXT, Markdown, invoice CSV, EML, PDF, or DOCX before persistence.</div>
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".txt,.md,.csv,.eml,.pdf,.docx"
+          onChange={(event) => select(event.target.files?.[0])}
+        />
+      </div>
+      {file && <div className="fb-fine">{file.type || "Unknown type"} · {(file.size / 1024).toFixed(1)} KB · {state}</div>}
+      {preview && (
+        <>
+          <div className="fb-upload-stats">
+            <span>{preview.schema_name ?? preview.input_kind}</span>
+            <span>{preview.valid_rows} valid</span>
+            <span>{preview.invalid_rows} invalid</span>
+          </div>
+          <div className="fb-upload-samples">
+            {preview.protected_preview.slice(0, 3).map((item) => (
+              <div key={item.source_record_id}>{item.content_text}</div>
+            ))}
+          </div>
+          <div className="fb-upload-actions">
+            <button className="fb-btn fb-btn-solid" type="button" onClick={commit} disabled={state === "committing"}>
+              {state === "committing" ? "Ingesting..." : "Protect and ingest"}
+            </button>
+            <button className="fb-btn fb-btn-outline" type="button" onClick={clear}>Cancel</button>
+          </div>
+        </>
+      )}
+      {message && <div className="fb-fine" role="status">{message}</div>}
+      {state === "done" && <button className="fb-btn fb-btn-outline" type="button" onClick={clear}>Upload another</button>}
+    </section>
+  );
+}
 
 const STATUS_PILL_CLASS: Record<ProcessingStatus, string> = {
   ready: "is-active",
@@ -328,6 +418,8 @@ export default function Ingestion() {
             </button>
           ))}
         </div>
+
+        <ProtectedFilePanel role={role} />
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>

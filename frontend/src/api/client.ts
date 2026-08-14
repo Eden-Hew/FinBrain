@@ -63,6 +63,47 @@ export interface IngestionResponse {
   authorization_mode: "demo-role";
 }
 
+export interface UploadProtectedItem {
+  row_number: number | null;
+  source_record_id: string;
+  content_text: string;
+  processing_status: ProcessingStatus;
+  enrichment_mode: string | null;
+}
+
+export interface UploadIssue {
+  code: string;
+  row_number: number | null;
+  field: string | null;
+}
+
+export interface UploadPreviewResponse {
+  preview_digest: string;
+  input_kind: string;
+  schema_name: string | null;
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  protected_preview: UploadProtectedItem[];
+  issues: UploadIssue[];
+  warnings: string[];
+}
+
+export interface UploadCommitResponse {
+  preview_digest: string;
+  input_kind: string;
+  schema_name: string | null;
+  status: "ready" | "partial" | "failed";
+  total_rows: number;
+  valid_rows: number;
+  failed_rows: number;
+  protected_rows: number;
+  ready_rows: number;
+  rows: UploadProtectedItem[];
+  issues: UploadIssue[];
+  warnings: string[];
+}
+
 export interface TelegramIntegrationStatus {
   configured: boolean;
   mode: string;
@@ -186,6 +227,42 @@ export async function ingestRecord(payload: IngestionRequest): Promise<Ingestion
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    }),
+  );
+}
+
+function uploadHeaders(file: File, role: Role, previewDigest?: string): HeadersInit {
+  return {
+    "Content-Type": file.type || "application/octet-stream",
+    "X-FinBrain-Filename": file.name,
+    "X-FinBrain-Record-Type": file.name.toLowerCase().endsWith(".csv")
+      ? "invoice_register"
+      : "uploaded_document",
+    "X-FinBrain-Role": role,
+    ...(previewDigest ? { "X-FinBrain-Preview-Digest": previewDigest } : {}),
+  };
+}
+
+export async function previewUpload(file: File, role: Role): Promise<UploadPreviewResponse> {
+  return parse<UploadPreviewResponse>(
+    await fetch(`${BASE_URL}/uploads/preview`, {
+      method: "POST",
+      headers: uploadHeaders(file, role),
+      body: file,
+    }),
+  );
+}
+
+export async function commitUpload(
+  file: File,
+  role: Role,
+  previewDigest: string,
+): Promise<UploadCommitResponse> {
+  return parse<UploadCommitResponse>(
+    await fetch(`${BASE_URL}/uploads/commit`, {
+      method: "POST",
+      headers: uploadHeaders(file, role, previewDigest),
+      body: file,
     }),
   );
 }

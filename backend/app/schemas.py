@@ -122,6 +122,41 @@ class StructuredCsvCommitResponse(BaseModel):
     issues: list[StructuredCsvValidationIssue] = Field(default_factory=list)
 
 
+class UploadProtectedItem(BaseModel):
+    row_number: int | None = None
+    source_record_id: str
+    content_text: str
+    processing_status: ProcessingStatus
+    enrichment_mode: str | None = None
+
+
+class UploadPreviewResponse(BaseModel):
+    preview_digest: str
+    input_kind: str
+    schema_name: str | None = None
+    total_rows: int = 1
+    valid_rows: int = 1
+    invalid_rows: int = 0
+    protected_preview: list[UploadProtectedItem] = Field(default_factory=list)
+    issues: list[StructuredCsvValidationIssue] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class UploadCommitResponse(BaseModel):
+    preview_digest: str
+    input_kind: str
+    schema_name: str | None = None
+    status: str
+    total_rows: int
+    valid_rows: int
+    failed_rows: int
+    protected_rows: int
+    ready_rows: int
+    rows: list[UploadProtectedItem] = Field(default_factory=list)
+    issues: list[StructuredCsvValidationIssue] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     role: UserRole

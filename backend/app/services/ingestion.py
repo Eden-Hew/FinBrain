@@ -14,6 +14,15 @@ from app.services.embeddings import embed_text
 from app.services.summarization import summarize_protected_text
 
 
+def preview_canonical_record(record: CanonicalIngestionRecord) -> str:
+    """Return protected text without persistence or external model calls."""
+    if contains_known_pii(record.source_record_id):
+        raise ValueError("source_record_id must be an opaque identifier without recognizable PII")
+    protected_text, _entries = _protect_text(record.text, record.source_record_id)
+    _protect_metadata(record.metadata, record.source_record_id)
+    return protected_text
+
+
 def _content_fingerprint(record: CanonicalIngestionRecord) -> str:
     """Return a non-reversible keyed fingerprint for idempotency checks."""
     payload = json.dumps(

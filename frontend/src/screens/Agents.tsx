@@ -4,7 +4,15 @@ import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
 import { AppNav } from "../components/Nav";
 import { resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
-import { askQuestion, type QueryCitation, type Role } from "../api/client";
+import {
+  askQuestion,
+  commitUpload,
+  previewUpload,
+  type QueryCitation,
+  type Role,
+  type UploadCommitResponse,
+  type UploadPreviewResponse,
+} from "../api/client";
 
 interface Message {
   id: number;
@@ -22,6 +30,8 @@ interface ContextChip {
   kind: "file" | "context";
   label: string;
 }
+
+type UploadState = "idle" | "previewing" | "protected" | "committing" | "complete" | "failed";
 
 const SUGGESTIONS = [
   "What e-invoices need my approval?",
@@ -49,6 +59,11 @@ export default function Agents() {
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [webSearchOn, setWebSearchOn] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadState, setUploadState] = useState<UploadState>("idle");
+  const [uploadPreview, setUploadPreview] = useState<UploadPreviewResponse | null>(null);
+  const [uploadResult, setUploadResult] = useState<UploadCommitResponse | null>(null);
+  const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const voiceIndexRef = useRef(0);
@@ -116,11 +131,56 @@ export default function Agents() {
 
   const handleSuggestion = (text: string) => send(text);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const clearUpload = () => {
+    setSelectedFile(null);
+    setUploadPreview(null);
+    setUploadResult(null);
+    setUploadError("");
+    setUploadState("idle");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setChips((c) => [...c, { kind: "file", label: file.name }]);
-    e.target.value = "";
+    setSelectedFile(file);
+    setUploadPreview(null);
+    setUploadResult(null);
+    setUploadError("");
+    setUploadState("previewing");
+    try {
+      const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
+      setUploadPreview(await previewUpload(file, backendRole));
+      setUploadState("protected");
+    } catch (requestError) {
+      setUploadError(requestError instanceof Error ? requestError.message : "Preview failed.");
+      setUploadState("failed");
+    }
+  };
+
+  const protectAndIngestFile = async () => {
+    if (!selectedFile || !uploadPreview || uploadState === "committing") return;
+    setUploadState("committing");
+    setUploadError("");
+    try {
+      const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
+      const response = await commitUpload(
+        selectedFile,
+        backendRole,
+        uploadPreview.preview_digest,
+      );
+      setUploadResult(response);
+      setUploadState("complete");
+      setChips((current) => [
+        ...current.filter((chip) => chip.kind !== "file"),
+        { kind: "file", label: `${response.ready_rows} protected source${response.ready_rows === 1 ? "" : "s"}` },
+      ]);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (requestError) {
+      setUploadError(requestError instanceof Error ? requestError.message : "Ingestion failed.");
+      setUploadState("failed");
+    }
   };
 
   const addContext = (label: string) => {
@@ -217,6 +277,74 @@ export default function Agents() {
             ))}
           </div>
 
+          {uploadState !== "idle" && (
+            <section className="fb-upload-preview" aria-live="polite">
+              <div className="fb-upload-preview-head">
+                <div>
+                  <strong>
+                    {uploadState === "previewing" ? "Protecting preview..." :
+                      uploadState === "committing" ? "Protecting and ingesting..." :
+                        uploadState === "complete" ? "Upload complete" :
+                          uploadState === "failed" ? "Upload needs attention" :
+                            "Protected preview"}
+                  </strong>
+                  {selectedFile && (
+                    <div className="fb-fine">
+                      {selectedFile.type || "Unknown type"} · {(selectedFile.size / 1024).toFixed(1)} KB
+                    </div>
+                  )}
+                </div>
+                <span className={`fb-status-pill ${uploadState === "complete" ? "is-active" : "is-review"}`}>
+                  <span className="fb-status-dot"></span>{uploadState}
+                </span>
+              </div>
+
+              {uploadPreview && (
+                <>
+                  <div className="fb-upload-stats">
+                    <span>{uploadPreview.schema_name ?? uploadPreview.input_kind}</span>
+                    <span>{uploadPreview.valid_rows} valid</span>
+                    <span>{uploadPreview.invalid_rows} invalid</span>
+                  </div>
+                  <div className="fb-upload-samples">
+                    {uploadPreview.protected_preview.slice(0, 3).map((item) => (
+                      <div key={`${item.source_record_id}-${item.row_number ?? 0}`}>
+                        {item.row_number ? `Row ${item.row_number}: ` : ""}{item.content_text}
+                      </div>
+                    ))}
+                  </div>
+                  {[...uploadPreview.issues.map((issue) => issue.code), ...uploadPreview.warnings]
+                    .map((notice) => <div className="fb-fine" key={notice}>{notice.replaceAll("_", " ")}</div>)}
+                </>
+              )}
+
+              {uploadResult && (
+                <div className="fb-upload-stats">
+                  <span>{uploadResult.ready_rows} ready</span>
+                  <span>{uploadResult.protected_rows} protected</span>
+                  <span>{uploadResult.failed_rows} failed</span>
+                </div>
+              )}
+              {uploadError && <div className="fb-upload-error" role="alert">{uploadError}</div>}
+
+              <div className="fb-upload-actions">
+                {uploadPreview && uploadState !== "complete" && (
+                  <button
+                    className="fb-btn fb-btn-solid"
+                    type="button"
+                    disabled={uploadState === "committing"}
+                    onClick={protectAndIngestFile}
+                  >
+                    {uploadState === "committing" ? "Ingesting..." : "Protect and ingest"}
+                  </button>
+                )}
+                <button className="fb-btn fb-btn-outline" type="button" onClick={clearUpload}>
+                  {uploadState === "complete" ? "Close" : "Cancel"}
+                </button>
+              </div>
+            </section>
+          )}
+
           {chips.length > 0 && (
             <div className="fb-composer-chips">
               {chips.map((c, i) => (
@@ -238,7 +366,13 @@ export default function Agents() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") send(input); }}
               />
-              <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFile} />
+              <input
+                type="file"
+                accept=".txt,.md,.csv,.eml,.pdf,.docx"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                onChange={handleFile}
+              />
               <button
                 className={"fb-icon-btn" + (recording ? " is-recording" : "")}
                 type="button"

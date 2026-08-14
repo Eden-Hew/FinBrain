@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import initialize_local_schema
-from app.routes import audit_log, ingestion, integrations, query, recommendations
+from app.routes import audit_log, ingestion, integrations, query, recommendations, uploads
 
 
 @asynccontextmanager
@@ -22,13 +22,20 @@ app.add_middleware(
     allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=[
+        "Content-Type",
+        "X-FinBrain-Filename",
+        "X-FinBrain-Record-Type",
+        "X-FinBrain-Role",
+        "X-FinBrain-Preview-Digest",
+    ],
 )
 app.include_router(query.router)
 app.include_router(audit_log.router)
 app.include_router(ingestion.router)
 app.include_router(integrations.router)
 app.include_router(recommendations.router)
+app.include_router(uploads.router)
 
 
 @app.get("/health", tags=["system"])
