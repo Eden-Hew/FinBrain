@@ -71,6 +71,7 @@ def get(
                 user_role=UserRole(turn.user_role),
                 protected_question=turn.protected_question,
                 protected_answer=turn.protected_answer,
+                protected_brief=turn.protected_brief,
                 query_intent=turn.query_intent,
                 source_systems=turn.source_systems,
                 reasoning_mode=turn.reasoning_mode,

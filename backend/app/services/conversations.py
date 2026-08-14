@@ -162,6 +162,8 @@ def persist_turn(
     reasoning_mode: str,
     insufficient_evidence: bool,
     cited_hits: list[RetrievalHit],
+    citation_ordinals: list[int] | None = None,
+    protected_brief: dict | None = None,
 ) -> ConversationTurn:
     sequence = (
         db.scalar(
@@ -177,6 +179,7 @@ def persist_turn(
         user_role=user_role,
         protected_question=protected_question,
         protected_answer=protected_answer,
+        protected_brief=protected_brief,
         query_intent=query_intent,
         source_systems=source_systems,
         reasoning_mode=reasoning_mode,
@@ -184,7 +187,10 @@ def persist_turn(
     )
     db.add(turn)
     db.flush()
-    for ordinal, hit in enumerate(cited_hits, 1):
+    ordinals = citation_ordinals or list(range(1, len(cited_hits) + 1))
+    if len(ordinals) != len(cited_hits):
+        raise ValueError("citation_ordinal_count_mismatch")
+    for ordinal, hit in zip(ordinals, cited_hits, strict=True):
         db.add(
             ConversationTurnCitation(
                 turn_id=turn.id,

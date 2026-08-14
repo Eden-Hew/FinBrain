@@ -30,6 +30,8 @@ def audit_log(role: UserRole = Query(...), db: Session = Depends(get_db)) -> Aud
                 token=row.token,
                 authorized=row.authorized,
                 query_hash=row.query_hash,
+                previous_hash=row.prev_hash,
+                entry_hash=row.event_hash,
                 ts=row.ts,
             )
             for row in rows
@@ -57,6 +59,8 @@ def workflow_audit(
                 resource_type=row.resource_type,
                 resource_id=row.resource_id,
                 event_payload=row.event_payload,
+                previous_hash=row.prev_hash,
+                entry_hash=row.event_hash,
                 created_at=row.created_at,
             )
             for row in rows

@@ -27,11 +27,11 @@ Gmail + Telegram + structured CSV + uploaded documents
 - Priority 4 — deterministic structured queries: complete.
 - Priority 5 — persona and disclosure demonstration: complete.
 - Priority 6 — demo reliability: functionally complete; final full rehearsal remains.
-- Backend verification: 90 tests passing.
+- Five-feature governed-intelligence package: complete.
+- Backend verification: 93 tests passing.
 - Backend lint: Ruff passing.
 - Frontend verification: production build passing; lint has 0 errors and 6 pre-existing Fast Refresh warnings.
 - Current branch: `main`.
-- Latest implementation and hardening commit: `516f031 feat: harden demo ingestion and conversation workflows`.
 
 ## Priority plan comparison
 
@@ -128,6 +128,23 @@ Gmail + Telegram + structured CSV + uploaded documents
 - Added regression coverage for CSV parsing, upload protection, conversation references, SQL filters, persona disclosure, Gmail idempotency, and process lifecycle behavior.
 - Reduced GLiNER false positives for structural terms such as `Customer` and `Unassigned`.
 
+### 9. Governed customer-intelligence package
+
+- Added a persisted protected Customer Intelligence Brief with cited claims, timeline, missing
+  information, status, and recommended action.
+- Added a lazy Evidence Drawer with protected and role-authorized views, freshness, and disclosure
+  counts.
+- Added an AI Exposure Receipt that distinguishes `morpheus`, `gemini`, `offline-demo`, and
+  deterministic `structured-filter` execution.
+- Added compliance-only role comparison over one stored protected result without rerunning AI.
+- Added query-originated recommendation creation with exact turn, query-hash, and citation lineage.
+- Applied migration `202608150001_query_recommendation_lineage.sql`.
+- Redesigned Audit so disclosure decisions and workflow events are separate, independently
+  verified streams. Query references and real entry hashes are visible, while full previous and
+  entry hashes are inspectable per event.
+- Completed two live journeys from a cited query through owner approval; the final provider-backed
+  brief ran in `morpheus` mode.
+
 ## Verified demonstration state
 
 The latest clean Gmail rehearsal produced:
@@ -176,6 +193,7 @@ The active migration sequence includes:
 - Recommendation workflow tables.
 - Structured-ingestion batch support.
 - Persisted conversation and turn support.
+- Protected brief persistence and recommendation-to-query lineage.
 
 The Supabase checks verify PostgreSQL connectivity, pgvector, expected vector dimensions, indexes, JSON role lists, and forced RLS.
 
@@ -244,3 +262,7 @@ Detailed manual scenarios and fixtures are documented in `TESTING_GUIDE.md`.
 - External model providers receive protected text and protected metadata.
 - Original values are encrypted in the token vault and restored only when the selected backend role permits disclosure.
 - The prototype role selector is intentionally not authentication. It demonstrates policy behavior only and must not be treated as a production security control.
+- Suggested prompts are static shortcuts, but submitted answers, citations, exposure receipts,
+  workflow events, and audit hashes come from the live backend path.
+- Hash chains are tamper-evident rather than tamper-proof: they detect an unrecomputed edit or gap,
+  but are not signed or anchored outside the application database.

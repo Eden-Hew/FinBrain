@@ -64,6 +64,9 @@ interface AppStateValue {
   rejectAction: (id: string) => void;
 
   approvalsCount: number;
+  focusedRecommendationId: number | null;
+  openApprovalRecommendation: (id: number) => void;
+  clearFocusedRecommendation: () => void;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -83,11 +86,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() => initialRecommendations());
   const [auditRows, setAuditRows] = useState<AuditRow[]>(() => initialAuditRows());
   const [pendingActions, setPendingActions] = useState<PendingAction[]>(() => initialPendingActions());
+  const [focusedRecommendationId, setFocusedRecommendationId] = useState<number | null>(null);
 
   const show = useCallback((s: Screen) => {
     setScreen(s);
     window.scrollTo(0, 0);
   }, []);
+  const openApprovalRecommendation = useCallback((id: number) => {
+    setFocusedRecommendationId(id);
+    show("approvals");
+  }, [show]);
+  const clearFocusedRecommendation = useCallback(() => setFocusedRecommendationId(null), []);
 
   const goToSecurity = useCallback((rt?: "landing" | "login" | "signup") => {
     if (rt !== undefined) setReturnTo(rt);
@@ -249,6 +258,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     auditRows, auditBaseCount: 122, pushAuditRow,
     pendingActions, approveAction, rejectAction,
     approvalsCount,
+    focusedRecommendationId, openApprovalRecommendation, clearFocusedRecommendation,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

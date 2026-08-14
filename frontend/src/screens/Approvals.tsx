@@ -18,6 +18,7 @@ export default function Approvals() {
     sops, approveSop, rejectSop,
     pendingActions, approveAction, rejectAction,
     askRole,
+    focusedRecommendationId,
   } = useAppState();
   const capabilities = PERSONAS[askRole].capabilities;
   const [recommendations, setRecommendations] = useState<ProcessRecommendation[]>([]);
@@ -46,6 +47,14 @@ export default function Approvals() {
     void initialLoad();
     return () => { active = false; };
   }, [askRole, capabilities.viewRecommendations]);
+
+  useEffect(() => {
+    if (focusedRecommendationId == null) return;
+    const target = document.getElementById(`recommendation-${focusedRecommendationId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+  }, [focusedRecommendationId, recommendations]);
 
   const analyze = async () => {
     setLoadingAnalysis(true);
@@ -117,9 +126,15 @@ export default function Approvals() {
           {isEmpty && <p className="fb-sans" style={{ color: "var(--ink-soft)", fontSize: ".8rem" }}>Nothing waiting on you right now — you're fully caught up.</p>}
 
           {openRecommendations.map((item) => (
-            <article className="fb-rec-card" key={`process-${item.id}`}>
+            <article
+              id={`recommendation-${item.id}`}
+              className={`fb-rec-card${focusedRecommendationId === item.id ? " is-focused" : ""}`}
+              key={`process-${item.id}`}
+              tabIndex={-1}
+            >
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>
-                Process optimization · {item.priority} priority · {Math.round(item.confidence * 100)}% confidence
+                {item.origin_type === "query_brief" ? "Customer intelligence" : item.origin_type === "verification_gap" ? "Verification action" : "Process optimization"}
+                {" · "}{item.priority} priority · {Math.round(item.confidence * 100)}% confidence
               </div>
               <h3>{item.title}</h3>
               <p>{item.problem_statement}</p>
@@ -128,6 +143,7 @@ export default function Approvals() {
                 <br /><strong>Success metric:</strong> {item.success_metric}
                 <br /><strong>Owner:</strong> {item.suggested_owner}
                 <br /><strong>Evidence:</strong> {item.record_count} protected records across {item.source_systems.join(", ")}
+                {item.origin_query_hash && <><br /><strong>Origin reference:</strong> {item.origin_query_hash}</>}
               </div>
               <details style={{ marginTop: ".8rem" }}>
                 <summary className="fb-link">Inspect protected evidence</summary>

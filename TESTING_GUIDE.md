@@ -55,7 +55,8 @@ For live Gmail and Telegram tests, also configure their connector values as desc
 
 ## 2. Apply and verify the database schema
 
-The structured-ingestion and conversation tables require the two latest Supabase migrations.
+Structured ingestion, conversation persistence, and the five-feature lineage fields require all
+current Supabase migrations, including `202608150001_query_recommendation_lineage.sql`.
 Review pending migrations, then apply them from the repository root:
 
 ```powershell
@@ -390,14 +391,20 @@ state must never bypass backend authorization.
 1. Complete the General employee and Finance operator comparison above.
 2. Select **Compliance reviewer**.
 3. Open **Audit**.
-4. Select **Re-verify**.
+4. Select **Re-verify both chains**.
 
 Expected behavior:
 
 - Disclosure chain is valid.
 - Workflow chain is valid.
+- The two streams show independent entry counts and **Valid hash chain** states.
 - Authorized and denied token attempts appear as separate audit events.
 - Recommendation analysis and decisions appear in the workflow chain.
+- **Disclosure decisions** and **Workflow events** filters show only their corresponding entries.
+- Each disclosure shows a **Query reference** and a real **Entry hash**.
+- Query-originated workflow events show an **Origin query reference** when one was recorded.
+- **Inspect full chain data** reveals the full reference, previous hash, entry hash, and any workflow
+  payload rather than only shortened display values.
 - Non-compliance personas cannot open the live audit endpoints.
 
 ## 15. Verify directly in Supabase
@@ -468,8 +475,8 @@ Run `scripts/check_demo.ps1`. Confirm the frontend URL matches the configured AP
 
 ### Upload returns a missing-table error
 
-Apply `202608140001_structured_ingestion.sql` and
-`202608140002_conversation_context.sql` using `npx.cmd supabase db push`, then rerun
+Apply all pending migrations through `202608150001_query_recommendation_lineage.sql` using
+`npx.cmd supabase db push`, then rerun
 `scripts.check_supabase`.
 
 ### Gmail finds no messages

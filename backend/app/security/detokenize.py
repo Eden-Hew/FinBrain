@@ -1,9 +1,12 @@
 import hashlib
+import hmac
 import re
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import TokenVaultEntry
 from app.security.crypto import decrypt_value, derive_key
 from app.services.audit import write_audit_entry
@@ -22,8 +25,27 @@ BAND_LABELS = [
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class DetokenizationTrace:
+    text: str
+    restored_tokens: int
+    withheld_tokens: int
+    decisions: tuple["DisclosureDecision", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DisclosureDecision:
+    token: str
+    entity_type: str
+    authorized: bool
+
+
 def hash_query(question: str) -> str:
-    return hashlib.sha256(question.encode()).hexdigest()[:16]
+    return hmac.new(
+        get_settings().token_root_secret.encode(),
+        question.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:16]
 
 
 def _band_label(token: str) -> str:
@@ -34,8 +56,13 @@ def _band_label(token: str) -> str:
     return BAND_LABELS[index] if index < len(BAND_LABELS) else BAND_LABELS[-1]
 
 
-def detokenize_response(db: Session, text: str, role: str, query_hash: str) -> str:
+def detokenize_response_with_trace(
+    db: Session, text: str, role: str, query_hash: str
+) -> DetokenizationTrace:
     result = text
+    restored = 0
+    withheld = 0
+    decisions: list[DisclosureDecision] = []
     for token in sorted(set(TOKEN_PATTERN.findall(text)), key=len, reverse=True):
         entry = db.scalar(select(TokenVaultEntry).where(TokenVaultEntry.token == token))
         if entry is None:
@@ -46,13 +73,31 @@ def detokenize_response(db: Session, text: str, role: str, query_hash: str) -> s
         if authorized:
             key = derive_key(info=f"vault:{token}".encode())
             replacement = decrypt_value(entry.encrypted_value, entry.nonce, key)
+            restored += 1
         else:
             replacement = (
                 _band_label(token)
                 if entry.entity_type == "AMOUNT"
                 else f"[{entry.entity_type.lower()} — restricted]"
             )
+            withheld += 1
         result = result.replace(token, replacement)
+        decisions.append(
+            DisclosureDecision(
+                token=token,
+                entity_type=entry.entity_type,
+                authorized=authorized,
+            )
+        )
         write_audit_entry(db, role, token, authorized, query_hash)
     db.commit()
-    return result
+    return DetokenizationTrace(
+        text=result,
+        restored_tokens=restored,
+        withheld_tokens=withheld,
+        decisions=tuple(decisions),
+    )
+
+
+def detokenize_response(db: Session, text: str, role: str, query_hash: str) -> str:
+    return detokenize_response_with_trace(db, text, role, query_hash).text

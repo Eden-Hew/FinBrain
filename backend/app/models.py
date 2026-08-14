@@ -247,6 +247,7 @@ class ConversationTurn(Base):
     user_role: Mapped[str] = mapped_column(String, nullable=False)
     protected_question: Mapped[str] = mapped_column(Text, nullable=False)
     protected_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    protected_brief: Mapped[dict[str, Any] | None] = mapped_column(ObjectType())
     query_intent: Mapped[str] = mapped_column(String, nullable=False)
     source_systems: Mapped[list[str]] = mapped_column(RoleListType(), nullable=False)
     reasoning_mode: Mapped[str] = mapped_column(String, nullable=False)
@@ -295,6 +296,14 @@ class ProcessRecommendation(Base):
     record_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source_systems: Mapped[list[str]] = mapped_column(RoleListType(), nullable=False)
     enrichment_mode: Mapped[str] = mapped_column(String, nullable=False)
+    origin_type: Mapped[str] = mapped_column(
+        String, default="process_analysis", nullable=False
+    )
+    origin_turn_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("conversation_turns.id", ondelete="SET NULL"),
+    )
+    origin_query_hash: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

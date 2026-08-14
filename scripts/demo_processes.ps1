@@ -2,7 +2,15 @@ function Get-DemoValidatedProcess {
   param([Parameter(Mandatory)]$Entry)
   $process = Get-Process -Id ([int]$Entry.pid) -ErrorAction SilentlyContinue
   if (-not $process) { return $null }
-  $expectedStart = [datetime]::Parse([string]$Entry.started)
+  $expectedStart = if ($Entry.started -is [datetime]) {
+    [datetime]$Entry.started
+  } else {
+    [datetime]::Parse(
+      [string]$Entry.started,
+      [System.Globalization.CultureInfo]::InvariantCulture,
+      [System.Globalization.DateTimeStyles]::RoundtripKind
+    )
+  }
   if ([math]::Abs(($process.StartTime - $expectedStart).TotalSeconds) -gt 2) {
     Write-Warning "Skipped PID $($Entry.pid): its start time no longer matches."
     return $null
@@ -20,7 +28,12 @@ function Get-DemoValidatedProcess {
 
 function Get-DemoDescendants {
   param([Parameter(Mandatory)][int]$RootPid)
-  $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+  try {
+    $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+  } catch {
+    Write-Warning "Process ancestry is unavailable; stopping only the validated tracked process."
+    return @()
+  }
   $children = @{}
   foreach ($item in $all) {
     $parent = [int]$item.ParentProcessId

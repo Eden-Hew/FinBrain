@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import (
+    ConversationTurn,
+    ConversationTurnCitation,
     ProcessRecommendation,
     RecommendationDecision,
     RecommendationEvidence,
@@ -18,6 +20,7 @@ from app.models import (
     TokenVaultEntry,
 )
 from app.schemas import (
+    CustomerIntelligenceBrief,
     ProcessAnalysisRequest,
     RecommendationDraft,
     RecommendationEvidenceResponse,
@@ -25,6 +28,7 @@ from app.schemas import (
     UserRole,
 )
 from app.security.detect import contains_known_pii, detect_spans
+from app.security.detokenize import hash_query
 from app.security.tokenize import tokenize_record
 from app.services.morpheus import morpheus_chat
 from app.services.reasoning import TOKEN_PATTERN, unknown_tokens
@@ -286,6 +290,9 @@ def recommendation_response(
         record_count=recommendation.record_count,
         source_systems=recommendation.source_systems,
         enrichment_mode=recommendation.enrichment_mode,
+        origin_type=recommendation.origin_type,
+        origin_turn_id=recommendation.origin_turn_id,
+        origin_query_hash=recommendation.origin_query_hash,
         evidence=[
             RecommendationEvidenceResponse(
                 citation_id=f"EVIDENCE-{index}",
@@ -308,6 +315,131 @@ def list_recommendations(db: Session) -> list[RecommendationResponse]:
         select(ProcessRecommendation).order_by(ProcessRecommendation.created_at.desc())
     ).all()
     return [recommendation_response(db, row) for row in rows]
+
+
+def create_recommendation_from_turn(
+    db: Session,
+    turn_id: int,
+    *,
+    role: UserRole,
+    action_id: str,
+    suggested_owner: str | None = None,
+) -> RecommendationResponse:
+    if role not in {UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR}:
+        raise PermissionError("Finance or owner/director role required")
+    turn = db.get(ConversationTurn, turn_id)
+    if turn is None:
+        raise LookupError("Query turn not found")
+    if turn.protected_brief is None:
+        raise ValueError("The query turn has no persisted intelligence brief")
+    brief = CustomerIntelligenceBrief.model_validate(turn.protected_brief)
+    action = brief.recommended_action
+    verification_claim = None
+    if action_id.startswith("verification-gap:"):
+        claim_id = action_id.removeprefix("verification-gap:")
+        verification_claim = next(
+            (claim for claim in brief.missing_information if claim.id == claim_id),
+            None,
+        )
+        if verification_claim is None:
+            raise ValueError("Unknown verification gap")
+        action_citation_ids = verification_claim.citation_ids
+        origin_type = "verification_gap"
+        action_title = "Verify missing information before approval"
+        action_rationale = verification_claim.statement
+        action_owner = "Finance Operations"
+        action_priority = "medium"
+        success_metric = "Close or explicitly document the cited verification gap before approval."
+    else:
+        if action is None or action.id != action_id:
+            raise ValueError("Unknown intelligence action")
+        action_citation_ids = action.citation_ids
+        origin_type = "query_brief"
+        action_title = action.title
+        action_rationale = action.rationale
+        action_owner = action.suggested_owner
+        action_priority = action.priority.value
+        success_metric = "Reduce unresolved approval delays by 50% within 30 days."
+    if suggested_owner and contains_known_pii(suggested_owner):
+        raise ValueError("Suggested owner contains unsupported sensitive data")
+    citation_rows = db.execute(
+        select(ConversationTurnCitation, TokenizedContent)
+        .join(
+            TokenizedContent,
+            ConversationTurnCitation.tokenized_content_id == TokenizedContent.id,
+        )
+        .where(ConversationTurnCitation.turn_id == turn.id)
+        .order_by(ConversationTurnCitation.ordinal)
+    ).all()
+    rows_by_citation = {
+        f"SOURCE-{mapping.ordinal}": content for mapping, content in citation_rows
+    }
+    unknown_citations = set(action_citation_ids) - set(rows_by_citation)
+    if unknown_citations:
+        raise ValueError("The intelligence action cites evidence outside the query turn")
+    rows = [rows_by_citation[citation_id] for citation_id in action_citation_ids]
+    if not rows:
+        raise ValueError("The query turn has no cited evidence")
+    category = "verification_gap" if verification_claim else "query_followup"
+    fingerprint = _fingerprint(f"{category}:{turn.id}:{action_id}", rows)
+    existing = db.scalar(
+        select(ProcessRecommendation).where(ProcessRecommendation.fingerprint == fingerprint)
+    )
+    if existing:
+        return recommendation_response(db, existing)
+    now = datetime.now(UTC)
+    recommendation = ProcessRecommendation(
+        fingerprint=fingerprint,
+        title=action_title,
+        problem_statement=brief.executive_summary[:2_000],
+        recommendation=action_rationale,
+        expected_benefit=(
+            "Reduce repeated follow-up and make responsibility visible before customer issues age."
+        ),
+        suggested_owner=suggested_owner or action_owner,
+        success_metric=success_metric,
+        category=category,
+        priority=action_priority,
+        confidence=min(0.95, 0.6 + len(rows) * 0.05),
+        status="proposed",
+        analysis_window_start=turn.created_at,
+        analysis_window_end=now,
+        record_count=len(rows),
+        source_systems=sorted({row.source_system for row in rows}),
+        enrichment_mode=turn.reasoning_mode,
+        origin_type=origin_type,
+        origin_turn_id=turn.id,
+        origin_query_hash=hash_query(turn.protected_question),
+    )
+    db.add(recommendation)
+    db.flush()
+    for row in rows:
+        db.add(
+            RecommendationEvidence(
+                recommendation_id=recommendation.id,
+                tokenized_content_id=row.id,
+                evidence_excerpt=(row.summary or row.content_text)[:1_000],
+                relevance_reason="Cited by the originating customer-intelligence answer.",
+            )
+        )
+    write_workflow_event(
+        db,
+        event_type="recommendation_created_from_query",
+        actor_role=role.value,
+        actor_ref=_actor_ref(role),
+        resource_type="process_recommendation",
+        resource_id=str(recommendation.id),
+        event_payload={
+            "turn_id": turn.id,
+            "origin_type": recommendation.origin_type,
+            "origin_query_hash": recommendation.origin_query_hash,
+            "evidence_count": len(rows),
+            "source_systems": recommendation.source_systems,
+            "status": recommendation.status,
+        },
+    )
+    db.commit()
+    return recommendation_response(db, recommendation)
 
 
 def decide_recommendation(

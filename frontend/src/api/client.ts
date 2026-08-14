@@ -9,11 +9,14 @@ export interface QueryResponse {
   model_answer: string;
   model_question: string;
   sources_used: number;
-    mode: "morpheus" | "gemini" | "offline-demo" | "structured-filter";
+  mode: "morpheus" | "gemini" | "offline-demo" | "structured-filter";
   insufficient_evidence: boolean;
   citations: QueryCitation[];
   conversation_id: string | null;
   turn_id: number | null;
+  protected_intelligence_brief: CustomerIntelligenceBrief | null;
+  intelligence_brief: CustomerIntelligenceBrief | null;
+  exposure_receipt: ExposureReceipt | null;
 }
 
 export interface QueryCitation {
@@ -24,6 +27,84 @@ export interface QueryCitation {
   occurred_at: string | null;
   protected_excerpt: string;
   similarity: number;
+  freshness: "current" | "aging" | "stale" | "undated";
+  age_days: number | null;
+  relation: "supporting" | "contradicting" | "stale" | "missing";
+}
+
+export interface IntelligenceClaim {
+  id: string;
+  statement: string;
+  citation_ids: string[];
+  relation: "supporting" | "contradicting" | "stale" | "missing";
+}
+
+export interface IntelligenceTimelineEvent {
+  occurred_at: string | null;
+  label: string;
+  detail: string;
+  citation_ids: string[];
+}
+
+export interface IntelligenceAction {
+  id: string;
+  title: string;
+  rationale: string;
+  suggested_owner: string;
+  priority: "low" | "medium" | "high";
+  citation_ids: string[];
+}
+
+export interface CustomerIntelligenceBrief {
+  subject_label: string;
+  status: "healthy" | "needs_attention" | "at_risk" | "insufficient_evidence";
+  executive_summary: string;
+  claims: IntelligenceClaim[];
+  timeline: IntelligenceTimelineEvent[];
+  open_commitments: IntelligenceClaim[];
+  risks: IntelligenceClaim[];
+  missing_information: IntelligenceClaim[];
+  recommended_action: IntelligenceAction | null;
+}
+
+export interface ExposureReceipt {
+  request_id: string;
+  query_hash: string;
+  reasoning_mode: string;
+  reasoning_model: string | null;
+  external_ai_used: boolean;
+  privacy_preflight_passed: boolean;
+  recognized_sensitive_fields: number;
+  protected_question_tokens: number;
+  protected_context_tokens: number;
+  restored_tokens: number;
+  withheld_tokens: number;
+  active_role: Role;
+  sources_supplied: number;
+}
+
+export interface CitationDetail {
+  citation: QueryCitation;
+  authorized_excerpt: string;
+  restored_tokens: number;
+  withheld_tokens: number;
+  access_explanation: string;
+  query_hash: string;
+}
+
+export interface RoleComparisonResult {
+  role: Role;
+  answer: string;
+  restored_tokens: number;
+  withheld_tokens: number;
+  policy_explanations: string[];
+}
+
+export interface RoleComparisonResponse {
+  turn_id: number;
+  query_hash: string;
+  protected_answer: string;
+  results: RoleComparisonResult[];
 }
 
 export interface AuditEntry {
@@ -32,6 +113,8 @@ export interface AuditEntry {
   token: string;
   authorized: boolean;
   query_hash: string;
+  previous_hash: string;
+  entry_hash: string;
   ts: string;
 }
 
@@ -178,6 +261,9 @@ export interface ProcessRecommendation {
   record_count: number;
   source_systems: string[];
   enrichment_mode: string;
+  origin_type: "process_analysis" | "query_brief" | "verification_gap";
+  origin_turn_id: number | null;
+  origin_query_hash: string | null;
   evidence: RecommendationEvidence[];
   created_at: string;
   updated_at: string;
@@ -191,6 +277,8 @@ export interface WorkflowAuditEntry {
   resource_type: string;
   resource_id: string;
   event_payload: Record<string, unknown>;
+  previous_hash: string;
+  entry_hash: string;
   created_at: string;
 }
 
@@ -219,6 +307,50 @@ export async function askQuestion(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, role, conversation_id: conversationId || null }),
+    }),
+  );
+}
+
+export async function fetchCitationDetail(
+  turnId: number,
+  citationId: string,
+  role: Role,
+): Promise<CitationDetail> {
+  return parse<CitationDetail>(
+    await fetch(
+      `${BASE_URL}/query-turns/${turnId}/citations/${encodeURIComponent(citationId)}?role=${role}`,
+    ),
+  );
+}
+
+export async function compareTurnRoles(
+  turnId: number,
+  requestingRole: Role,
+  comparisonRoles: Role[],
+): Promise<RoleComparisonResponse> {
+  return parse<RoleComparisonResponse>(
+    await fetch(`${BASE_URL}/query-turns/${turnId}/compare-roles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requesting_role: requestingRole,
+        comparison_roles: comparisonRoles,
+      }),
+    }),
+  );
+}
+
+export async function createRecommendationFromTurn(
+  turnId: number,
+  role: Role,
+  actionId = "recommended-action",
+  suggestedOwner?: string,
+): Promise<ProcessRecommendation> {
+  return parse<ProcessRecommendation>(
+    await fetch(`${BASE_URL}/query-turns/${turnId}/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, action_id: actionId, suggested_owner: suggestedOwner }),
     }),
   );
 }

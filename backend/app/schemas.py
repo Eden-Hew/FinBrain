@@ -171,12 +171,68 @@ class QueryCitation(BaseModel):
     occurred_at: datetime | None
     protected_excerpt: str
     similarity: float
+    freshness: str = "undated"
+    age_days: int | None = None
+    relation: str = "supporting"
 
 
 class CitedAnswer(BaseModel):
     answer: str = Field(min_length=1, max_length=8_000)
     citations: list[str] = Field(default_factory=list)
     insufficient_evidence: bool = False
+
+
+class IntelligenceClaim(BaseModel):
+    id: str = Field(pattern=r"^claim-[1-9][0-9]*$")
+    statement: str = Field(min_length=1, max_length=1_000)
+    citation_ids: list[str] = Field(default_factory=list, max_length=10)
+    relation: str = Field(pattern=r"^(supporting|contradicting|stale|missing)$")
+
+
+class IntelligenceTimelineEvent(BaseModel):
+    occurred_at: datetime | None
+    label: str = Field(min_length=1, max_length=120)
+    detail: str = Field(min_length=1, max_length=1_000)
+    citation_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+class IntelligenceAction(BaseModel):
+    id: str = "recommended-action"
+    title: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=1_000)
+    suggested_owner: str = Field(min_length=1, max_length=100)
+    priority: SummaryPriority
+    citation_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class CustomerIntelligenceBrief(BaseModel):
+    subject_label: str = Field(min_length=1, max_length=120)
+    status: str = Field(
+        pattern=r"^(healthy|needs_attention|at_risk|insufficient_evidence)$"
+    )
+    executive_summary: str = Field(min_length=1, max_length=8_000)
+    claims: list[IntelligenceClaim] = Field(default_factory=list, max_length=5)
+    timeline: list[IntelligenceTimelineEvent] = Field(default_factory=list, max_length=5)
+    open_commitments: list[IntelligenceClaim] = Field(default_factory=list, max_length=3)
+    risks: list[IntelligenceClaim] = Field(default_factory=list, max_length=3)
+    missing_information: list[IntelligenceClaim] = Field(default_factory=list, max_length=3)
+    recommended_action: IntelligenceAction | None = None
+
+
+class ExposureReceipt(BaseModel):
+    request_id: str
+    query_hash: str
+    reasoning_mode: str
+    reasoning_model: str | None
+    external_ai_used: bool
+    privacy_preflight_passed: bool
+    recognized_sensitive_fields: int
+    protected_question_tokens: int
+    protected_context_tokens: int
+    restored_tokens: int
+    withheld_tokens: int
+    active_role: UserRole
+    sources_supplied: int
 
 
 class QueryResponse(BaseModel):
@@ -189,6 +245,38 @@ class QueryResponse(BaseModel):
     citations: list[QueryCitation] = Field(default_factory=list)
     conversation_id: str | None = None
     turn_id: int | None = None
+    protected_intelligence_brief: CustomerIntelligenceBrief | None = None
+    intelligence_brief: CustomerIntelligenceBrief | None = None
+    exposure_receipt: ExposureReceipt | None = None
+
+
+class CitationDetailResponse(BaseModel):
+    citation: QueryCitation
+    authorized_excerpt: str
+    restored_tokens: int
+    withheld_tokens: int
+    access_explanation: str
+    query_hash: str
+
+
+class RoleComparisonRequest(BaseModel):
+    requesting_role: UserRole
+    comparison_roles: list[UserRole] = Field(min_length=1, max_length=3)
+
+
+class RoleComparisonResult(BaseModel):
+    role: UserRole
+    answer: str
+    restored_tokens: int
+    withheld_tokens: int
+    policy_explanations: list[str] = Field(default_factory=list)
+
+
+class RoleComparisonResponse(BaseModel):
+    turn_id: int
+    query_hash: str
+    protected_answer: str
+    results: list[RoleComparisonResult]
 
 
 class ConversationCreateResponse(BaseModel):
@@ -203,6 +291,7 @@ class ConversationTurnResponse(BaseModel):
     user_role: UserRole
     protected_question: str
     protected_answer: str
+    protected_brief: CustomerIntelligenceBrief | None = None
     query_intent: str
     source_systems: list[str]
     reasoning_mode: str
@@ -229,6 +318,8 @@ class AuditEntryResponse(BaseModel):
     token: str
     authorized: bool
     query_hash: str
+    previous_hash: str
+    entry_hash: str
     ts: datetime
 
 
@@ -343,6 +434,9 @@ class RecommendationResponse(BaseModel):
     record_count: int
     source_systems: list[str]
     enrichment_mode: str
+    origin_type: str
+    origin_turn_id: int | None
+    origin_query_hash: str | None
     evidence: list[RecommendationEvidenceResponse]
     created_at: datetime
     updated_at: datetime
@@ -353,6 +447,12 @@ class RecommendationDecisionRequest(BaseModel):
     comment: str = Field(default="", max_length=2_000)
 
 
+class QueryRecommendationRequest(BaseModel):
+    role: UserRole
+    action_id: str = Field(default="recommended-action", max_length=80)
+    suggested_owner: str | None = Field(default=None, min_length=1, max_length=100)
+
+
 class WorkflowAuditResponse(BaseModel):
     id: int
     event_type: str
@@ -361,6 +461,8 @@ class WorkflowAuditResponse(BaseModel):
     resource_type: str
     resource_id: str
     event_payload: dict
+    previous_hash: str
+    entry_hash: str
     created_at: datetime
 
 

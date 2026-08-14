@@ -3,7 +3,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 export type Lang = "en" | "ms" | "zh";
 
 const FB_I18N: Record<string, Record<Lang, string>> = {
-  "nav.aiAgents": { en: "AI Agents", ms: "Ejen AI", zh: "AI 代理" },
+  "nav.aiAgents": { en: "Customer Intelligence", ms: "Risikan Pelanggan", zh: "客户情报" },
   "nav.einvoicing": { en: "e-Invoicing", ms: "e-Invois", zh: "电子发票" },
   "nav.financeDashboard": { en: "Finance Dashboard", ms: "Papan Pemuka Kewangan", zh: "财务仪表板" },
   "nav.audit": { en: "Audit", ms: "Audit", zh: "审计" },
@@ -37,9 +37,9 @@ const FB_I18N: Record<string, Record<Lang, string>> = {
     zh: "所有由 AI 代理代您准备的事项——在您在此处操作之前，绝不会提交、发送或采用。",
   },
   "agents.desc": {
-    en: "One assistant for invoicing, spreadsheets, files, sales, and compliance — just ask.",
-    ms: "Satu pembantu untuk invois, hamparan, fail, jualan dan pematuhan — tanya sahaja.",
-    zh: "一个助手，涵盖开票、表格、文件、销售与合规——尽管开口问。",
+    en: "Evidence-backed answers across protected company records, with permission-aware actions.",
+    ms: "Jawapan berasaskan bukti merentas rekod syarikat terlindung, dengan tindakan mengikut kebenaran.",
+    zh: "跨受保护企业记录的循证答案，并提供权限感知操作。",
   },
   "agents.viewingAs": { en: "Viewing as", ms: "Melihat sebagai", zh: "查看身份：" },
   "nav.ingestion": { en: "Ingestion", ms: "Pengambilan", zh: "数据接入" },

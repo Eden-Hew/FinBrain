@@ -4,12 +4,15 @@ import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
 import { AppNav } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
+import { IntelligenceExperience, StandaloneExposureReceipt } from "../components/intelligence/IntelligenceExperience";
 import { resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
 import {
   askQuestion,
   commitUpload,
   previewUpload,
   type QueryCitation,
+  type CustomerIntelligenceBrief,
+  type ExposureReceipt,
   type UploadCommitResponse,
   type UploadPreviewResponse,
 } from "../api/client";
@@ -25,6 +28,11 @@ interface Message {
   showProtected?: boolean;
   mode?: string;
   rawQuestion?: string;
+  modelQuestion?: string;
+  turnId?: number;
+  brief?: CustomerIntelligenceBrief;
+  exposure?: ExposureReceipt;
+  isFallback?: boolean;
 }
 
 interface ContextChip {
@@ -35,16 +43,21 @@ interface ContextChip {
 type UploadState = "idle" | "previewing" | "protected" | "committing" | "complete" | "failed";
 
 const SUGGESTIONS = [
-  "What e-invoices need my approval?",
-  "Which accounts are overdue?",
-  "Show me open process recommendations",
-  "What's our cash flow looking like?",
+  "Why are payment approvals being delayed, and what should we do next?",
+  "Summarize all approval-delay records and cite every source.",
+  "Which records have no assigned owner?",
+  "How many high-priority approval delays came from email this week?",
 ];
 
 let msgId = 1;
 
 export default function Agents() {
-  const { askRole, sampleBanner, dismissSampleBanner } = useAppState();
+  const {
+    askRole,
+    sampleBanner,
+    dismissSampleBanner,
+    openApprovalRecommendation,
+  } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
     { id: msgId++, from: "agent", text: "Hi, I’m FINBRAIN. I can handle invoicing, spreadsheets, files, sales follow-ups, compliance checks, and more — ask me anything, or try one of the suggestions above." },
@@ -94,6 +107,11 @@ export default function Agents() {
       let citations: QueryCitation[] = [];
       let mode = "scripted-demo";
       let embed = fallback.embed;
+      let brief: CustomerIntelligenceBrief | undefined;
+      let exposure: ExposureReceipt | undefined;
+      let modelQuestion: string | undefined;
+      let turnId: number | undefined;
+      let isFallback = false;
       try {
         const response = await askQuestion(trimmed, askRole, conversationId);
         setConversationId(response.conversation_id);
@@ -102,9 +120,14 @@ export default function Agents() {
         protectedText = response.model_answer;
         citations = response.citations;
         mode = response.mode;
+        brief = response.intelligence_brief ?? undefined;
+        exposure = response.exposure_receipt ?? undefined;
+        modelQuestion = response.model_question;
+        turnId = response.turn_id ?? undefined;
         embed = undefined;
       } catch {
         // Preserve the visual demonstration when the local backend is unavailable.
+        isFallback = true;
       }
 
       const webNote = webSearchOn
@@ -121,6 +144,11 @@ export default function Agents() {
               mode,
               embed,
               rawQuestion: trimmed,
+              modelQuestion,
+              turnId,
+              brief,
+              exposure,
+              isFallback,
             }
           : message
       )));
@@ -236,27 +264,41 @@ export default function Agents() {
         <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
             {messages.map((msg) => (
-              <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "")}>
+              <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "")}>
                 {msg.thinking ? (
-                  <span className="fb-thinking"><span></span><span></span><span></span></span>
+                  <div className="fb-intel-building" role="status">
+                    <span className="fb-thinking"><span></span><span></span><span></span></span>
+                    <span>Building protected brief…</span>
+                  </div>
                 ) : (
                   <>
-                    <span style={{ whiteSpace: "pre-wrap" }}>
-                      {msg.showProtected && msg.protectedText ? msg.protectedText : msg.text}
-                    </span>
-                    {msg.from === "agent" && msg.protectedText && (
+                    {msg.isFallback && (
+                      <div className="fb-intel-fallback" role="status">Sample response — the live backend is unavailable.</div>
+                    )}
+                    {!msg.brief && (
+                      <span style={{ whiteSpace: "pre-wrap" }}>
+                        {msg.showProtected && msg.protectedText ? msg.protectedText : msg.text}
+                      </span>
+                    )}
+                    {msg.brief && msg.turnId && msg.rawQuestion && msg.modelQuestion && msg.protectedText && (
+                      <IntelligenceExperience
+                        brief={msg.brief}
+                        citations={msg.citations ?? []}
+                        exposure={msg.exposure ?? null}
+                        turnId={msg.turnId}
+                        rawQuestion={msg.rawQuestion}
+                        modelQuestion={msg.modelQuestion}
+                        protectedAnswer={msg.protectedText}
+                        authorizedAnswer={msg.text}
+                        role={askRole}
+                        onOpenApprovals={openApprovalRecommendation}
+                      />
+                    )}
+                    {msg.from === "agent" && msg.protectedText && !msg.brief && (
                       <div style={{ display: "flex", gap: ".5rem", marginTop: ".7rem", flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className="fb-btn fb-btn-outline"
-                          onClick={() => setMessages((messages) => messages.map((message) => (
-                            message.id === msg.id
-                              ? { ...message, showProtected: !message.showProtected }
-                              : message
-                          )))}
-                        >
-                          {msg.showProtected ? "Show authorized answer" : "Show model view"}
-                        </button>
+                        {msg.exposure && msg.rawQuestion && msg.modelQuestion && (
+                          <StandaloneExposureReceipt exposure={msg.exposure} rawQuestion={msg.rawQuestion} modelQuestion={msg.modelQuestion} protectedAnswer={msg.protectedText} authorizedAnswer={msg.text} />
+                        )}
                         <span className="fb-fine" style={{ marginTop: ".45rem" }}>
                           {msg.mode} · {msg.citations?.length ?? 0} cited sources
                         </span>
@@ -271,7 +313,7 @@ export default function Agents() {
                         )}
                       </div>
                     )}
-                    {!!msg.citations?.length && (
+                    {!!msg.citations?.length && !msg.brief && (
                       <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
                         {msg.citations.map((citation) => (
                           <div className="fb-rec-evidence" key={citation.citation_id}>

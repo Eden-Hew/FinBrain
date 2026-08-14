@@ -11,6 +11,7 @@ from app.routes import (
     ingestion,
     integrations,
     query,
+    query_artifacts,
     recommendations,
     uploads,
 )
@@ -39,6 +40,7 @@ app.add_middleware(
     ],
 )
 app.include_router(query.router)
+app.include_router(query_artifacts.router)
 app.include_router(audit_log.router)
 app.include_router(ingestion.router)
 app.include_router(integrations.router)

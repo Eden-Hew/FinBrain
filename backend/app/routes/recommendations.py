@@ -4,17 +4,44 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.schemas import (
     ProcessAnalysisRequest,
+    QueryRecommendationRequest,
     RecommendationDecisionRequest,
     RecommendationResponse,
     UserRole,
 )
 from app.services.recommendations import (
     analyze_processes,
+    create_recommendation_from_turn,
     decide_recommendation,
     list_recommendations,
 )
 
 router = APIRouter(tags=["process-optimization"])
+
+
+@router.post(
+    "/query-turns/{turn_id}/recommendations",
+    response_model=RecommendationResponse,
+)
+def create_from_query(
+    turn_id: int,
+    payload: QueryRecommendationRequest,
+    db: Session = Depends(get_db),
+) -> RecommendationResponse:
+    try:
+        return create_recommendation_from_turn(
+            db,
+            turn_id,
+            role=payload.role,
+            action_id=payload.action_id,
+            suggested_owner=payload.suggested_owner,
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.post("/process-analysis", response_model=RecommendationResponse)
