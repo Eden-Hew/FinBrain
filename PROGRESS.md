@@ -1,222 +1,246 @@
 # FinBrain OS — Project Progress
 
-**Last updated:** 13 August 2026
-**Current phase:** Cited cross-source intelligence and process-optimization vertical slice
+Last updated: 14 August 2026
 
-## Summary
+## Current phase
 
-FinBrain OS has progressed from an implementation plan to a runnable privacy-first customer
-intelligence prototype. The system ingests sample business records, detects and encrypts sensitive
-values, stores only tokenized content for retrieval, sends sanitized context to Morpheus and Gemini,
-restores values according to the selected role, and records disclosure and workflow decisions in
-separate tamper-evident audit chains.
+The main hackathon implementation is complete. The project is now in final demonstration rehearsal and gap-closing mode.
 
-Both the backend and frontend are implemented and verified locally. Gemini is configurable through
-the ignored `backend/.env` file, while an explicit offline demonstration mode remains available.
-The remote Supabase project is linked through the CLI, migrated, verified, and seeded.
+FinBrain currently supports this end-to-end path:
 
-A private Telegram capture adapter now runs locally through long polling. It authenticates numeric
-Telegram user IDs, creates expiring in-memory drafts, displays protected previews, normalizes text
-and supported documents into the canonical ingestion contract, and persists protected records
-before asynchronous Morpheus/Gemini enrichment.
-
-A read-only IMAP adapter now selects new unread email and normalizes messages and supported
-attachments into that same boundary.
-Structured retrieval preserves protected citations across Telegram and email, while recurring
-action-required patterns can be converted into persistent evidence-backed recommendations. The
-live approval and compliance audit screens now operate on database-backed recommendation and
-workflow-audit records rather than only sample state.
-
-## Completed
-
-### Backend
-
-- FastAPI application with health, query, proof-of-concept ingestion, and compliance audit-log
-  endpoints.
-- Portable SQLAlchemy data model supporting SQLite locally and Supabase Postgres remotely.
-- Reset-safe twelve-record seed ingestion pipeline spanning six source systems and never persisting
-  raw inbound text.
-- Canonical source-neutral ingestion contract shared by seed data and future connectors.
-- Protected metadata tokenization, keyed content fingerprints, automatic change detection, and
-  idempotent delivery handling.
-- Sanitized-only Gemini structured summarization with exact-token and residual-PII validation.
-- Retryable `protected`, `ready`, and `failed_enrichment` states that retain no raw source payload.
-- Deterministic tokenization using tenant-secret HMAC tokens.
-- Regex detection for Malaysian NRICs, phone numbers, email addresses, monetary values, and bank
-  account-like values.
-- GLiNER integration for context-dependent entities, running on the RTX 5060 through the global
-  CUDA 12.8 PyTorch build without installing a second Torch distribution.
-- PyTorch is an explicit locked project dependency for standard installations; the RTX workstation
-  alone skips its managed installation and inherits the verified global CUDA build.
-- Portable GLiNER device configuration defaults to CPU, with explicit `cuda` and automatic
-  selection available for accelerated deployments.
-- AES-256-GCM token vault with HKDF-derived encryption keys.
-- Reversible band-aware amount tokens that reveal only magnitude to external models, preserve exact
-  encrypted MYR values for authorized roles, and audit both authorized and denied disclosures.
-- Role-based detokenization for general employee, finance/operations, owner/director, and compliance
-  roles.
-- Query-side tokenization so sensitive values typed by a user are also hidden before external model
-  processing.
-- Gemini reasoning and embedding integration through the official `google-genai` SDK.
-- Configurable reasoning model, currently defaulting to `gemini-3.6-flash`.
-- Text retrieval embeddings using `gemini-embedding-001` at 768 dimensions.
-- Deterministic local embedding and reasoning fallback for offline demonstrations.
-- Unknown model-token validation before detokenization.
-- Hash-chained audit log with verification of the complete event chain.
-- Gemini connectivity checker at `backend/scripts/check_gemini.py`.
-- Native Postgres `vector(768)` storage and SQL cosine-distance retrieval.
-- psycopg 3 support for direct, Supavisor session, and transaction-pooler connections.
-- Supabase database connectivity and schema checker at `backend/scripts/check_supabase.py`.
-- Live Supabase Postgres 17.6 deployment with pgvector 0.8.2.
-- Local Telegram Bot API long-polling worker with private-chat and numeric-ID authorization.
-- Protected preview with signed confirm/change/cancel callbacks and ten-minute in-memory drafts.
-- Safe TXT, Markdown, CSV, EML, PDF, and DOCX extraction with file, page, and expansion limits.
-- Privacy-safe Telegram update receipts and integration heartbeat tables.
-- Split protection and enrichment stages so protected persistence completes before external AI
-  calls.
-- Structured cross-source retrieval hits with source provenance, similarity, timestamps, and
-  validated `SOURCE-n` citations.
-- SQL-first query planning that resolves exact listings and counts without an LLM, applies trusted
-  source-system filters, and selects every eligible ready record for analytical questions.
-- Uncapped protected analysis with 20-record batching for larger result sets and end-to-end
-  citation preservation; top-k vector truncation is disabled in the proof-of-concept query route.
-- GLiNER output validation that rejects bare channel words such as `email` and known organizational
-  roles such as `named approver` when incorrectly labeled as sensitive values.
-- Read-only incremental IMAP ingestion with HMAC message receipts, mailbox cursors, safe attachment
-  extraction, and optional polling.
-- Recurring-problem analysis over protected structured summaries with bounded evidence selection.
-- Persistent recommendations, protected evidence, owner decisions, and a separate hash-chained
-  workflow audit log.
-
-### Frontend
-
-- React, TypeScript, and Vite application.
-- Responsive FinBrain interface with customer-intelligence positioning.
-- Role selector demonstrating permission-dependent disclosure.
-- Chat interface with loading, errors, prompts, and response metadata.
-- User/Gemini comparison toggle:
-  - **User view** shows the original question and role-authorized response.
-  - **Gemini view** shows the sanitized question and exact tokenized model response.
-- Compliance-only audit viewer with chain-integrity status.
-- Ingestion workspace for manual text, source provenance, occurrence time, safe metadata, and
-  refresh control.
-- Side-by-side user-submitted versus protected downstream content, with enrichment status and
-  protected summary output.
-- Explicit demo-role notice documenting that the selected role is trusted until authentication is
-  implemented.
-- Production frontend build configuration and ESLint checks.
-- Live Telegram integration health and protected recent-record history in the ingestion workspace.
-- Live email connector health, manual synchronization, and protected recent-record history.
-- Cited backend-first chat answers with authorized/protected view switching.
-- Live recommendation analysis, evidence inspection, approval, rejection, and implementation.
-- Live compliance verification of both disclosure and workflow audit chains.
-
-### Infrastructure and documentation
-
-- Deployable timestamped Supabase migration with pgvector and HNSW cosine indexing.
-- Unified-ingestion Supabase migration with provenance, JSONB metadata and summaries, processing
-  status, nullable retry-safe embeddings, and operational indexes.
-- Track 2 migration for email cursors/receipts, recommendations, evidence, decisions, and workflow
-  audit events with forced RLS and revoked Data API grants.
-- Forward-only connector hardening migration enabling forced RLS and revoking Data API access for
-  the Telegram receipt and heartbeat tables introduced by the earlier connector migration.
-- Supabase CLI project configuration with synchronized local and remote migration history.
-- Default-deny Data API grants with forced RLS on business, vault, and audit tables.
-- Role-aware vault and compliance audit policy templates using verified `user_role` JWT claims.
-- Guardrails for the future detokenization Edge Function.
-- Locked Python dependencies in `backend/uv.lock`.
-- Locked frontend dependencies in `frontend/package-lock.json`.
-- Root setup, launch, configuration, verification, and Gemini instructions in `README.md`.
-- Local secrets, databases, environments, dependencies, caches, and builds excluded through
-  `.gitignore`.
-- One-command local demo run, stop, and status scripts.
-
-## Verification status
-
-The latest local checks completed successfully:
-
-- Backend Ruff lint: passed.
-- Backend test suite: **54 tests passed**, including protected-boundary privacy, metadata
-  tokenization, idempotency, automatic refresh, failed-enrichment persistence, summary validation,
-  opaque source-ID enforcement, cited cross-source retrieval, email normalization, recommendation
-  state transitions, hybrid source-system planning, reversible amount role gates, GLiNER
-  false-positive rejection, workflow audit verification, and SQLite/Postgres portability coverage.
-- Telegram token connectivity: verified through `getMe` without printing the token.
-- Telegram detector heartbeat: verified healthy with GLiNER loaded on CPU.
-- Global PyTorch reuse: verified with PyTorch `2.12.0.dev20260322+cu128`, CUDA 12.8, and the NVIDIA
-  GeForce RTX 5060 Laptop GPU; GLiNER loaded on `cuda:0`.
-- GLiNER CPU/GPU comparison: identical detections on the representative PII sample; warm inference
-  measured 0.092 seconds on CPU and 0.021 seconds on GPU (approximately 4.4x GPU speedup).
-- Frontend ESLint: passed.
-- Frontend TypeScript/Vite production build: passed.
-- Isolated browser ingestion flow: passed end to end with structured phone, NRIC, email-metadata,
-  and amount tokenization; protected comparison and summary rendered with no console errors.
-- Seed ingestion: passed with sensitive values removed from stored content.
-- Query endpoint: passed in offline demonstration mode and Gemini-capable configuration.
-- Unauthorized audit access: correctly returns HTTP 403.
-- Multi-token disclosure audit chain: verified as valid.
-- User/Gemini comparison response contract: backend and frontend compile successfully.
-- Live Supabase schema: all eleven protected business, connector, recommendation, evidence,
-  decision, and audit tables; `vector(768)`; JSONB roles; HNSW index; and forced RLS verified.
-- Migrations through `202608130003` are synchronized in local and remote Supabase history. The
-  final forward-only migration closes the missing Telegram operational-table RLS boundary.
-- Clean remote Track 2 seed state: **12 ready tokenized content rows** across email, Telegram, CRM,
-  bank CSV, meeting notes, and support tickets; **28 encrypted vault entries**, including **6
-  reversible amount entries**; and **0 audit events** before application queries.
-- Protected seed verification: **0 records with recognizable PII** in stored protected content or
-  summaries, with **5 action-required `payment_approval_delay` records** ready for recurring-pattern
-  analysis.
-- Unified-ingestion remote verification: all **4 records ready**, all **4 structured summaries**
-  generated through Gemini, all embeddings at **768 dimensions**, and keyed fingerprints and source
-  provenance populated; **0 original sample names** remain across content, summaries, and metadata.
-- Current remote counts: **4 protected content records**, **11 encrypted vault entries**, and **22
-  existing query-disclosure audit events** with a valid hash chain; ingestion refreshes do not
-  create disclosure events.
-
-## Local operation
-
-Backend, from the repository root:
-
-```powershell
-Set-ExecutionPolicy -Scope Process RemoteSigned
-& .\.venv\Scripts\Activate.ps1
-cd backend
-uv run --active --no-sync uvicorn app.main:app --reload --port 8000
+```text
+Gmail + Telegram + structured CSV + uploaded documents
+    -> canonical protected ingestion
+    -> sensitive-value tokenization
+    -> Supabase persistence
+    -> deterministic SQL filtering and counting
+    -> Morpheus reasoning over protected content
+    -> evidence-backed answers and recommendations
+    -> role-aware disclosure, approval, and audit records
 ```
 
-Frontend, in a second terminal from the repository root:
+## Executive status
+
+- Priority 1 — structured CSV ingestion: complete.
+- Priority 2 — conversational context: complete.
+- Priority 3 — protected file upload: complete.
+- Priority 4 — deterministic structured queries: complete.
+- Priority 5 — persona and disclosure demonstration: complete.
+- Priority 6 — demo reliability: functionally complete; final full rehearsal remains.
+- Backend verification: 90 tests passing.
+- Backend lint: Ruff passing.
+- Frontend verification: production build passing; lint has 0 errors and 6 pre-existing Fast Refresh warnings.
+- Current branch: `main`.
+- Latest implementation and hardening commit: `516f031 feat: harden demo ingestion and conversation workflows`.
+
+## Priority plan comparison
+
+| Priority | Planned outcome | Current status | Evidence |
+| --- | --- | --- | --- |
+| 1. Structured CSV | Convert invoice-register rows into protected, individually queryable records | Complete | Strict `invoice_register_v1` parser, row-level ingestion, batch receipts, idempotent refresh, metadata filters, and demo CSV fixtures |
+| 2. Chat context | Support follow-up questions without mixing conversations or leaking protected data | Complete | Persisted conversations, six-turn context, ordinal and pronoun resolution, expiry/delete routes, and isolated citation namespaces |
+| 3. File upload | Preview and commit common business files through the privacy boundary | Complete | TXT, Markdown, CSV, EML, text PDF, and DOCX preview/commit flow with bounded raw requests and preview-digest validation |
+| 4. SQL-first filters | Answer counts and exact lists deterministically before LLM reasoning | Complete | Shared filter planner for source, date, record type, category, priority, action-required, status, and owner filters |
+| 5. Persona demonstration | Show that the same evidence produces role-appropriate disclosure | Complete | Backend-enforced personas, disclosure policies, persona reruns, and user-facing disclaimers |
+| 6. Demo reliability | Start, check, and stop the complete demo without orphaned processes | Implemented | Detached launcher wrappers, PID tracking, health checks, logs, stale-process recovery, and descendant/port cleanup |
+
+## Work completed in the current implementation cycle
+
+### 1. Structured spreadsheet ingestion
+
+- Added the `invoice_register_v1` schema and strict CSV validation.
+- Supports UTF-8 BOM and Windows-1252 input plus recognized column aliases.
+- Enforces file, row, and field limits and returns stable invalid-row error codes.
+- Produces one canonical protected record per valid invoice row.
+- Stores queryable metadata including invoice status, due date, assigned owner, and protected amount band.
+- Uses stable HMAC-derived batch and row identifiers for idempotent reprocessing.
+- Protects every accepted row before enrichment or model processing.
+- Added structured-ingestion batch persistence and receipt reporting.
+- Fixed generic `CSV` queries to target spreadsheet records while preserving explicit `bank_csv` queries.
+- Added a protected preview summary that clearly reports when only the first three rows are shown:
+
+  ```text
+  Showing 3 of 4 protected rows
+  + 1 additional row will be ingested
+  ```
+
+### 2. Protected file upload
+
+- Added preview and commit endpoints for TXT, Markdown, CSV, EML, text-based PDF, and DOCX files.
+- Raw file content is accepted only within configured request-size limits.
+- Preview responses contain protected content, not the original sensitive values.
+- Commit requests are tied to the preview through a digest to prevent accidental content substitution.
+- Structured CSV uploads use the authoritative row-level ingestion route.
+- Document provenance includes file type and page count where available.
+
+### 3. Conversational retrieval
+
+- Added persisted conversation and turn tables plus create/read/delete API routes.
+- Retains a bounded six-turn context window.
+- Follow-up questions can resolve prior entities, previously listed source sets, and ordinal references such as “the third one.”
+- Bare references such as “describe that” resolve against the immediately relevant prior result.
+- Count responses preserve the eligible source set in hidden conversation state without falsely displaying citations.
+- Citation numbering remains isolated to each answer.
+- Expired or deleted conversations no longer contribute context.
+- Model-provider failures are logged and can use the configured demo fallback without silently corrupting context.
+
+### 4. SQL-first question handling
+
+- Added a shared structured-filter planner used before semantic retrieval.
+- Supports deterministic source-system counts and lists.
+- Supports filters for dates, record types, categories, priority, action-required state, spreadsheet status, and assigned/unassigned owners.
+- Exact counts are answered from the database without asking Morpheus to estimate from a limited retrieval set.
+- Eligible analytic result sets are processed in bounded batches instead of the former five-source cap.
+- Natural-language summaries still go to Morpheus after the database establishes the complete eligible record set.
+
+### 5. Role-aware answers
+
+- Added exact backend role definitions and permissions for the demonstration personas.
+- The backend, rather than the browser alone, controls disclosure of restored sensitive values.
+- The frontend can rerun the same question under the selected persona.
+- The interface distinguishes the authorized user view from the protected model view.
+- Persona disclaimers make the proof-of-concept security boundary explicit.
+
+### 6. Gmail and Telegram ingestion
+
+- Gmail ingestion is read-only and limited to unread inbox messages.
+- Durable Gmail receipts and UID cursors prevent already processed messages from being duplicated.
+- Terminal UIDs are excluded on later polling cycles, including messages that previously failed permanently.
+- The verified Gmail rehearsal processed six messages into six ready email records with six receipts and one attachment.
+- A repeated synchronization examined zero already-processed messages.
+- The seed workflow can preserve live email data with `--exclude-source email`.
+- Telegram remains connected to the same canonical protected-ingestion path.
+
+### 7. Demo process lifecycle
+
+- `scripts/run_demo.ps1` launches frontend, backend, Telegram, and Gmail workers without binding their standard input to the interactive terminal.
+- Generated `.runtime/*.launch.cmd` wrappers redirect input from `NUL` and capture logs.
+- Startup reports component progress and detects early worker exits.
+- PID tracking and stale-PID recovery were added.
+- `scripts/check_demo.ps1` reports backend, frontend, Telegram, Gmail, and provider health.
+- `scripts/stop_demo.ps1` stops tracked process trees and clears remaining demo listeners on the configured ports.
+- A verified lifecycle run returned control to PowerShell in approximately 6.6 seconds, passed health checks, and stopped without leaving listeners or PID files.
+
+### 8. Test and demonstration assets
+
+- Added dedicated CSV fixtures for direct upload and Gmail attachment testing.
+- Expanded `TESTING_GUIDE.md` with ingestion, query, persona, conversation, recommendation, audit, and lifecycle checks.
+- Added regression coverage for CSV parsing, upload protection, conversation references, SQL filters, persona disclosure, Gmail idempotency, and process lifecycle behavior.
+- Reduced GLiNER false positives for structural terms such as `Customer` and `Unassigned`.
+
+## Verified demonstration state
+
+The latest clean Gmail rehearsal produced:
+
+- 6 Gmail messages examined.
+- 6 email records protected and ready.
+- 0 failed messages.
+- 6 durable Gmail receipts.
+- 1 processed attachment.
+- 0 duplicate records on the next synchronization.
+
+The clean seeded and Gmail-backed Supabase state contained 15 ready records at verification time:
+
+- 9 non-email seed records.
+- 6 live Gmail records.
+
+The five-turn conversation replay verified:
+
+1. An email-source count returned six database-verified records.
+2. A follow-up referring to “them” retained the same six-source context.
+3. “Describe each” summarized the complete eligible set rather than stopping at five.
+4. A customer-specific question narrowed retrieval to the correct email.
+5. “The third one” and then “describe that” both resolved to the intended prior record.
+
+## Existing platform foundations
+
+The earlier platform work remains in place:
+
+- FastAPI backend with health, ask, ingestion, recommendation, audit, upload, conversation, and connector routes.
+- Supabase/Postgres persistence with pgvector and HNSW indexing.
+- Forced row-level security on protected tables.
+- Encrypted token vault for reversible sensitive-value restoration.
+- GLiNER-assisted PII detection with deterministic sensitive-value handling.
+- Gemini-compatible protected summarization and embeddings.
+- Morpheus proxy support for protected question answering.
+- Evidence citations and model-view versus authorized-user-view comparison.
+- Recommendation drafting, approval, implementation-state tracking, and audit chains.
+- React frontend for chat, ingestion, uploads, role switching, recommendations, and evidence inspection.
+
+## Database migrations
+
+The active migration sequence includes:
+
+- Core protected content, token vault, and audit tables.
+- Canonical ingestion fields and durable connector receipts.
+- Recommendation workflow tables.
+- Structured-ingestion batch support.
+- Persisted conversation and turn support.
+
+The Supabase checks verify PostgreSQL connectivity, pgvector, expected vector dimensions, indexes, JSON role lists, and forced RLS.
+
+## Remaining before the hackathon demonstration
+
+These are rehearsal and polish items, not missing core architecture:
+
+1. Run one uninterrupted judging rehearsal from a clean database:
+   - ingest six Gmail messages;
+   - receive one live Telegram record;
+   - upload and commit the chat-side CSV;
+   - upload one ordinary document;
+   - demonstrate exact SQL counts and cross-source summaries;
+   - demonstrate conversational follow-ups;
+   - switch personas and compare disclosure;
+   - create, approve, and mark a recommendation implemented;
+   - inspect the resulting audit trail.
+2. Repeat the complete start -> check -> stop -> second start cycle once more under presentation conditions.
+3. Record or prepare a deterministic fallback demonstration in case Gmail, Telegram, Supabase, or Morpheus is unavailable at judging time.
+4. Optionally add `GET /structured-ingestion-batches/{batch_ref}`. Current upload responses already return synchronous batch status, so this is not required for the demo.
+5. Optionally split Gmail CSV attachments into row-level spreadsheet records. Direct CSV upload is currently the authoritative structured path; Gmail attachments remain represented within the email ingestion record.
+6. Optionally make individual PDF pages separately citable. PDF page count and extracted page markers are retained, but pages are not yet stored as separate source records.
+
+## Intentionally deferred beyond the hackathon
+
+- Production authentication and Supabase JWT authorization.
+- Multi-tenant organization isolation and production RLS policies.
+- Arbitrary user-defined spreadsheet schemas.
+- OCR for scanned PDFs and images.
+- WhatsApp and additional enterprise connectors.
+- Google Drive, OneDrive, and SharePoint OAuth ingestion.
+- Banking and accounting APIs.
+- Production key rotation and secret-management infrastructure.
+- Large-scale vector-index tuning and background job orchestration.
+- Kubernetes or other production deployment infrastructure.
+- External task-management integrations.
+- Full monitoring, alerting, retention, and compliance operations.
+
+## Local verification
+
+From the repository root with the `FinBrain` virtual environment active:
 
 ```powershell
-cd frontend
-npm.cmd run dev
+uv run --active --project backend pytest backend/tests
+uv run --active --project backend ruff check backend
+Set-Location frontend
+npm run lint
+npm run build
+Set-Location ..
 ```
 
-The application is available at `http://localhost:5173`, with API documentation at
-`http://localhost:8000/docs`.
+Run the integrated demonstration:
 
-## Remaining before production
+```powershell
+& .\scripts\run_demo.ps1
+& .\scripts\check_demo.ps1
+& .\scripts\stop_demo.ps1
+```
 
-- Replace the demonstration role selector with verified authentication and server-issued role
-  claims.
-- Add a backup and restore procedure for the Supabase database and encrypted vault.
-- Enforce vault access through production RLS and a server-controlled detokenization boundary.
-- Implement live WhatsApp Business, banking API, and general document ingestion connectors.
-- Add OCR for scanned documents.
-- Evaluate and tune GLiNER entity detection against representative Malaysian business records.
-- Add detection-quality tests, prompt-injection testing, adversarial privacy tests, and broader API
-  integration tests.
-- Store `TOKEN_ROOT_SECRET` in a managed secret service and implement controlled key rotation and
-  vault re-encryption.
-- Add real tenant isolation and tenant-specific token secrets.
-- Add production monitoring, rate limits, backups, incident response, and formal PDPA/DPO review.
-- Evaluate token-preservation accuracy and answer quality across the intended Gemini model options
-  before selecting the production model.
+Detailed manual scenarios and fixtures are documented in `TESTING_GUIDE.md`.
 
-## Security notes
+## Security boundary
 
-- `backend/.env` is intentionally not tracked and must never be committed.
-- `TOKEN_ROOT_SECRET` must be generated once, stored securely, and kept stable; changing it makes
-  existing vault values undecryptable unless they are re-encrypted.
-- Any local SQLite database is ignored because it contains encrypted vault entries and is tied to
-  the configured root secret.
-- The current role selector is a demonstration mechanism, not an authentication boundary.
+- Raw sensitive content is submitted only to the trusted FastAPI backend.
+- Detection and tokenization occur before Gemini or Morpheus receives content.
+- External model providers receive protected text and protected metadata.
+- Original values are encrypted in the token vault and restored only when the selected backend role permits disclosure.
+- The prototype role selector is intentionally not authentication. It demonstrates policy behavior only and must not be treated as a production security control.
