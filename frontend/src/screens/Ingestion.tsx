@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useI18n } from "../lib/i18n";
 import { AppNav } from "../components/Nav";
+import { PersonaSelector } from "../components/PersonaSelector";
+import { useAppState } from "../lib/appState";
+import { PERSONAS } from "../lib/personas";
 import {
   fetchEmailRecords,
   fetchEmailStatus,
@@ -32,13 +35,6 @@ const RECORD_OPTIONS = [
   { value: "customer_message", label: "Customer message" },
   { value: "transaction", label: "Transaction" },
   { value: "document_note", label: "Document note" },
-];
-
-const ROLE_OPTIONS: { value: Role; label: string }[] = [
-  { value: "general_employee", label: "General Employee" },
-  { value: "finance_ops", label: "Finance Ops" },
-  { value: "owner_director", label: "Owner / Director" },
-  { value: "compliance", label: "Compliance" },
 ];
 
 function ProtectedFilePanel({ role }: { role: Role }) {
@@ -335,7 +331,7 @@ function TelegramCapturePanel() {
 
 export default function Ingestion() {
   const { t } = useI18n();
-  const [role, setRole] = useState<Role>("general_employee");
+  const { askRole: role } = useAppState();
   const [sourceRecordId, setSourceRecordId] = useState(newRecordId);
   const [sourceSystem, setSourceSystem] = useState("manual");
   const [recordType, setRecordType] = useState("customer_note");
@@ -402,22 +398,11 @@ export default function Ingestion() {
         <TelegramCapturePanel />
         <EmailCapturePanel />
         <div className="fb-callout">
-          The selected <strong>{ROLE_OPTIONS.find((r) => r.value === role)?.label}</strong> role is trusted for this demo.
+          The selected <strong>{PERSONAS[role].label}</strong> role is trusted for this demo.
           Raw text goes only to FinBrain's backend; AI services and Supabase receive only protected content.
         </div>
 
-        <div className="fb-role-switch" role="tablist" style={{ margin: "0 0 1.4rem" }}>
-          {ROLE_OPTIONS.map((r) => (
-            <button
-              key={r.value}
-              type="button"
-              className={"fb-role-btn" + (role === r.value ? " is-current" : "")}
-              onClick={() => setRole(r.value)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        <PersonaSelector />
 
         <ProtectedFilePanel role={role} />
 

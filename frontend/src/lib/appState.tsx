@@ -75,7 +75,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [signupName, setSignupName] = useState("");
   const [signupCompany, setSignupCompany] = useState("");
   const [sampleBanner, setSampleBanner] = useState(false);
-  const [askRole, setAskRoleState] = useState<AskRole>("finance_director");
+  const [askRole, setAskRoleState] = useState<AskRole>("general_employee");
   const [einvoices, setEinvoices] = useState<Record<string, EinvoiceRecord>>(() => initialEinvoices());
   const [currentEinvoiceId, setCurrentEinvoiceId] = useState<string | null>(null);
   const [einvoiceFilterMine, setEinvoiceFilterMine] = useState(false);
@@ -150,7 +150,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           ["Validated", "LHDN returned a UIN and QR code."],
         ],
       };
-      pushAuditRow("chloe@finbrain.my", "e-Invoice Approved", inv.supplier + " · " + inv.amount, "finance_director", "Allowed");
+      pushAuditRow("chloe@finbrain.my", "e-Invoice Approved", inv.supplier + " · " + inv.amount, "owner_director", "Allowed");
       return { ...prev, [id]: updated };
     });
   }, [pushAuditRow]);
@@ -164,7 +164,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         status: "review",
         compliance: [...inv.compliance, ["Sent back", "Returned by Finance Director for correction before resubmission."]],
       };
-      pushAuditRow("chloe@finbrain.my", "e-Invoice Sent Back", inv.supplier + " · " + inv.amount, "finance_director", "Denied");
+      pushAuditRow("chloe@finbrain.my", "e-Invoice Sent Back", inv.supplier + " · " + inv.amount, "owner_director", "Denied");
       return { ...prev, [id]: updated };
     });
   }, [pushAuditRow]);
@@ -174,7 +174,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const sop = prev.find((s) => s.id === id);
       if (!sop || sop.status === "approved") return prev;
       const nextVersion = sop.version + 1;
-      pushAuditRow("chloe@finbrain.my", "SOP Approval", sop.title + " v" + nextVersion, "finance_director", "Allowed");
+      pushAuditRow("chloe@finbrain.my", "SOP Approval", sop.title + " v" + nextVersion, "owner_director", "Allowed");
       return prev.map((s) => (s.id === id ? { ...s, status: "approved", version: nextVersion } : s));
     });
   }, [pushAuditRow]);
@@ -183,7 +183,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSops((prev) => {
       const sop = prev.find((s) => s.id === id);
       if (!sop) return prev;
-      pushAuditRow("chloe@finbrain.my", "SOP Discarded", sop.title, "finance_director", "Denied");
+      pushAuditRow("chloe@finbrain.my", "SOP Discarded", sop.title, "owner_director", "Denied");
       if (sop.sourceRecId) {
         setRecommendations((recs) => recs.map((r) => (r.id === sop.sourceRecId ? { ...r, status: "proposed" } : r)));
       }
@@ -223,7 +223,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setPendingActions((prev) => {
       const act = prev.find((a) => a.id === id);
       if (!act || !act.active) return prev;
-      pushAuditRow("chloe@finbrain.my", act.kind + " Discarded", act.title, "finance_director", "Denied");
+      pushAuditRow("chloe@finbrain.my", act.kind + " Discarded", act.title, "owner_director", "Denied");
       return prev.map((a) => (a.id === id ? { ...a, active: false } : a));
     });
   }, [pushAuditRow]);

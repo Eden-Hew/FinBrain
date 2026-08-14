@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { AppNav } from "../components/Nav";
+import { PersonaSelector } from "../components/PersonaSelector";
+import { useAppState } from "../lib/appState";
+import { PERSONAS } from "../lib/personas";
 import {
   fetchAuditLog,
   fetchWorkflowAudit,
@@ -28,15 +31,18 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 
 export default function Audit() {
   const { t } = useI18n();
+  const { askRole } = useAppState();
+  const canViewAudit = PERSONAS[askRole].capabilities.viewAudit;
   const [verifying, setVerifying] = useState(false);
   const [liveEntries, setLiveEntries] = useState<AuditEntry[]>([]);
   const [workflowEntries, setWorkflowEntries] = useState<WorkflowAuditEntry[]>([]);
   const [chainsValid, setChainsValid] = useState<boolean | null>(null);
 
   const load = async () => {
+    if (!canViewAudit) throw new Error("Compliance reviewer persona required");
     const [disclosures, workflow] = await Promise.all([
-      fetchAuditLog("compliance"),
-      fetchWorkflowAudit(),
+      fetchAuditLog(askRole),
+      fetchWorkflowAudit(askRole),
     ]);
     setLiveEntries(disclosures.entries);
     setWorkflowEntries(workflow.entries);
@@ -47,9 +53,17 @@ export default function Audit() {
     let active = true;
     const initialLoad = async () => {
       try {
+        if (!canViewAudit) {
+          if (active) {
+            setLiveEntries([]);
+            setWorkflowEntries([]);
+            setChainsValid(null);
+          }
+          return;
+        }
         const [disclosures, workflow] = await Promise.all([
-          fetchAuditLog("compliance"),
-          fetchWorkflowAudit(),
+          fetchAuditLog(askRole),
+          fetchWorkflowAudit(askRole),
         ]);
         if (!active) return;
         setLiveEntries(disclosures.entries);
@@ -61,7 +75,7 @@ export default function Audit() {
     };
     void initialLoad();
     return () => { active = false; };
-  }, []);
+  }, [askRole, canViewAudit]);
 
   const entryCount = liveEntries.length + workflowEntries.length;
 
@@ -107,11 +121,15 @@ export default function Audit() {
             <h1>{t("audit.title")}</h1>
             <p>{t("audit.desc")}</p>
           </div>
-          <button className="fb-btn fb-btn-outline" type="button" onClick={exportCsv}><span>{t("export.csv")}</span></button>
+          <button className="fb-btn fb-btn-outline" type="button" onClick={exportCsv} disabled={!canViewAudit}><span>{t("export.csv")}</span></button>
         </div>
       </header>
 
       <div className="fb-page-body" style={{ paddingBottom: 0 }}>
+        <PersonaSelector />
+        {!canViewAudit && (
+          <div className="fb-callout">Select the Compliance reviewer demo persona to view protected audit chains.</div>
+        )}
         <div className="fb-callout fb-chain-status" style={{ marginTop: 0 }}>
           {verifying
             ? "Verifying…"

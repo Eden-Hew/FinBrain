@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { AppNav } from "../components/Nav";
+import { PersonaSelector } from "../components/PersonaSelector";
+import { PERSONAS } from "../lib/personas";
 import {
   analyzeProcesses,
   decideRecommendation,
@@ -15,13 +17,15 @@ export default function Approvals() {
     einvoices, approveEinvoiceById, rejectEinvoiceById,
     sops, approveSop, rejectSop,
     pendingActions, approveAction, rejectAction,
+    askRole,
   } = useAppState();
+  const capabilities = PERSONAS[askRole].capabilities;
   const [recommendations, setRecommendations] = useState<ProcessRecommendation[]>([]);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
 
   const refreshRecommendations = async () => {
-    const rows = await fetchRecommendations();
+    const rows = await fetchRecommendations(askRole);
     setRecommendations(rows);
   };
 
@@ -29,7 +33,11 @@ export default function Approvals() {
     let active = true;
     const initialLoad = async () => {
       try {
-        const rows = await fetchRecommendations();
+        if (!capabilities.viewRecommendations) {
+          if (active) setRecommendations([]);
+          return;
+        }
+        const rows = await fetchRecommendations(askRole);
         if (active) setRecommendations(rows);
       } catch {
         if (active) setRecommendations([]);
@@ -37,13 +45,13 @@ export default function Approvals() {
     };
     void initialLoad();
     return () => { active = false; };
-  }, []);
+  }, [askRole, capabilities.viewRecommendations]);
 
   const analyze = async () => {
     setLoadingAnalysis(true);
     setRecommendationError("");
     try {
-      await analyzeProcesses();
+      await analyzeProcesses(askRole);
       await refreshRecommendations();
     } catch (error) {
       setRecommendationError(error instanceof Error ? error.message : "Process analysis failed.");
@@ -58,7 +66,7 @@ export default function Approvals() {
   ) => {
     setRecommendationError("");
     try {
-      const updated = await decideRecommendation(id, decision);
+      const updated = await decideRecommendation(id, decision, askRole);
       setRecommendations((rows) => rows.map((row) => row.id === id ? updated : row));
     } catch (error) {
       setRecommendationError(error instanceof Error ? error.message : "Decision failed.");
@@ -87,13 +95,23 @@ export default function Approvals() {
             <h1>{t("approvals.title")}</h1>
             <p>{t("approvals.desc")}</p>
           </div>
-          <button className="fb-btn fb-btn-solid" type="button" onClick={analyze} disabled={loadingAnalysis}>
+          <button
+            className="fb-btn fb-btn-solid"
+            type="button"
+            onClick={analyze}
+            disabled={loadingAnalysis || !capabilities.analyzeProcesses}
+            title={capabilities.analyzeProcesses ? "" : "Owner / director persona required"}
+          >
             {loadingAnalysis ? "Analyzing protected records…" : "Analyze recurring problems"}
           </button>
         </div>
       </header>
 
       <div className="fb-page-body">
+        <PersonaSelector />
+        {!capabilities.viewRecommendations && (
+          <div className="fb-callout">This persona cannot view process recommendations.</div>
+        )}
         {recommendationError && <div className="fb-callout" role="alert">{recommendationError}</div>}
         <div className="fb-card-list">
           {isEmpty && <p className="fb-sans" style={{ color: "var(--ink-soft)", fontSize: ".8rem" }}>Nothing waiting on you right now — you're fully caught up.</p>}
@@ -125,11 +143,11 @@ export default function Approvals() {
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", marginTop: ".8rem" }}>
                 {item.status === "proposed" ? (
                   <>
-                    <button className="fb-btn fb-btn-solid" type="button" onClick={() => decide(item.id, "approve")}>Approve recommendation</button>
-                    <button className="fb-btn fb-btn-outline" type="button" onClick={() => decide(item.id, "reject")}>Reject</button>
+                    <button className="fb-btn fb-btn-solid" type="button" disabled={!capabilities.decideRecommendations} title="Owner / director persona required" onClick={() => decide(item.id, "approve")}>Approve recommendation</button>
+                    <button className="fb-btn fb-btn-outline" type="button" disabled={!capabilities.decideRecommendations} title="Owner / director persona required" onClick={() => decide(item.id, "reject")}>Reject</button>
                   </>
                 ) : (
-                  <button className="fb-btn fb-btn-solid" type="button" onClick={() => decide(item.id, "mark-implemented")}>Mark implemented</button>
+                  <button className="fb-btn fb-btn-solid" type="button" disabled={!capabilities.decideRecommendations} title="Owner / director persona required" onClick={() => decide(item.id, "mark-implemented")}>Mark implemented</button>
                 )}
               </div>
             </article>

@@ -1,4 +1,4 @@
-export type AskRole = "finance_director" | "employee" | "guest";
+export type AskRole = "general_employee" | "finance_ops" | "compliance" | "owner_director";
 
 export interface RoleIdentity {
   name: string;
@@ -7,9 +7,10 @@ export interface RoleIdentity {
 }
 
 export const FB_ROLE_IDENTITY: Record<AskRole, RoleIdentity> = {
-  finance_director: { name: "Chloe Tan", role: "Finance Director", email: "chloe@finbrain.my" },
-  employee: { name: "Aiman Lee", role: "Employee", email: "aiman@finbrain.my" },
-  guest: { name: "Guest User", role: "Guest", email: null },
+  general_employee: { name: "Aiman Lee", role: "General employee", email: "aiman@finbrain.my" },
+  finance_ops: { name: "Farah Lim", role: "Finance operator", email: "farah@finbrain.my" },
+  compliance: { name: "Maya Wong", role: "Compliance reviewer", email: null },
+  owner_director: { name: "Chloe Tan", role: "Owner / director", email: "chloe@finbrain.my" },
 };
 
 export interface AgentReplyRule {
@@ -323,8 +324,8 @@ export interface AskRoleData {
 }
 
 export const FB_ASK_ROLES: Record<AskRole, AskRoleData> = {
-  finance_director: {
-    displayLabel: "Finance Director",
+  owner_director: {
+    displayLabel: "Owner / director",
     answer: 'Q3 closed at <strong>RM 612,000 profit</strong> on <strong>RM 1.84M revenue</strong><sup>[1]</sup>. The board approved proceeding with the Acme acquisition at a 15% discount, contingent on legal due diligence closing by September<sup>[2]</sup>.',
     citations: [
       { label: "Finance Dashboard — Q3 earnings summary", access: "Internal", withheld: false },
@@ -332,8 +333,17 @@ export const FB_ASK_ROLES: Record<AskRole, AskRoleData> = {
     ],
     note: null,
   },
-  employee: {
-    displayLabel: "Employee",
+  finance_ops: {
+    displayLabel: "Finance operator",
+    answer: 'Q3 closed at <strong>RM 612,000 profit</strong> on <strong>RM 1.84M revenue</strong><sup>[1]</sup>. Board-level decisions remain restricted to the owner/director persona.',
+    citations: [
+      { label: "Finance Dashboard â€” Q3 earnings summary", access: "Internal", withheld: false },
+      { label: "Board Meeting â€” 14 Jul 2026 minutes", access: "Restricted", withheld: true },
+    ],
+    note: "1 source withheld â€” insufficient permissions.",
+  },
+  general_employee: {
+    displayLabel: "General employee",
     answer: 'Q3 closed at <strong>RM 612,000 profit</strong> on <strong>RM 1.84M revenue</strong><sup>[1]</sup>. I don’t have access to board-level decisions on the Acme deal — that source is Restricted to Finance Director and above.',
     citations: [
       { label: "Finance Dashboard — Q3 earnings summary", access: "Internal", withheld: false },
@@ -341,8 +351,8 @@ export const FB_ASK_ROLES: Record<AskRole, AskRoleData> = {
     ],
     note: "1 source withheld — insufficient permissions.",
   },
-  guest: {
-    displayLabel: "Guest",
+  compliance: {
+    displayLabel: "Compliance reviewer",
     answer: "I don’t have permission to answer that from any source you can access. Ask your Finance Director for a summary, or ask something covered by public documentation.",
     citations: [
       { label: "Finance Dashboard — Q3 earnings summary", access: "Internal", withheld: true },
@@ -388,12 +398,12 @@ export interface AuditRow { time: string; actor: string; type: string; resource:
 export const FB_AUDIT_BASE_COUNT = 122;
 
 export const initialAuditRows = (): AuditRow[] => [
-  { time: "10:42:03", actor: "chloe@finbrain.my", type: "Chat Query", resource: "Board Meeting — 14 Jul 2026 minutes", grant: "finance_director", status: "Allowed", hash: "a91f3c…" },
-  { time: "10:41:58", actor: "chloe@finbrain.my", type: "Chat Query", resource: "Finance Dashboard — Q3 summary", grant: "finance_director", status: "Allowed", hash: "7e2b10…" },
-  { time: "09:15:22", actor: "guest-7f2a", type: "Chat Query", resource: "Board Meeting — 14 Jul 2026 minutes", grant: "guest", status: "Denied", hash: "4d8a91…" },
-  { time: "09:02:11", actor: "aiman@finbrain.my", type: "e-Invoice Submit", resource: "TNB-2026-88213", grant: "employee", status: "Allowed", hash: "c310ff…" },
+  { time: "10:42:03", actor: "chloe@finbrain.my", type: "Chat Query", resource: "Board Meeting — 14 Jul 2026 minutes", grant: "owner_director", status: "Allowed", hash: "a91f3c…" },
+  { time: "10:41:58", actor: "chloe@finbrain.my", type: "Chat Query", resource: "Finance Dashboard — Q3 summary", grant: "owner_director", status: "Allowed", hash: "7e2b10…" },
+  { time: "09:15:22", actor: "compliance-demo", type: "Chat Query", resource: "Board Meeting — 14 Jul 2026 minutes", grant: "compliance", status: "Denied", hash: "4d8a91…" },
+  { time: "09:02:11", actor: "aiman@finbrain.my", type: "e-Invoice Submit", resource: "TNB-2026-88213", grant: "general_employee", status: "Allowed", hash: "c310ff…" },
   { time: "08:47:05", actor: "invoicing-agent", type: "Agent Run", resource: "Receipt OCR — Grab Malaysia", grant: "system", status: "Allowed", hash: "9b1e77…" },
-  { time: "Yesterday 17:20", actor: "chloe@finbrain.my", type: "SOP Approval", resource: "Receipt Intake & OCR Review v2", grant: "finance_director", status: "Allowed", hash: "22af5d…" },
+  { time: "Yesterday 17:20", actor: "chloe@finbrain.my", type: "SOP Approval", resource: "Receipt Intake & OCR Review v2", grant: "owner_director", status: "Allowed", hash: "22af5d…" },
 ];
 
 export interface PendingAction { id: string; active: boolean; kind: string; agent: string; title: string; approveLabel: string; detail: string }

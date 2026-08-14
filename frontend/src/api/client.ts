@@ -301,7 +301,7 @@ export async function fetchEmailRecords(): Promise<ProtectedIngestionRecord[]> {
   );
 }
 
-export async function analyzeProcesses(): Promise<ProcessRecommendation> {
+export async function analyzeProcesses(role: Role): Promise<ProcessRecommendation> {
   return parse<ProcessRecommendation>(
     await fetch(`${BASE_URL}/process-analysis`, {
       method: "POST",
@@ -310,34 +310,33 @@ export async function analyzeProcesses(): Promise<ProcessRecommendation> {
         window_days: 30,
         source_systems: ["telegram", "email"],
         minimum_evidence: 3,
-        role: "owner_director",
+        role,
       }),
     }),
   );
 }
 
-export async function fetchRecommendations(
-  role: Role = "owner_director",
-): Promise<ProcessRecommendation[]> {
+export async function fetchRecommendations(role: Role): Promise<ProcessRecommendation[]> {
   return parse<ProcessRecommendation[]>(await fetch(`${BASE_URL}/recommendations?role=${role}`));
 }
 
 export async function decideRecommendation(
   id: number,
   decision: "approve" | "reject" | "mark-implemented",
+  role: Role,
   comment = "",
 ): Promise<ProcessRecommendation> {
   return parse<ProcessRecommendation>(
     await fetch(`${BASE_URL}/recommendations/${id}/${decision}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "owner_director", comment }),
+      body: JSON.stringify({ role, comment }),
     }),
   );
 }
 
-export async function fetchWorkflowAudit(): Promise<WorkflowAuditResponse> {
+export async function fetchWorkflowAudit(role: Role): Promise<WorkflowAuditResponse> {
   return parse<WorkflowAuditResponse>(
-    await fetch(`${BASE_URL}/workflow-audit?role=compliance`),
+    await fetch(`${BASE_URL}/workflow-audit?role=${role}`),
   );
 }

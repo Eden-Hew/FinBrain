@@ -3,13 +3,13 @@ import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
 import { AppNav } from "../components/Nav";
+import { PersonaSelector } from "../components/PersonaSelector";
 import { resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
 import {
   askQuestion,
   commitUpload,
   previewUpload,
   type QueryCitation,
-  type Role,
   type UploadCommitResponse,
   type UploadPreviewResponse,
 } from "../api/client";
@@ -24,6 +24,7 @@ interface Message {
   citations?: QueryCitation[];
   showProtected?: boolean;
   mode?: string;
+  rawQuestion?: string;
 }
 
 interface ContextChip {
@@ -40,16 +41,10 @@ const SUGGESTIONS = [
   "What's our cash flow looking like?",
 ];
 
-const ASK_ROLE_TO_BACKEND: Record<string, Role> = {
-  finance_director: "owner_director",
-  employee: "general_employee",
-  guest: "compliance",
-};
-
 let msgId = 1;
 
 export default function Agents() {
-  const { askRole, setAskRole, sampleBanner, dismissSampleBanner } = useAppState();
+  const { askRole, sampleBanner, dismissSampleBanner } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
     { id: msgId++, from: "agent", text: "Hi, I’m FINBRAIN. I can handle invoicing, spreadsheets, files, sales follow-ups, compliance checks, and more — ask me anything, or try one of the suggestions above." },
@@ -65,6 +60,7 @@ export default function Agents() {
   const [uploadResult, setUploadResult] = useState<UploadCommitResponse | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [protectedTurnCount, setProtectedTurnCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const voiceIndexRef = useRef(0);
@@ -99,9 +95,9 @@ export default function Agents() {
       let mode = "scripted-demo";
       let embed = fallback.embed;
       try {
-        const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
-        const response = await askQuestion(trimmed, backendRole, conversationId);
+        const response = await askQuestion(trimmed, askRole, conversationId);
         setConversationId(response.conversation_id);
+        setProtectedTurnCount((count) => count + 1);
         finalText = response.answer;
         protectedText = response.model_answer;
         citations = response.citations;
@@ -124,6 +120,7 @@ export default function Agents() {
               citations,
               mode,
               embed,
+              rawQuestion: trimmed,
             }
           : message
       )));
@@ -135,6 +132,8 @@ export default function Agents() {
 
   const startNewConversation = () => {
     setConversationId(null);
+    setProtectedTurnCount(0);
+    setChips([]);
     setMessages([
       {
         id: msgId++,
@@ -162,8 +161,7 @@ export default function Agents() {
     setUploadError("");
     setUploadState("previewing");
     try {
-      const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
-      setUploadPreview(await previewUpload(file, backendRole));
+      setUploadPreview(await previewUpload(file, askRole));
       setUploadState("protected");
     } catch (requestError) {
       setUploadError(requestError instanceof Error ? requestError.message : "Preview failed.");
@@ -176,10 +174,9 @@ export default function Agents() {
     setUploadState("committing");
     setUploadError("");
     try {
-      const backendRole = ASK_ROLE_TO_BACKEND[askRole] ?? "general_employee";
       const response = await commitUpload(
         selectedFile,
-        backendRole,
+        askRole,
         uploadPreview.preview_digest,
       );
       setUploadResult(response);
@@ -225,14 +222,7 @@ export default function Agents() {
       <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
         <h1>{t("nav.aiAgents")}</h1>
         <p>{t("agents.desc")}</p>
-        <div className="fb-lang-row">
-          <span className="fb-eyebrow">{t("agents.viewingAs")}</span>
-          <div className="fb-role-switch" role="tablist" style={{ margin: 0 }}>
-            <button className={"fb-role-btn" + (askRole === "finance_director" ? " is-current" : "")} type="button" onClick={() => setAskRole("finance_director")}>Finance Director</button>
-            <button className={"fb-role-btn" + (askRole === "employee" ? " is-current" : "")} type="button" onClick={() => setAskRole("employee")}>Employee</button>
-            <button className={"fb-role-btn" + (askRole === "guest" ? " is-current" : "")} type="button" onClick={() => setAskRole("guest")}>Guest</button>
-          </div>
-        </div>
+        <PersonaSelector compact />
       </header>
 
       <div className="fb-unified-wrap">
@@ -270,6 +260,15 @@ export default function Agents() {
                         <span className="fb-fine" style={{ marginTop: ".45rem" }}>
                           {msg.mode} · {msg.citations?.length ?? 0} cited sources
                         </span>
+                        {msg.rawQuestion && (
+                          <button
+                            type="button"
+                            className="fb-btn fb-btn-outline"
+                            onClick={() => send(msg.rawQuestion ?? "")}
+                          >
+                            Re-run as selected persona
+                          </button>
+                        )}
                       </div>
                     )}
                     {!!msg.citations?.length && (
@@ -428,6 +427,7 @@ export default function Agents() {
                 <button className={"fb-icon-btn" + (webSearchOn ? " is-active" : "")} type="button" onClick={() => setWebSearchOn((v) => !v)} aria-label="Browse the internet" aria-pressed={webSearchOn}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" strokeLinecap="round" /><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" strokeLinecap="round" /></svg>
                 </button>
+                <span className="fb-fine">Context: {protectedTurnCount} protected turns</span>
               </div>
               <button className="fb-send-btn2" type="button" onClick={() => send(input)} aria-label={FB_UI_STRINGS[lang].send}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
