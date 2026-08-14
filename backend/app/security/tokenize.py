@@ -49,6 +49,11 @@ def _band_index(value: Decimal) -> int:
     return len(AMOUNT_BANDS)
 
 
+def amount_band_index(value: Decimal) -> int:
+    """Return the documented non-sensitive range index for a validated amount."""
+    return _band_index(value)
+
+
 def _canonical_amount(text: str) -> str:
     return f"MYR:{_parse_amount(text).quantize(Decimal('0.01'))}"
 

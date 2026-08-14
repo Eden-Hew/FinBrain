@@ -198,6 +198,27 @@ class EmailIngestionReceipt(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class StructuredIngestionBatch(Base):
+    """Opaque structured-file status; source bytes and filenames are never stored."""
+
+    __tablename__ = "structured_ingestion_batches"
+
+    batch_ref: Mapped[str] = mapped_column(String, primary_key=True)
+    schema_name: Mapped[str] = mapped_column(String, nullable=False)
+    origin_channel: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    total_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    valid_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    failed_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    protected_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    ready_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class ProcessRecommendation(Base):
     __tablename__ = "process_recommendations"
 

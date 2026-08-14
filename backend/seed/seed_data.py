@@ -10,6 +10,7 @@ from app.services.ingestion import ingest_canonical_record
 from seed.sample_records import SAMPLE_RECORDS
 
 RESET_TABLES = (
+    "structured_ingestion_batches",
     "recommendation_decisions",
     "recommendation_evidence",
     "process_recommendations",

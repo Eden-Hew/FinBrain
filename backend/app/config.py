@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     email_sync_interval_seconds: int = 60
     email_max_messages_per_sync: int = 25
     email_include_attachments: bool = True
+    structured_csv_max_file_bytes: int = 10_000_000
+    structured_csv_max_rows: int = 500
+    structured_csv_max_columns: int = 20
+    structured_csv_max_cell_chars: int = 4_000
 
     @field_validator(
         "telegram_draft_ttl_seconds",
@@ -64,11 +68,15 @@ class Settings(BaseSettings):
         "email_imap_port",
         "email_sync_interval_seconds",
         "email_max_messages_per_sync",
+        "structured_csv_max_file_bytes",
+        "structured_csv_max_rows",
+        "structured_csv_max_columns",
+        "structured_csv_max_cell_chars",
     )
     @classmethod
     def positive_connector_limits(cls, value: int) -> int:
         if value <= 0:
-            raise ValueError("Telegram limits must be positive")
+            raise ValueError("Connector and ingestion limits must be positive")
         return value
 
     @field_validator("telegram_mode")

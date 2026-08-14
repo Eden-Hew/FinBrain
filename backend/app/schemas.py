@@ -83,6 +83,45 @@ class IngestionResponse(IngestionResult):
     authorization_mode: str = "demo-role"
 
 
+class StructuredCsvValidationIssue(BaseModel):
+    code: str
+    row_number: int | None = None
+    field: str | None = None
+
+
+class StructuredCsvRowResult(BaseModel):
+    row_number: int
+    source_record_id: str
+    content_text: str
+    processing_status: ProcessingStatus
+    enrichment_mode: str | None = None
+    created: bool
+    refreshed: bool
+
+
+class StructuredCsvPreviewResponse(BaseModel):
+    preview_digest: str
+    schema_name: str
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    protected_preview: list[StructuredCsvRowResult] = Field(default_factory=list)
+    issues: list[StructuredCsvValidationIssue] = Field(default_factory=list)
+
+
+class StructuredCsvCommitResponse(BaseModel):
+    batch_ref: str
+    schema_name: str
+    status: str
+    total_rows: int
+    valid_rows: int
+    failed_rows: int
+    protected_rows: int
+    ready_rows: int
+    rows: list[StructuredCsvRowResult] = Field(default_factory=list)
+    issues: list[StructuredCsvValidationIssue] = Field(default_factory=list)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     role: UserRole

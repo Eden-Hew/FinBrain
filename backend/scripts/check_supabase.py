@@ -15,6 +15,7 @@ REQUIRED_TABLES = (
     "recommendation_evidence",
     "recommendation_decisions",
     "workflow_audit_log",
+    "structured_ingestion_batches",
 )
 REQUIRED_INGESTION_COLUMNS = {
     "source_system",
@@ -82,6 +83,9 @@ def main() -> None:
         workflow_index = connection.scalar(
             text("select to_regclass('public.workflow_audit_created_idx')")
         )
+        structured_batch_index = connection.scalar(
+            text("select to_regclass('public.structured_ingestion_status_created_idx')")
+        )
         rls_status = connection.execute(
             text(
                 "select c.relname, c.relrowsecurity, c.relforcerowsecurity "
@@ -116,6 +120,8 @@ def main() -> None:
         raise SystemExit("The HNSW embedding index is missing.")
     if workflow_index is None:
         raise SystemExit("The Track 2 recommendation migration is incomplete.")
+    if structured_batch_index is None:
+        raise SystemExit("The structured-ingestion migration is incomplete.")
     insecure_tables = [name for name, enabled, forced in rls_status if not enabled or not forced]
     if insecure_tables:
         raise SystemExit(f"RLS is not enabled and forced for: {', '.join(insecure_tables)}")
@@ -130,6 +136,7 @@ def main() -> None:
     print(f"Role-list column: {role_list_type}")
     print("HNSW index: present")
     print("Track 2 recommendation schema: present")
+    print("Structured ingestion schema: present")
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 
