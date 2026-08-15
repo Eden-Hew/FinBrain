@@ -1,6 +1,6 @@
 # FinBrain OS — Project Progress
 
-Last updated: 14 August 2026
+Last updated: 15 August 2026
 
 ## Current phase
 
@@ -28,7 +28,9 @@ Gmail + Telegram + structured CSV + uploaded documents
 - Priority 5 — persona and disclosure demonstration: complete.
 - Priority 6 — demo reliability: functionally complete; final full rehearsal remains.
 - Five-feature governed-intelligence package: complete.
-- Backend verification: 93 tests passing.
+- Supabase JWT authentication and backend-owned API authorization: implemented locally; remote
+  migration, signing-key selection, Auth hook enablement, and account provisioning remain.
+- Backend verification: 100 tests passing.
 - Backend lint: Ruff passing.
 - Frontend verification: production build passing; lint has 0 errors and 6 pre-existing Fast Refresh warnings.
 - Current branch: `main`.
@@ -145,6 +147,20 @@ Gmail + Telegram + structured CSV + uploaded documents
 - Completed two live journeys from a cited query through owner approval; the final provider-backed
   brief ran in `morpheus` mode.
 
+### 10. Supabase authentication and API authorization
+
+- Added Supabase email/password session management to the React frontend.
+- Added asymmetric Supabase JWT verification through the project JWKS endpoint.
+- Added a backend-authoritative `user_roles` table and Custom Access Token Hook migration.
+- Removed caller-selected roles from query, ingestion, upload, conversation, recommendation, and
+  audit API contracts.
+- Added route-level permission dependencies and HTTP 401/403 behavior.
+- Bound conversations, citations, and query-originated recommendations to verified users.
+- Added privacy-safe authenticated actor references to disclosure and workflow audit events.
+- Replaced the global persona switcher with a read-only authenticated-role display; compliance
+  role comparison remains an explicit policy simulation.
+- Added JWT, stale-claim, provisioning, permission, and cross-user ownership tests.
+
 ## Verified demonstration state
 
 The latest clean Gmail rehearsal produced:
@@ -219,7 +235,7 @@ These are rehearsal and polish items, not missing core architecture:
 
 ## Intentionally deferred beyond the hackathon
 
-- Production authentication and Supabase JWT authorization.
+- Multi-tenant organization membership and production account lifecycle administration.
 - Multi-tenant organization isolation and production RLS policies.
 - Arbitrary user-defined spreadsheet schemas.
 - OCR for scanned PDFs and images.
@@ -261,7 +277,8 @@ Detailed manual scenarios and fixtures are documented in `TESTING_GUIDE.md`.
 - Detection and tokenization occur before Gemini or Morpheus receives content.
 - External model providers receive protected text and protected metadata.
 - Original values are encrypted in the token vault and restored only when the selected backend role permits disclosure.
-- The prototype role selector is intentionally not authentication. It demonstrates policy behavior only and must not be treated as a production security control.
+- Supabase Auth now verifies browser identities with asymmetric JWTs, and FastAPI derives each
+  request's role from the backend-controlled user-role assignment.
 - Suggested prompts are static shortcuts, but submitted answers, citations, exposure receipts,
   workflow events, and audit hashes come from the live backend path.
 - Hash chains are tamper-evident rather than tamper-proof: they detect an unrecomputed edit or gap,

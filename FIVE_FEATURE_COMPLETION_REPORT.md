@@ -3,6 +3,9 @@
 Status: **Complete**  
 Verified: **14 August 2026**
 
+> Historical milestone: Supabase JWT authentication and API authorization were implemented
+> afterward. See `AUTH_SETUP.md` and `PROGRESS.md` for the current state.
+
 ## Delivered
 
 1. Customer Intelligence Brief with protected persistence, provider-backed structured output,

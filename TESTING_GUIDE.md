@@ -144,7 +144,7 @@ only when they are disabled. Startup diagnostics are written to ignored `.runtim
 ## 6. Test structured CSV upload
 
 1. Open **AI Agents** or **Protected Ingestion**.
-2. Select the **General employee** demo persona.
+2. Sign in as a provisioned **Finance operator** or **Owner / director** account.
 3. Choose `demo/chat_upload_invoice_register.csv` using the paperclip or protected file control.
 4. Wait for the protected preview.
 5. Confirm the preview shows:
