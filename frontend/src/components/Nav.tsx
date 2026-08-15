@@ -1,6 +1,7 @@
 import { useAppState, type Screen } from "../lib/appState";
+import { useAuth } from "../auth/AuthProvider";
 import { useI18n } from "../lib/i18n";
-import { FB_ROLE_IDENTITY } from "../data/sampleData";
+import { PERSONAS } from "../lib/personas";
 import { Wordmark } from "./Logo";
 
 export function LandingNav() {
@@ -53,8 +54,9 @@ const NAV_LINKS: { screen: Screen; key: string }[] = [
 
 export function AppNav({ current, backTo, backLabel }: { current?: Screen; backTo?: () => void; backLabel?: string }) {
   const { show, askRole, approvalsCount } = useAppState();
+  const { identity, signOut } = useAuth();
   const { lang, setLang, t } = useI18n();
-  const identity = FB_ROLE_IDENTITY[askRole];
+  const activeRole = identity?.role ?? askRole;
 
   return (
     <nav className="fb-app-nav">
@@ -86,9 +88,9 @@ export function AppNav({ current, backTo, backLabel }: { current?: Screen; backT
           <button className={"fb-role-btn fb-lang-btn" + (lang === "ms" ? " is-current" : "")} type="button" onClick={() => setLang("ms")}>BM</button>
           <button className={"fb-role-btn fb-lang-btn" + (lang === "zh" ? " is-current" : "")} type="button" onClick={() => setLang("zh")}>中文</button>
         </div>
-        <span className="fb-nav-user-name">{identity.name}</span>
-        <span className="fb-nav-user-role">{identity.role}</span>
-        <span style={{ cursor: "pointer" }} tabIndex={0} role="button" onClick={() => show("landing")}>{t("nav.logout")}</span>
+        <span className="fb-nav-user-name">{identity?.email ?? "Authenticated user"}</span>
+        <span className="fb-nav-user-role">{PERSONAS[activeRole].label}</span>
+        <span style={{ cursor: "pointer" }} tabIndex={0} role="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</span>
       </div>
     </nav>
   );

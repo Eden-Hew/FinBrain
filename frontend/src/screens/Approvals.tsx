@@ -26,7 +26,7 @@ export default function Approvals() {
   const [recommendationError, setRecommendationError] = useState("");
 
   const refreshRecommendations = async () => {
-    const rows = await fetchRecommendations(askRole);
+    const rows = await fetchRecommendations();
     setRecommendations(rows);
   };
 
@@ -38,7 +38,7 @@ export default function Approvals() {
           if (active) setRecommendations([]);
           return;
         }
-        const rows = await fetchRecommendations(askRole);
+        const rows = await fetchRecommendations();
         if (active) setRecommendations(rows);
       } catch {
         if (active) setRecommendations([]);
@@ -60,7 +60,7 @@ export default function Approvals() {
     setLoadingAnalysis(true);
     setRecommendationError("");
     try {
-      await analyzeProcesses(askRole);
+      await analyzeProcesses();
       await refreshRecommendations();
     } catch (error) {
       setRecommendationError(error instanceof Error ? error.message : "Process analysis failed.");
@@ -75,7 +75,7 @@ export default function Approvals() {
   ) => {
     setRecommendationError("");
     try {
-      const updated = await decideRecommendation(id, decision, askRole);
+      const updated = await decideRecommendation(id, decision);
       setRecommendations((rows) => rows.map((row) => row.id === id ? updated : row));
     } catch (error) {
       setRecommendationError(error instanceof Error ? error.message : "Decision failed.");

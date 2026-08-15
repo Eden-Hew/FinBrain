@@ -1,3 +1,5 @@
+import { accessToken, supabase } from "../auth/supabase";
+
 export type Role =
   | "general_employee"
   | "finance_ops"
@@ -113,6 +115,7 @@ export interface AuditEntry {
   token: string;
   authorized: boolean;
   query_hash: string;
+  actor_ref: string;
   previous_hash: string;
   entry_hash: string;
   ts: string;
@@ -126,7 +129,6 @@ export interface AuditResponse {
 export type ProcessingStatus = "protected" | "ready" | "failed_enrichment";
 
 export interface IngestionRequest {
-  role: Role;
   source_record_id: string;
   source_system: string;
   record_type: string;
@@ -145,7 +147,7 @@ export interface IngestionResponse {
   created: boolean;
   refreshed: boolean;
   submitted_as: Role;
-  authorization_mode: "demo-role";
+  authorization_mode: "supabase-jwt";
 }
 
 export interface UploadProtectedItem {
@@ -297,16 +299,26 @@ async function parse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function authenticatedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await accessToken();
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`${BASE_URL}${path}`, { ...init, headers });
+  if (response.status === 401) {
+    await supabase.auth.signOut();
+  }
+  return response;
+}
+
 export async function askQuestion(
   question: string,
-  role: Role,
   conversationId?: string | null,
 ): Promise<QueryResponse> {
   return parse<QueryResponse>(
-    await fetch(`${BASE_URL}/query`, {
+    await authenticatedFetch("/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, role, conversation_id: conversationId || null }),
+      body: JSON.stringify({ question, conversation_id: conversationId || null }),
     }),
   );
 }
@@ -314,26 +326,21 @@ export async function askQuestion(
 export async function fetchCitationDetail(
   turnId: number,
   citationId: string,
-  role: Role,
 ): Promise<CitationDetail> {
   return parse<CitationDetail>(
-    await fetch(
-      `${BASE_URL}/query-turns/${turnId}/citations/${encodeURIComponent(citationId)}?role=${role}`,
-    ),
+    await authenticatedFetch(`/query-turns/${turnId}/citations/${encodeURIComponent(citationId)}`),
   );
 }
 
 export async function compareTurnRoles(
   turnId: number,
-  requestingRole: Role,
   comparisonRoles: Role[],
 ): Promise<RoleComparisonResponse> {
   return parse<RoleComparisonResponse>(
-    await fetch(`${BASE_URL}/query-turns/${turnId}/compare-roles`, {
+    await authenticatedFetch(`/query-turns/${turnId}/compare-roles`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        requesting_role: requestingRole,
         comparison_roles: comparisonRoles,
       }),
     }),
@@ -342,26 +349,25 @@ export async function compareTurnRoles(
 
 export async function createRecommendationFromTurn(
   turnId: number,
-  role: Role,
   actionId = "recommended-action",
   suggestedOwner?: string,
 ): Promise<ProcessRecommendation> {
   return parse<ProcessRecommendation>(
-    await fetch(`${BASE_URL}/query-turns/${turnId}/recommendations`, {
+    await authenticatedFetch(`/query-turns/${turnId}/recommendations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, action_id: actionId, suggested_owner: suggestedOwner }),
+      body: JSON.stringify({ action_id: actionId, suggested_owner: suggestedOwner }),
     }),
   );
 }
 
-export async function fetchAuditLog(role: Role): Promise<AuditResponse> {
-  return parse<AuditResponse>(await fetch(`${BASE_URL}/audit-log?role=${role}`));
+export async function fetchAuditLog(): Promise<AuditResponse> {
+  return parse<AuditResponse>(await authenticatedFetch("/audit-log"));
 }
 
 export async function ingestRecord(payload: IngestionRequest): Promise<IngestionResponse> {
   return parse<IngestionResponse>(
-    await fetch(`${BASE_URL}/ingestion`, {
+    await authenticatedFetch("/ingestion", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -369,23 +375,22 @@ export async function ingestRecord(payload: IngestionRequest): Promise<Ingestion
   );
 }
 
-function uploadHeaders(file: File, role: Role, previewDigest?: string): HeadersInit {
+function uploadHeaders(file: File, previewDigest?: string): HeadersInit {
   return {
     "Content-Type": file.type || "application/octet-stream",
     "X-FinBrain-Filename": file.name,
     "X-FinBrain-Record-Type": file.name.toLowerCase().endsWith(".csv")
       ? "invoice_register"
       : "uploaded_document",
-    "X-FinBrain-Role": role,
     ...(previewDigest ? { "X-FinBrain-Preview-Digest": previewDigest } : {}),
   };
 }
 
-export async function previewUpload(file: File, role: Role): Promise<UploadPreviewResponse> {
+export async function previewUpload(file: File): Promise<UploadPreviewResponse> {
   return parse<UploadPreviewResponse>(
-    await fetch(`${BASE_URL}/uploads/preview`, {
+    await authenticatedFetch("/uploads/preview", {
       method: "POST",
-      headers: uploadHeaders(file, role),
+      headers: uploadHeaders(file),
       body: file,
     }),
   );
@@ -393,13 +398,12 @@ export async function previewUpload(file: File, role: Role): Promise<UploadPrevi
 
 export async function commitUpload(
   file: File,
-  role: Role,
   previewDigest: string,
 ): Promise<UploadCommitResponse> {
   return parse<UploadCommitResponse>(
-    await fetch(`${BASE_URL}/uploads/commit`, {
+    await authenticatedFetch("/uploads/commit", {
       method: "POST",
-      headers: uploadHeaders(file, role, previewDigest),
+      headers: uploadHeaders(file, previewDigest),
       body: file,
     }),
   );
@@ -407,68 +411,66 @@ export async function commitUpload(
 
 export async function fetchTelegramStatus(): Promise<TelegramIntegrationStatus> {
   return parse<TelegramIntegrationStatus>(
-    await fetch(`${BASE_URL}/integrations/telegram/status`),
+    await authenticatedFetch("/integrations/telegram/status"),
   );
 }
 
 export async function fetchTelegramRecords(): Promise<ProtectedIngestionRecord[]> {
   return parse<ProtectedIngestionRecord[]>(
-    await fetch(`${BASE_URL}/ingestion-records?source_system=telegram&limit=12`),
+    await authenticatedFetch("/ingestion-records?source_system=telegram&limit=12"),
   );
 }
 
 export async function fetchEmailStatus(): Promise<EmailIntegrationStatus> {
-  return parse<EmailIntegrationStatus>(await fetch(`${BASE_URL}/integrations/email/status`));
+  return parse<EmailIntegrationStatus>(await authenticatedFetch("/integrations/email/status"));
 }
 
 export async function syncEmail(): Promise<EmailSyncResponse> {
   return parse<EmailSyncResponse>(
-    await fetch(`${BASE_URL}/integrations/email/sync`, { method: "POST" }),
+    await authenticatedFetch("/integrations/email/sync", { method: "POST" }),
   );
 }
 
 export async function fetchEmailRecords(): Promise<ProtectedIngestionRecord[]> {
   return parse<ProtectedIngestionRecord[]>(
-    await fetch(`${BASE_URL}/ingestion-records?source_system=email&limit=12`),
+    await authenticatedFetch("/ingestion-records?source_system=email&limit=12"),
   );
 }
 
-export async function analyzeProcesses(role: Role): Promise<ProcessRecommendation> {
+export async function analyzeProcesses(): Promise<ProcessRecommendation> {
   return parse<ProcessRecommendation>(
-    await fetch(`${BASE_URL}/process-analysis`, {
+    await authenticatedFetch("/process-analysis", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         window_days: 30,
         source_systems: ["telegram", "email"],
         minimum_evidence: 3,
-        role,
       }),
     }),
   );
 }
 
-export async function fetchRecommendations(role: Role): Promise<ProcessRecommendation[]> {
-  return parse<ProcessRecommendation[]>(await fetch(`${BASE_URL}/recommendations?role=${role}`));
+export async function fetchRecommendations(): Promise<ProcessRecommendation[]> {
+  return parse<ProcessRecommendation[]>(await authenticatedFetch("/recommendations"));
 }
 
 export async function decideRecommendation(
   id: number,
   decision: "approve" | "reject" | "mark-implemented",
-  role: Role,
   comment = "",
 ): Promise<ProcessRecommendation> {
   return parse<ProcessRecommendation>(
-    await fetch(`${BASE_URL}/recommendations/${id}/${decision}`, {
+    await authenticatedFetch(`/recommendations/${id}/${decision}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, comment }),
+      body: JSON.stringify({ comment }),
     }),
   );
 }
 
-export async function fetchWorkflowAudit(role: Role): Promise<WorkflowAuditResponse> {
+export async function fetchWorkflowAudit(): Promise<WorkflowAuditResponse> {
   return parse<WorkflowAuditResponse>(
-    await fetch(`${BASE_URL}/workflow-audit?role=${role}`),
+    await authenticatedFetch("/workflow-audit"),
   );
 }

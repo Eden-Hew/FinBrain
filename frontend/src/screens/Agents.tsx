@@ -113,7 +113,7 @@ export default function Agents() {
       let turnId: number | undefined;
       let isFallback = false;
       try {
-        const response = await askQuestion(trimmed, askRole, conversationId);
+        const response = await askQuestion(trimmed, conversationId);
         setConversationId(response.conversation_id);
         setProtectedTurnCount((count) => count + 1);
         finalText = response.answer;
@@ -189,7 +189,7 @@ export default function Agents() {
     setUploadError("");
     setUploadState("previewing");
     try {
-      setUploadPreview(await previewUpload(file, askRole));
+      setUploadPreview(await previewUpload(file));
       setUploadState("protected");
     } catch (requestError) {
       setUploadError(requestError instanceof Error ? requestError.message : "Preview failed.");
@@ -204,7 +204,6 @@ export default function Agents() {
     try {
       const response = await commitUpload(
         selectedFile,
-        askRole,
         uploadPreview.preview_digest,
       );
       setUploadResult(response);

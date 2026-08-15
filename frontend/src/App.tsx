@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { AppStateProvider, useAppState } from "./lib/appState";
 import { I18nProvider } from "./lib/i18n";
 import { ThemeProvider, ThemeToggleButton } from "./lib/theme";
@@ -17,7 +19,22 @@ import Approvals from "./screens/Approvals";
 import Ingestion from "./screens/Ingestion";
 
 function Screens() {
-  const { screen } = useAppState();
+  const { screen, show, setAskRole } = useAppState();
+  const { identity, loading } = useAuth();
+  const isPublic = ["landing", "login", "signup", "security", "legal"].includes(screen);
+
+  useEffect(() => {
+    if (identity) setAskRole(identity.role);
+  }, [identity, setAskRole]);
+
+  useEffect(() => {
+    if (!loading && !identity && !isPublic) show("login");
+    if (!loading && identity && (screen === "login" || screen === "signup")) show("agents");
+  }, [identity, isPublic, loading, screen, show]);
+
+  if (loading) {
+    return <div className="fb-root"><div className="fb-callout">Checking secure session…</div></div>;
+  }
 
   switch (screen) {
     case "landing": return <Landing />;
@@ -42,7 +59,7 @@ export default function App() {
     <ThemeProvider>
       <I18nProvider>
         <AppStateProvider>
-          <Screens />
+          <AuthProvider><Screens /></AuthProvider>
           <ThemeToggleButton />
         </AppStateProvider>
       </I18nProvider>

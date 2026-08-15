@@ -204,7 +204,7 @@ export function IntelligenceExperience({
     setCitationError("");
     setCitationLoading(true);
     try {
-      setCitationDetail(await fetchCitationDetail(turnId, citationId, role));
+      setCitationDetail(await fetchCitationDetail(turnId, citationId));
     } catch (error) {
       setCitationError(error instanceof Error ? error.message : "Evidence is unavailable.");
     } finally {
@@ -230,7 +230,6 @@ export function IntelligenceExperience({
     try {
       setComparison(await compareTurnRoles(
         turnId,
-        role,
         ["general_employee", "finance_ops", "owner_director"],
       ));
     } catch (error) {
@@ -247,7 +246,6 @@ export function IntelligenceExperience({
     try {
       const created = await createRecommendationFromTurn(
         turnId,
-        role,
         pendingRecommendation.actionId,
         pendingRecommendation.owner,
       );

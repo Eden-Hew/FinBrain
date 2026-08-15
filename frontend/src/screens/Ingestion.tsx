@@ -17,7 +17,6 @@ import {
   type IngestionResponse,
   type ProcessingStatus,
   type ProtectedIngestionRecord,
-  type Role,
   type TelegramIntegrationStatus,
   type UploadPreviewResponse,
 } from "../api/client";
@@ -37,7 +36,7 @@ const RECORD_OPTIONS = [
   { value: "document_note", label: "Document note" },
 ];
 
-function ProtectedFilePanel({ role }: { role: Role }) {
+function ProtectedFilePanel() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<UploadPreviewResponse | null>(null);
@@ -59,7 +58,7 @@ function ProtectedFilePanel({ role }: { role: Role }) {
     setMessage("");
     setState("previewing");
     try {
-      setPreview(await previewUpload(selected, role));
+      setPreview(await previewUpload(selected));
       setState("protected");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Preview failed.");
@@ -72,7 +71,7 @@ function ProtectedFilePanel({ role }: { role: Role }) {
     setState("committing");
     setMessage("");
     try {
-      const result = await commitUpload(file, role, preview.preview_digest);
+      const result = await commitUpload(file, preview.preview_digest);
       setMessage(`${result.ready_rows} of ${result.valid_rows} protected source(s) are ready.`);
       setFile(null);
       setState("done");
@@ -370,7 +369,6 @@ export default function Ingestion() {
     setResult(null);
     try {
       const response = await ingestRecord({
-        role,
         source_record_id: sourceRecordId.trim(),
         source_system: sourceSystem,
         record_type: recordType,
@@ -410,7 +408,7 @@ export default function Ingestion() {
 
         <PersonaSelector />
 
-        <ProtectedFilePanel role={role} />
+        <ProtectedFilePanel />
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>

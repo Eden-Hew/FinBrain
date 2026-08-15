@@ -76,8 +76,8 @@ export default function Audit() {
   const load = async () => {
     if (!canViewAudit) throw new Error("Compliance reviewer persona required");
     const [disclosures, workflow] = await Promise.all([
-      fetchAuditLog(askRole),
-      fetchWorkflowAudit(askRole),
+      fetchAuditLog(),
+      fetchWorkflowAudit(),
     ]);
     setLiveEntries(disclosures.entries);
     setWorkflowEntries(workflow.entries);
@@ -101,8 +101,8 @@ export default function Audit() {
       }
       try {
         const [disclosures, workflow] = await Promise.all([
-          fetchAuditLog(askRole),
-          fetchWorkflowAudit(askRole),
+          fetchAuditLog(),
+          fetchWorkflowAudit(),
         ]);
         if (!active) return;
         setLiveEntries(disclosures.entries);
@@ -208,7 +208,7 @@ export default function Audit() {
       <main className="fb-audit-main">
         <PersonaSelector />
         {!canViewAudit && (
-          <div className="fb-callout">Select the Compliance reviewer demo persona to view protected audit chains.</div>
+          <div className="fb-callout">A verified Compliance reviewer account is required to view protected audit chains.</div>
         )}
         {loadError && <div className="fb-audit-error" role="alert">{loadError}</div>}
 
