@@ -119,7 +119,8 @@ Gmail + Telegram + structured CSV + uploaded documents
 - Generated `.runtime/*.launch.cmd` wrappers redirect input from `NUL` and capture logs.
 - Startup reports component progress and detects early worker exits.
 - PID tracking and stale-PID recovery were added.
-- `scripts/check_demo.ps1` reports backend, frontend, Telegram, Gmail, and provider health.
+- `scripts/check_demo.ps1` reports backend/frontend health and validates configured Telegram and
+  Gmail workers through the local PID registry; detailed connector status remains JWT-protected.
 - `scripts/stop_demo.ps1` stops tracked process trees and clears remaining demo listeners on the configured ports.
 - A verified lifecycle run returned control to PowerShell in approximately 6.6 seconds, passed health checks, and stopped without leaving listeners or PID files.
 

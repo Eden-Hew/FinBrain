@@ -1,5 +1,25 @@
 $ErrorActionPreference = "Continue"
 $failed = $false
+$repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "demo_processes.ps1")
+$envFile = Join-Path $repoRoot "backend\.env"
+$pidFile = Join-Path $repoRoot ".runtime\demo-processes.json"
+$entries = @()
+
+if (Test-Path -LiteralPath $pidFile) {
+  try {
+    $parsedEntries = Get-Content -LiteralPath $pidFile -Raw | ConvertFrom-Json
+    $entries = if ($parsedEntries -is [array]) { $parsedEntries } else { @($parsedEntries) }
+  } catch {
+    Write-Output "Process registry: invalid"
+    $failed = $true
+  }
+}
+
+function Get-TrackedDemoComponent {
+  param([Parameter(Mandatory)][string]$Name)
+  return @($entries | Where-Object { $_.name -eq $Name } | Select-Object -First 1)
+}
 
 try {
   $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 5
@@ -19,28 +39,30 @@ try {
   $failed = $true
 }
 
-try {
-  $telegram = Invoke-RestMethod -Uri "http://127.0.0.1:8000/integrations/telegram/status" -TimeoutSec 5
-  if (-not $telegram.configured) {
-    Write-Output "Telegram: disabled (optional)"
-  } elseif ($telegram.status -notin @("healthy", "starting")) {
-    Write-Output "Telegram: unhealthy ($($telegram.status))"
-    $failed = $true
+$telegramEnabled = Test-DemoEnvValue -EnvFile $envFile -Name "TELEGRAM_BOT_TOKEN"
+if (-not $telegramEnabled) {
+  Write-Output "Telegram worker: disabled (optional)"
+} else {
+  $telegramEntry = Get-TrackedDemoComponent -Name "telegram"
+  if ($telegramEntry -and (Get-DemoValidatedProcess -Entry $telegramEntry)) {
+    Write-Output "Telegram worker: running (tracked local process)"
   } else {
-    Write-Output "Telegram: $($telegram.status) ($($telegram.mode)); detector ready: $($telegram.detector_ready)"
+    Write-Output "Telegram worker: unavailable"
+    $failed = $true
   }
-} catch { Write-Output "Telegram: status unavailable" }
+}
 
-try {
-  $email = Invoke-RestMethod -Uri "http://127.0.0.1:8000/integrations/email/status" -TimeoutSec 5
-  if (-not $email.configured) {
-    Write-Output "Email: disabled (optional)"
-  } elseif ($email.status -notin @("healthy", "idle", "syncing")) {
-    Write-Output "Email: unhealthy ($($email.status))"
-    $failed = $true
+$emailEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "EMAIL_CONNECTOR_ENABLED"
+if (-not $emailEnabled) {
+  Write-Output "Email worker: disabled (optional)"
+} else {
+  $emailEntry = Get-TrackedDemoComponent -Name "email"
+  if ($emailEntry -and (Get-DemoValidatedProcess -Entry $emailEntry)) {
+    Write-Output "Email worker: running (tracked local process)"
   } else {
-    Write-Output "Email: $($email.status); last sync: $($email.last_sync_at)"
+    Write-Output "Email worker: unavailable"
+    $failed = $true
   }
-} catch { Write-Output "Email: status unavailable" }
+}
 
 if ($failed) { exit 1 }

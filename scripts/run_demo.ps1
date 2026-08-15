@@ -120,29 +120,15 @@ try {
       throw "$($entry.name) was configured but exited during startup. Check .runtime/logs."
     }
   }
-  Write-Output "Waiting for configured connector health checks..."
-  $connectorsReady = $false
-  for ($attempt = 0; $attempt -lt 30; $attempt++) {
-    Assert-DemoProcessesRunning
-    try {
-      $telegramReady = -not $telegramEnabled
-      if ($telegramEnabled) {
-        $telegramStatus = Invoke-RestMethod `
-          -Uri "http://127.0.0.1:8000/integrations/telegram/status" -TimeoutSec 2
-        $telegramReady = $telegramStatus.status -in @("healthy", "starting")
-      }
-      $emailReady = -not $emailEnabled
-      if ($emailEnabled) {
-        $emailStatus = Invoke-RestMethod `
-          -Uri "http://127.0.0.1:8000/integrations/email/status" -TimeoutSec 2
-        $emailReady = $emailStatus.status -in @("healthy", "idle", "syncing")
-      }
-      if ($telegramReady -and $emailReady) { $connectorsReady = $true; break }
-    } catch {}
-    Start-Sleep -Milliseconds 500
-  }
-  if (-not $connectorsReady) {
-    throw "A configured connector did not become ready. Check .runtime/logs."
+  if ($telegramEnabled -or $emailEnabled) {
+    Write-Output "Verifying configured connector processes..."
+    # Connector status endpoints require a signed-in user's JWT. The local
+    # launcher therefore checks only the worker processes it created and
+    # leaves application-level connector status to the authenticated UI.
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+      Start-Sleep -Milliseconds 250
+      Assert-DemoProcessesRunning
+    }
   }
 
   Write-Output "FinBrain frontend: http://127.0.0.1:5173"

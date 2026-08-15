@@ -138,8 +138,10 @@ Open:
 - Frontend: <http://127.0.0.1:5173>
 - API documentation: <http://127.0.0.1:8000/docs>
 
-The health check should report the backend and frontend healthy. Gmail and Telegram are optional
-only when they are disabled. Startup diagnostics are written to ignored `.runtime/logs` files.
+The health check should report the backend and frontend healthy and each configured connector
+worker as a running tracked process. Detailed connector status is available after sign-in because
+the corresponding API routes require a Supabase JWT. Gmail and Telegram are optional only when
+they are disabled. Startup diagnostics are written to ignored `.runtime/logs` files.
 
 ## 6. Test structured CSV upload
 

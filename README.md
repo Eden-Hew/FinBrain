@@ -268,6 +268,10 @@ ports 8000 and 5173. It records validated process ownership and writes privacy-s
 `.runtime/logs`. The stop script validates PID start time, executable, and descendant ancestry
 before stopping anything, then verifies both ports are free.
 
+The local launcher and checker validate connector workers through their tracked process identity.
+Detailed Gmail and Telegram status remains behind Supabase JWT authentication in the application;
+the PowerShell lifecycle scripts do not bypass those protected API routes.
+
 The complete setup, connector, query, conversation, authorization, recommendation, audit, and
 lifecycle test procedure is in [`TESTING_GUIDE.md`](./TESTING_GUIDE.md).
 
