@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.db import initialize_local_schema
 from app.routes import (
     audit_log,
+    auth,
     conversations,
     ingestion,
     integrations,
@@ -33,12 +34,13 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=[
         "Content-Type",
+        "Authorization",
         "X-FinBrain-Filename",
         "X-FinBrain-Record-Type",
-        "X-FinBrain-Role",
         "X-FinBrain-Preview-Digest",
     ],
 )
+app.include_router(auth.router)
 app.include_router(query.router)
 app.include_router(query_artifacts.router)
 app.include_router(audit_log.router)

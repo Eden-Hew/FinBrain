@@ -19,6 +19,7 @@ REQUIRED_TABLES = (
     "conversations",
     "conversation_turns",
     "conversation_turn_citations",
+    "user_roles",
 )
 REQUIRED_INGESTION_COLUMNS = {
     "source_system",
@@ -92,6 +93,22 @@ def main() -> None:
         conversation_expiry_index = connection.scalar(
             text("select to_regclass('public.conversation_expiry_idx')")
         )
+        auth_hook = connection.scalar(
+            text("select to_regprocedure('public.custom_access_token_hook(jsonb)')")
+        )
+        auth_columns = {
+            (row.table_name, row.column_name)
+            for row in connection.execute(
+                text(
+                    "select table_name, column_name from information_schema.columns "
+                    "where table_schema = 'public' and ("
+                    "(table_name = 'conversations' and column_name = 'created_by_user_id') or "
+                    "(table_name = 'process_recommendations' "
+                    "and column_name = 'created_by_user_id') or "
+                    "(table_name = 'audit_log' and column_name = 'actor_ref'))"
+                )
+            )
+        }
         rls_status = connection.execute(
             text(
                 "select c.relname, c.relrowsecurity, c.relforcerowsecurity "
@@ -130,6 +147,13 @@ def main() -> None:
         raise SystemExit("The structured-ingestion migration is incomplete.")
     if conversation_expiry_index is None:
         raise SystemExit("The conversation-context migration is incomplete.")
+    expected_auth_columns = {
+        ("conversations", "created_by_user_id"),
+        ("process_recommendations", "created_by_user_id"),
+        ("audit_log", "actor_ref"),
+    }
+    if auth_hook is None or auth_columns != expected_auth_columns:
+        raise SystemExit("The Supabase Auth/JWT migration is incomplete.")
     insecure_tables = [name for name, enabled, forced in rls_status if not enabled or not forced]
     if insecure_tables:
         raise SystemExit(f"RLS is not enabled and forced for: {', '.join(insecure_tables)}")
@@ -146,6 +170,7 @@ def main() -> None:
     print("Track 2 recommendation schema: present")
     print("Structured ingestion schema: present")
     print("Protected conversation schema: present")
+    print("Supabase Auth role and ownership schema: present")
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 

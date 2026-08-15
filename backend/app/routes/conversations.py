@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser
 from app.db import get_db
 from app.models import ConversationTurnCitation, TokenizedContent
 from app.schemas import (
@@ -30,8 +31,8 @@ def _http_error(error: ValueError) -> HTTPException:
 
 
 @router.post("", response_model=ConversationCreateResponse)
-def create(db: Session = Depends(get_db)) -> ConversationCreateResponse:
-    conversation = create_conversation(db)
+def create(principal: CurrentUser, db: Session = Depends(get_db)) -> ConversationCreateResponse:
+    conversation = create_conversation(db, str(principal.user_id))
     return ConversationCreateResponse(
         conversation_id=conversation.id,
         status=conversation.status,
@@ -42,12 +43,11 @@ def create(db: Session = Depends(get_db)) -> ConversationCreateResponse:
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 def get(
     conversation_id: str,
-    role: UserRole,
+    principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> ConversationResponse:
-    del role  # The endpoint returns protected state only; role is explicit demo context.
     try:
-        conversation = get_active_conversation(db, conversation_id)
+        conversation = get_active_conversation(db, conversation_id, str(principal.user_id))
     except ValueError as error:
         raise _http_error(error) from error
     turns = load_recent_turns(db, conversation.id)
@@ -91,12 +91,11 @@ def get(
 @router.delete("/{conversation_id}", response_model=ConversationDeleteResponse)
 def remove(
     conversation_id: str,
-    role: UserRole,
+    principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> ConversationDeleteResponse:
-    del role
     try:
-        delete_conversation(db, conversation_id)
+        delete_conversation(db, conversation_id, str(principal.user_id))
     except ValueError as error:
         raise _http_error(error) from error
     return ConversationDeleteResponse(conversation_id=conversation_id, status="deleted")

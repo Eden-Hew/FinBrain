@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, require_roles
+from app.auth.principal import AuthPrincipal
 from app.db import get_db
 from app.models import ConversationTurn, ConversationTurnCitation, TokenizedContent
 from app.schemas import (
@@ -20,12 +22,12 @@ from app.services.retrieval import RetrievalHit
 router = APIRouter(prefix="/query-turns", tags=["query-artifacts"])
 
 
-def _turn(db: Session, turn_id: int) -> ConversationTurn:
+def _turn(db: Session, turn_id: int, user_id: str) -> ConversationTurn:
     turn = db.get(ConversationTurn, turn_id)
     if turn is None:
         raise HTTPException(status_code=404, detail="query_turn_not_found")
     try:
-        get_active_conversation(db, turn.conversation_id)
+        get_active_conversation(db, turn.conversation_id, user_id)
     except ValueError as error:
         code = str(error)
         raise HTTPException(
@@ -66,10 +68,10 @@ def _citation(
 def citation_detail(
     turn_id: int,
     citation_id: str,
-    role: UserRole,
+    principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> CitationDetailResponse:
-    turn = _turn(db, turn_id)
+    turn = _turn(db, turn_id, str(principal.user_id))
     _mapping, content = _citation(db, turn.id, citation_id)
     hit = RetrievalHit(
         content_id=content.id,
@@ -86,8 +88,9 @@ def citation_detail(
     trace = detokenize_response_with_trace(
         db,
         hit.retrieval_text[:1_000],
-        role.value,
+        principal.role.value,
         query_hash_value,
+        actor_ref=principal.actor_ref,
     )
     if trace.withheld_tokens and trace.restored_tokens:
         explanation = "Some protected values are visible to this role; others remain withheld."
@@ -122,11 +125,12 @@ def citation_detail(
 def compare_roles(
     turn_id: int,
     payload: RoleComparisonRequest,
+    principal: AuthPrincipal = Depends(require_roles(UserRole.COMPLIANCE)),
     db: Session = Depends(get_db),
 ) -> RoleComparisonResponse:
-    if payload.requesting_role is not UserRole.COMPLIANCE:
+    if principal.role is not UserRole.COMPLIANCE:
         raise HTTPException(status_code=403, detail="Compliance role required")
-    turn = _turn(db, turn_id)
+    turn = _turn(db, turn_id, str(principal.user_id))
     roles = list(dict.fromkeys(payload.comparison_roles))
     query_hash_value = hash_query(turn.protected_question)
     results: list[RoleComparisonResult] = []
@@ -136,6 +140,7 @@ def compare_roles(
             turn.protected_answer,
             role.value,
             query_hash_value,
+            actor_ref=principal.actor_ref,
         )
         explanations: list[str] = []
         if trace.restored_tokens:

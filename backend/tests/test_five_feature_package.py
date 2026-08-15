@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -20,6 +21,7 @@ from app.security.tokenize import tokenize_record
 from app.services.intelligence import build_protected_brief, validate_protected_brief
 from app.services.recommendations import create_recommendation_from_turn
 from app.services.retrieval import RetrievalHit
+from tests.auth_support import principal
 
 
 def _database() -> tuple:
@@ -43,6 +45,7 @@ def _turn_with_amount(db: Session) -> tuple[ConversationTurn, TokenizedContent, 
     )
     conversation = Conversation(
         id="10000000-0000-0000-0000-000000000001",
+        created_by_user_id=str(principal().user_id),
         status="active",
         expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
@@ -153,10 +156,11 @@ def test_evidence_and_role_comparison_reuse_protected_turn():
     engine, db = _database()
     try:
         turn, _content, protected = _turn_with_amount(db)
+        employee_principal = principal(UserRole.GENERAL_EMPLOYEE)
         employee = citation_detail(
             turn.id,
             "SOURCE-1",
-            UserRole.GENERAL_EMPLOYEE,
+            employee_principal,
             db,
         )
         assert "RM2.5K–5K" in employee.authorized_excerpt
@@ -165,9 +169,9 @@ def test_evidence_and_role_comparison_reuse_protected_turn():
         comparison = compare_roles(
             turn.id,
             RoleComparisonRequest(
-                requesting_role=UserRole.COMPLIANCE,
                 comparison_roles=[UserRole.GENERAL_EMPLOYEE, UserRole.FINANCE_OPS],
             ),
+            replace(employee_principal, role=UserRole.COMPLIANCE),
             db,
         )
         assert comparison.protected_answer == protected
@@ -179,9 +183,9 @@ def test_evidence_and_role_comparison_reuse_protected_turn():
             compare_roles(
                 turn.id,
                 RoleComparisonRequest(
-                    requesting_role=UserRole.FINANCE_OPS,
                     comparison_roles=[UserRole.OWNER_DIRECTOR],
                 ),
+                replace(employee_principal, role=UserRole.FINANCE_OPS),
                 db,
             )
         assert error.value.status_code == 403

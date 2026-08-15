@@ -364,6 +364,7 @@ def authorize_brief_with_trace(
     *,
     role: str,
     query_hash: str,
+    actor_ref: str = "legacy",
 ) -> tuple[CustomerIntelligenceBrief | None, DetokenizationTrace | None]:
     if brief is None:
         return None, None
@@ -372,6 +373,7 @@ def authorize_brief_with_trace(
         brief.model_dump_json(),
         role,
         query_hash,
+        actor_ref=actor_ref,
     )
     return CustomerIntelligenceBrief.model_validate_json(trace.text), trace
 
@@ -382,8 +384,9 @@ def authorize_brief(
     *,
     role: str,
     query_hash: str,
+    actor_ref: str = "legacy",
 ) -> CustomerIntelligenceBrief | None:
     authorized, _trace = authorize_brief_with_trace(
-        db, brief, role=role, query_hash=query_hash
+        db, brief, role=role, query_hash=query_hash, actor_ref=actor_ref
     )
     return authorized

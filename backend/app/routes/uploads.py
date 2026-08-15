@@ -3,6 +3,8 @@ import re
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_roles
+from app.auth.principal import AuthPrincipal
 from app.config import get_settings
 from app.db import get_db
 from app.integrations.telegram.extractors import ExtractionError
@@ -30,11 +32,10 @@ async def _bounded_body(request: Request) -> bytes:
 def _metadata(
     filename: str,
     record_type: str,
-    role: UserRole,
-) -> tuple[str, str, UserRole]:
+) -> tuple[str, str]:
     if not RECORD_TYPE_PATTERN.fullmatch(record_type):
         raise HTTPException(status_code=422, detail="invalid_record_type")
-    return filename, record_type, role
+    return filename, record_type
 
 
 @router.post("/preview", response_model=UploadPreviewResponse)
@@ -42,9 +43,11 @@ async def preview(
     request: Request,
     filename: str = Header(alias="X-FinBrain-Filename", max_length=255),
     record_type: str = Header(default="uploaded_document", alias="X-FinBrain-Record-Type"),
-    role: UserRole = Header(alias="X-FinBrain-Role"),
+    _principal: AuthPrincipal = Depends(
+        require_roles(UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR)
+    ),
 ) -> UploadPreviewResponse:
-    _metadata(filename, record_type, role)
+    _metadata(filename, record_type)
     data = await _bounded_body(request)
     try:
         return preview_upload(
@@ -64,11 +67,13 @@ async def commit(
     request: Request,
     filename: str = Header(alias="X-FinBrain-Filename", max_length=255),
     record_type: str = Header(default="uploaded_document", alias="X-FinBrain-Record-Type"),
-    role: UserRole = Header(alias="X-FinBrain-Role"),
+    _principal: AuthPrincipal = Depends(
+        require_roles(UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR)
+    ),
     preview_digest: str = Header(alias="X-FinBrain-Preview-Digest", min_length=64, max_length=64),
     db: Session = Depends(get_db),
 ) -> UploadCommitResponse:
-    _metadata(filename, record_type, role)
+    _metadata(filename, record_type)
     data = await _bounded_body(request)
     try:
         return commit_upload(

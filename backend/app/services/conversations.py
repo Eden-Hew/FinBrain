@@ -31,10 +31,11 @@ def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
-def create_conversation(db: Session) -> Conversation:
+def create_conversation(db: Session, created_by_user_id: str | None = None) -> Conversation:
     now = _now()
     conversation = Conversation(
         id=str(uuid.uuid4()),
+        created_by_user_id=created_by_user_id,
         status="active",
         expires_at=now + CONVERSATION_TTL,
     )
@@ -43,13 +44,20 @@ def create_conversation(db: Session) -> Conversation:
     return conversation
 
 
-def get_active_conversation(db: Session, conversation_id: str) -> Conversation:
+def get_active_conversation(
+    db: Session, conversation_id: str, created_by_user_id: str | None = None
+) -> Conversation:
     try:
         normalized_id = str(uuid.UUID(conversation_id))
     except (ValueError, AttributeError) as error:
         raise ValueError("invalid_conversation_id") from error
     conversation = db.get(Conversation, normalized_id)
     if conversation is None or conversation.status == "deleted":
+        raise ValueError("conversation_not_found")
+    if (
+        created_by_user_id is not None
+        and conversation.created_by_user_id != created_by_user_id
+    ):
         raise ValueError("conversation_not_found")
     if conversation.status == "expired" or _aware(conversation.expires_at) <= _now():
         conversation.status = "expired"
@@ -59,12 +67,12 @@ def get_active_conversation(db: Session, conversation_id: str) -> Conversation:
 
 
 def get_or_create_conversation(
-    db: Session, conversation_id: str | None
+    db: Session, conversation_id: str | None, created_by_user_id: str | None = None
 ) -> Conversation:
     return (
-        get_active_conversation(db, conversation_id)
+        get_active_conversation(db, conversation_id, created_by_user_id)
         if conversation_id
-        else create_conversation(db)
+        else create_conversation(db, created_by_user_id)
     )
 
 
@@ -205,8 +213,10 @@ def persist_turn(
     return turn
 
 
-def delete_conversation(db: Session, conversation_id: str) -> None:
-    conversation = get_active_conversation(db, conversation_id)
+def delete_conversation(
+    db: Session, conversation_id: str, created_by_user_id: str | None = None
+) -> None:
+    conversation = get_active_conversation(db, conversation_id, created_by_user_id)
     turn_ids = select(ConversationTurn.id).where(
         ConversationTurn.conversation_id == conversation.id
     )

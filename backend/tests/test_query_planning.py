@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.models import Base, TokenizedContent
 from app.routes import query as query_route
-from app.schemas import CitedAnswer, QueryRequest, UserRole
+from app.schemas import CitedAnswer, QueryRequest
 from app.security import detect
 from app.services.query_planning import QueryIntent, plan_query
+from tests.auth_support import principal
 
 
 def _record(index: int, source: str, *, embedding: list[float] | None = None):
@@ -93,8 +94,8 @@ def test_email_count_uses_structured_inventory():
         response = query_route.query(
             QueryRequest(
                 question="what is the total number of email sources?",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
 
@@ -127,8 +128,8 @@ def test_analyze_all_email_records_uses_every_sql_match(monkeypatch):
         response = query_route.query(
             QueryRequest(
                 question="summarize each email source formatted nicely",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
 
@@ -158,8 +159,8 @@ def test_ordinary_analytical_question_uses_every_sql_eligible_record(monkeypatch
         response = query_route.query(
             QueryRequest(
                 question="What email issue is most relevant?",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
 
@@ -191,8 +192,8 @@ def test_unfiltered_analytical_question_uses_all_ready_sources(monkeypatch):
         response = query_route.query(
             QueryRequest(
                 question="What business issues need attention?",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
 
@@ -221,8 +222,8 @@ def test_exact_email_listing_bypasses_reasoning():
         response = query_route.query(
             QueryRequest(
                 question="show me all content where source_system is email",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
 
@@ -254,8 +255,8 @@ def test_semantic_question_is_scoped_to_mentioned_source(monkeypatch):
         response = query_route.query(
             QueryRequest(
                 question="What payment issues came from email?",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
 

@@ -41,10 +41,10 @@ def test_analysis_persists_cross_source_evidence_and_audit(monkeypatch):
         result = analyze_processes(
             db,
             ProcessAnalysisRequest(
-                role=UserRole.OWNER_DIRECTOR,
                 source_systems=["telegram", "email"],
                 minimum_evidence=3,
             ),
+            role=UserRole.OWNER_DIRECTOR,
         )
 
         assert result.status == "proposed"
@@ -65,10 +65,10 @@ def test_recommendation_transition_is_persistent_and_protected(monkeypatch):
         proposed = analyze_processes(
             db,
             ProcessAnalysisRequest(
-                role=UserRole.OWNER_DIRECTOR,
                 source_systems=["email"],
                 minimum_evidence=3,
             ),
+            role=UserRole.OWNER_DIRECTOR,
         )
         approved = decide_recommendation(
             db,

@@ -2,11 +2,11 @@ from fastapi import HTTPException
 
 from app.routes import ingestion as ingestion_route
 from app.schemas import IngestionRequest, IngestionResult, ProcessingStatus, UserRole
+from tests.auth_support import principal
 
 
 def _request() -> IngestionRequest:
     return IngestionRequest(
-        role=UserRole.GENERAL_EMPLOYEE,
         source_record_id="manual:record-1",
         source_system="manual",
         record_type="customer_note",
@@ -15,7 +15,7 @@ def _request() -> IngestionRequest:
     )
 
 
-def test_demo_ingestion_route_passes_canonical_record_and_selected_role(monkeypatch):
+def test_authenticated_ingestion_route_passes_canonical_record_and_principal(monkeypatch):
     captured = {}
 
     def fake_ingest(_db, record, *, refresh):
@@ -32,13 +32,15 @@ def test_demo_ingestion_route_passes_canonical_record_and_selected_role(monkeypa
         )
 
     monkeypatch.setattr(ingestion_route, "ingest_canonical_record", fake_ingest)
-    response = ingestion_route.ingest(_request(), db=object())
+    response = ingestion_route.ingest(
+        _request(), principal(UserRole.FINANCE_OPS), db=object()
+    )
 
     assert captured["record"].source_system == "manual"
     assert not hasattr(captured["record"], "role")
     assert captured["refresh"] is False
-    assert response.submitted_as is UserRole.GENERAL_EMPLOYEE
-    assert response.authorization_mode == "demo-role"
+    assert response.submitted_as is UserRole.FINANCE_OPS
+    assert response.authorization_mode == "supabase-jwt"
     assert response.processing_status is ProcessingStatus.READY
 
 
@@ -52,7 +54,9 @@ def test_demo_ingestion_route_returns_safe_validation_error(monkeypatch):
     )
 
     try:
-        ingestion_route.ingest(_request(), db=object())
+        ingestion_route.ingest(
+            _request(), principal(UserRole.FINANCE_OPS), db=object()
+        )
     except HTTPException as error:
         assert error.status_code == 422
         assert error.detail == "source_record_id must be opaque"

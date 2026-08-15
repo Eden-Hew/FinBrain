@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser
 from app.config import get_settings
 from app.db import get_db
 from app.models import TokenVaultEntry
@@ -37,11 +38,17 @@ router = APIRouter(tags=["query"])
 
 
 @router.post("/query", response_model=QueryResponse)
-def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse:
+def query(
+    payload: QueryRequest,
+    principal: CurrentUser,
+    db: Session = Depends(get_db),
+) -> QueryResponse:
     inventory = source_inventory(db)
     plan = plan_query(payload.question, [source for source, _count in inventory])
     try:
-        conversation = get_or_create_conversation(db, payload.conversation_id)
+        conversation = get_or_create_conversation(
+            db, payload.conversation_id, str(principal.user_id)
+        )
     except ValueError as error:
         code = str(error)
         raise HTTPException(
@@ -172,7 +179,7 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
     turn = persist_turn(
         db,
         conversation,
-        user_role=payload.role.value,
+        user_role=principal.role.value,
         protected_question=sanitized_question,
         protected_answer=raw_answer,
         protected_brief=(
@@ -195,13 +202,18 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
     )
     query_hash_value = hash_query(sanitized_question)
     answer_trace = detokenize_response_with_trace(
-        db, raw_answer, payload.role.value, query_hash_value
+        db,
+        raw_answer,
+        principal.role.value,
+        query_hash_value,
+        actor_ref=principal.actor_ref,
     )
     authorized_brief, brief_trace = authorize_brief_with_trace(
         db,
         protected_brief,
-        role=payload.role.value,
+        role=principal.role.value,
         query_hash=query_hash_value,
+        actor_ref=principal.actor_ref,
     )
     settings = get_settings()
     reasoning_model = (
@@ -262,7 +274,7 @@ def query(payload: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
             withheld_tokens=(
                 brief_trace.withheld_tokens if brief_trace else answer_trace.withheld_tokens
             ),
-            active_role=payload.role,
+            active_role=principal.role,
             sources_supplied=len(hits),
         ),
     )

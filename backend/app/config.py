@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     structured_csv_max_columns: int = 20
     structured_csv_max_cell_chars: int = 4_000
     application_timezone: str = "Asia/Kuala_Lumpur"
+    supabase_url: str = ""
+    supabase_jwt_issuer: str = ""
+    supabase_jwt_audience: str = "authenticated"
+    supabase_jwt_algorithms: str = "RS256,ES256"
 
     @field_validator(
         "telegram_draft_ttl_seconds",
@@ -139,6 +143,24 @@ class Settings(BaseSettings):
         return len(self.token_root_secret) >= 32 and not self.token_root_secret.startswith(
             "development-only"
         )
+
+    @property
+    def supabase_jwks_url(self) -> str:
+        return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+
+    @property
+    def effective_supabase_jwt_issuer(self) -> str:
+        return self.supabase_jwt_issuer or f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def supabase_jwt_algorithm_list(self) -> list[str]:
+        allowed = {"RS256", "ES256"}
+        algorithms = [
+            item.strip() for item in self.supabase_jwt_algorithms.split(",") if item.strip()
+        ]
+        if not algorithms or any(item not in allowed for item in algorithms):
+            raise ValueError("SUPABASE_JWT_ALGORITHMS must contain only RS256 or ES256")
+        return algorithms
 
 
 @lru_cache

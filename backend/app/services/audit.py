@@ -8,15 +8,25 @@ from sqlalchemy.orm import Session
 from app.models import AuditLogEntry, utcnow
 
 
-def _event_payload(role: str, token: str, authorized: bool, query_hash: str, ts: datetime) -> dict:
+def _event_payload(
+    role: str,
+    token: str,
+    authorized: bool,
+    query_hash: str,
+    ts: datetime,
+    actor_ref: str = "legacy",
+) -> dict:
     canonical_ts = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
-    return {
+    payload = {
         "authorized": authorized,
         "query_hash": query_hash,
         "token": token,
         "ts": canonical_ts.isoformat(timespec="microseconds"),
         "user_role": role,
     }
+    if actor_ref != "legacy":
+        payload["actor_ref"] = actor_ref
+    return payload
 
 
 def _compute_hash(previous_hash: str, event: dict) -> str:
@@ -25,12 +35,18 @@ def _compute_hash(previous_hash: str, event: dict) -> str:
 
 
 def write_audit_entry(
-    db: Session, role: str, token: str, authorized: bool, query_hash: str
+    db: Session,
+    role: str,
+    token: str,
+    authorized: bool,
+    query_hash: str,
+    *,
+    actor_ref: str = "legacy",
 ) -> None:
     last = db.scalar(select(AuditLogEntry).order_by(AuditLogEntry.id.desc()).limit(1))
     previous_hash = last.event_hash if last else "genesis"
     timestamp = utcnow()
-    event = _event_payload(role, token, authorized, query_hash, timestamp)
+    event = _event_payload(role, token, authorized, query_hash, timestamp, actor_ref)
     db.add(
         AuditLogEntry(
             prev_hash=previous_hash,
@@ -39,6 +55,7 @@ def write_audit_entry(
             token=token,
             authorized=authorized,
             query_hash=query_hash,
+            actor_ref=actor_ref,
             ts=timestamp,
         )
     )
@@ -51,7 +68,12 @@ def verify_audit_chain(db: Session) -> bool:
     previous_hash = "genesis"
     for entry in db.scalars(select(AuditLogEntry).order_by(AuditLogEntry.id)).all():
         event = _event_payload(
-            entry.user_role, entry.token, entry.authorized, entry.query_hash, entry.ts
+            entry.user_role,
+            entry.token,
+            entry.authorized,
+            entry.query_hash,
+            entry.ts,
+            entry.actor_ref,
         )
         if entry.prev_hash != previous_hash or entry.event_hash != _compute_hash(
             previous_hash, event

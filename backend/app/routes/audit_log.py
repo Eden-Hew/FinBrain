@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_roles
+from app.auth.principal import AuthPrincipal
 from app.db import get_db
 from app.models import AuditLogEntry, WorkflowAuditEntry
 from app.schemas import (
@@ -18,9 +20,10 @@ router = APIRouter(tags=["audit"])
 
 
 @router.get("/audit-log", response_model=AuditResponse)
-def audit_log(role: UserRole = Query(...), db: Session = Depends(get_db)) -> AuditResponse:
-    if role is not UserRole.COMPLIANCE:
-        raise HTTPException(status_code=403, detail="Compliance role required")
+def audit_log(
+    _principal: AuthPrincipal = Depends(require_roles(UserRole.COMPLIANCE)),
+    db: Session = Depends(get_db),
+) -> AuditResponse:
     rows = db.scalars(select(AuditLogEntry).order_by(AuditLogEntry.id.desc()).limit(200)).all()
     return AuditResponse(
         entries=[
@@ -30,6 +33,7 @@ def audit_log(role: UserRole = Query(...), db: Session = Depends(get_db)) -> Aud
                 token=row.token,
                 authorized=row.authorized,
                 query_hash=row.query_hash,
+                actor_ref=row.actor_ref,
                 previous_hash=row.prev_hash,
                 entry_hash=row.event_hash,
                 ts=row.ts,
@@ -42,10 +46,9 @@ def audit_log(role: UserRole = Query(...), db: Session = Depends(get_db)) -> Aud
 
 @router.get("/workflow-audit", response_model=WorkflowAuditListResponse)
 def workflow_audit(
-    role: UserRole = Query(...), db: Session = Depends(get_db)
+    _principal: AuthPrincipal = Depends(require_roles(UserRole.COMPLIANCE)),
+    db: Session = Depends(get_db),
 ) -> WorkflowAuditListResponse:
-    if role is not UserRole.COMPLIANCE:
-        raise HTTPException(status_code=403, detail="Compliance role required")
     rows = db.scalars(
         select(WorkflowAuditEntry).order_by(WorkflowAuditEntry.id.desc()).limit(200)
     ).all()

@@ -57,7 +57,11 @@ def _band_label(token: str) -> str:
 
 
 def detokenize_response_with_trace(
-    db: Session, text: str, role: str, query_hash: str
+    db: Session,
+    text: str,
+    role: str,
+    query_hash: str,
+    actor_ref: str = "legacy",
 ) -> DetokenizationTrace:
     result = text
     restored = 0
@@ -89,7 +93,7 @@ def detokenize_response_with_trace(
                 authorized=authorized,
             )
         )
-        write_audit_entry(db, role, token, authorized, query_hash)
+        write_audit_entry(db, role, token, authorized, query_hash, actor_ref=actor_ref)
     db.commit()
     return DetokenizationTrace(
         text=result,
@@ -99,5 +103,13 @@ def detokenize_response_with_trace(
     )
 
 
-def detokenize_response(db: Session, text: str, role: str, query_hash: str) -> str:
-    return detokenize_response_with_trace(db, text, role, query_hash).text
+def detokenize_response(
+    db: Session,
+    text: str,
+    role: str,
+    query_hash: str,
+    actor_ref: str = "legacy",
+) -> str:
+    return detokenize_response_with_trace(
+        db, text, role, query_hash, actor_ref=actor_ref
+    ).text

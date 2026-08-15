@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import (
+    Conversation,
     ConversationTurn,
     ConversationTurnCitation,
     ProcessRecommendation,
@@ -191,8 +192,15 @@ def _fingerprint(category: str, rows: list[TokenizedContent]) -> str:
     ).hexdigest()
 
 
-def analyze_processes(db: Session, request: ProcessAnalysisRequest) -> RecommendationResponse:
-    if request.role is not UserRole.OWNER_DIRECTOR:
+def analyze_processes(
+    db: Session,
+    request: ProcessAnalysisRequest,
+    *,
+    role: UserRole,
+    actor_ref: str | None = None,
+    created_by_user_id: str | None = None,
+) -> RecommendationResponse:
+    if role is not UserRole.OWNER_DIRECTOR:
         raise PermissionError("Owner/director role required")
     window_end = datetime.now(UTC)
     window_start = window_end - timedelta(days=request.window_days)
@@ -231,6 +239,7 @@ def analyze_processes(db: Session, request: ProcessAnalysisRequest) -> Recommend
         record_count=len(selected),
         source_systems=sorted({item.source_system for item in selected}),
         enrichment_mode=mode,
+        created_by_user_id=created_by_user_id,
     )
     db.add(row)
     db.flush()
@@ -249,8 +258,8 @@ def analyze_processes(db: Session, request: ProcessAnalysisRequest) -> Recommend
     write_workflow_event(
         db,
         event_type="recommendation_generated",
-        actor_role=request.role.value,
-        actor_ref=_actor_ref(request.role),
+        actor_role=role.value,
+        actor_ref=actor_ref or _actor_ref(role),
         resource_type="process_recommendation",
         resource_id=str(row.id),
         event_payload={
@@ -324,11 +333,19 @@ def create_recommendation_from_turn(
     role: UserRole,
     action_id: str,
     suggested_owner: str | None = None,
+    actor_ref: str | None = None,
+    created_by_user_id: str | None = None,
 ) -> RecommendationResponse:
     if role not in {UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR}:
         raise PermissionError("Finance or owner/director role required")
     turn = db.get(ConversationTurn, turn_id)
     if turn is None:
+        raise LookupError("Query turn not found")
+    conversation = db.get(Conversation, turn.conversation_id)
+    if (
+        created_by_user_id is not None
+        and (conversation is None or conversation.created_by_user_id != created_by_user_id)
+    ):
         raise LookupError("Query turn not found")
     if turn.protected_brief is None:
         raise ValueError("The query turn has no persisted intelligence brief")
@@ -410,6 +427,7 @@ def create_recommendation_from_turn(
         origin_type=origin_type,
         origin_turn_id=turn.id,
         origin_query_hash=hash_query(turn.protected_question),
+        created_by_user_id=created_by_user_id,
     )
     db.add(recommendation)
     db.flush()
@@ -426,7 +444,7 @@ def create_recommendation_from_turn(
         db,
         event_type="recommendation_created_from_query",
         actor_role=role.value,
-        actor_ref=_actor_ref(role),
+        actor_ref=actor_ref or _actor_ref(role),
         resource_type="process_recommendation",
         resource_id=str(recommendation.id),
         event_payload={
@@ -449,6 +467,7 @@ def decide_recommendation(
     decision: str,
     role: UserRole,
     comment: str,
+    actor_ref: str | None = None,
 ) -> RecommendationResponse:
     if role is not UserRole.OWNER_DIRECTOR:
         raise PermissionError("Owner/director role required")
@@ -474,13 +493,13 @@ def decide_recommendation(
             if db.get(TokenVaultEntry, entry.token) is None:
                 db.add(entry)
     row.status = decision
-    actor_ref = _actor_ref(role)
+    resolved_actor_ref = actor_ref or _actor_ref(role)
     db.add(
         RecommendationDecision(
             recommendation_id=row.id,
             decision=decision,
             actor_role=role.value,
-            actor_ref=actor_ref,
+            actor_ref=resolved_actor_ref,
             protected_comment=protected_comment,
         )
     )
@@ -488,7 +507,7 @@ def decide_recommendation(
         db,
         event_type=f"recommendation_{decision}",
         actor_role=role.value,
-        actor_ref=actor_ref,
+        actor_ref=resolved_actor_ref,
         resource_type="process_recommendation",
         resource_id=str(row.id),
         event_payload={"status": decision, "has_comment": bool(protected_comment)},

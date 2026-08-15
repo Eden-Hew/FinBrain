@@ -11,7 +11,7 @@ from app.models import (
     TokenizedContent,
 )
 from app.routes.query import query
-from app.schemas import CitedAnswer, QueryRequest, UserRole
+from app.schemas import CitedAnswer, QueryRequest
 from app.services.conversations import (
     create_conversation,
     delete_conversation,
@@ -24,6 +24,7 @@ from app.services.conversations import (
     protected_history,
 )
 from app.services.retrieval import RetrievalHit
+from tests.auth_support import principal
 
 
 def _database() -> tuple:
@@ -231,8 +232,8 @@ def test_query_route_creates_context_and_intersects_follow_up_sources(monkeypatc
         first = query(
             QueryRequest(
                 question="Summarize all records",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
         captured: dict[str, str] = {}
@@ -255,9 +256,9 @@ def test_query_route_creates_context_and_intersects_follow_up_sources(monkeypatc
         second = query(
             QueryRequest(
                 question="Which of those came from email?",
-                role=UserRole.GENERAL_EMPLOYEE,
                 conversation_id=first.conversation_id,
             ),
+            principal(),
             db,
         )
 
@@ -287,16 +288,16 @@ def test_count_turn_preserves_hidden_record_context_for_follow_up():
         first = query(
             QueryRequest(
                 question="How many email records are ready?",
-                role=UserRole.GENERAL_EMPLOYEE,
             ),
+            principal(),
             db,
         )
         second = query(
             QueryRequest(
                 question="Tell me what each of them means",
-                role=UserRole.GENERAL_EMPLOYEE,
                 conversation_id=first.conversation_id,
             ),
+            principal(),
             db,
         )
 

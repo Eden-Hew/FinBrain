@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, require_roles
+from app.auth.principal import AuthPrincipal
 from app.config import get_settings
 from app.db import get_db
 from app.integrations.email_connector.service import get_state, sync_mailbox
@@ -13,6 +15,7 @@ from app.schemas import (
     EmailSyncResponse,
     ProtectedIngestionRecordResponse,
     TelegramIntegrationStatusResponse,
+    UserRole,
 )
 
 router = APIRouter(tags=["integrations"])
@@ -21,7 +24,12 @@ router = APIRouter(tags=["integrations"])
 @router.get(
     "/integrations/telegram/status", response_model=TelegramIntegrationStatusResponse
 )
-def telegram_status(db: Session = Depends(get_db)) -> TelegramIntegrationStatusResponse:
+def telegram_status(
+    _principal: AuthPrincipal = Depends(
+        require_roles(UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR, UserRole.COMPLIANCE)
+    ),
+    db: Session = Depends(get_db),
+) -> TelegramIntegrationStatusResponse:
     settings = get_settings()
     row = db.get(IntegrationStatus, "telegram")
     status = "not_configured"
@@ -45,6 +53,7 @@ def telegram_status(db: Session = Depends(get_db)) -> TelegramIntegrationStatusR
 
 @router.get("/ingestion-records", response_model=list[ProtectedIngestionRecordResponse])
 def ingestion_records(
+    _principal: CurrentUser,
     source_system: str = Query("telegram", pattern=r"^[a-z0-9_.-]+$"),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -75,7 +84,12 @@ def ingestion_records(
 
 
 @router.get("/integrations/email/status", response_model=EmailIntegrationStatusResponse)
-def email_status(db: Session = Depends(get_db)) -> EmailIntegrationStatusResponse:
+def email_status(
+    _principal: AuthPrincipal = Depends(
+        require_roles(UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR, UserRole.COMPLIANCE)
+    ),
+    db: Session = Depends(get_db),
+) -> EmailIntegrationStatusResponse:
     settings = get_settings()
     row = get_state(db)
     return EmailIntegrationStatusResponse(
@@ -89,7 +103,12 @@ def email_status(db: Session = Depends(get_db)) -> EmailIntegrationStatusRespons
 
 
 @router.post("/integrations/email/sync", response_model=EmailSyncResponse)
-def email_sync(db: Session = Depends(get_db)) -> EmailSyncResponse:
+def email_sync(
+    _principal: AuthPrincipal = Depends(
+        require_roles(UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR)
+    ),
+    db: Session = Depends(get_db),
+) -> EmailSyncResponse:
     try:
         result = sync_mailbox(db)
     except RuntimeError as error:

@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Dialect
@@ -80,6 +81,20 @@ class Base(DeclarativeBase):
     pass
 
 
+class AuthUserRole(Base):
+    """Backend-authoritative FinBrain role assigned to a Supabase Auth user."""
+
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    user_role: Mapped[str] = mapped_column(String, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class TokenizedContent(Base):
     """Sanitized content only; raw inbound text is never persisted."""
 
@@ -132,6 +147,7 @@ class AuditLogEntry(Base):
     token: Mapped[str] = mapped_column(String, nullable=False)
     authorized: Mapped[bool] = mapped_column(Boolean, nullable=False)
     query_hash: Mapped[str] = mapped_column(String, nullable=False)
+    actor_ref: Mapped[str] = mapped_column(String, default="legacy", nullable=False)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
@@ -223,6 +239,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     status: Mapped[str] = mapped_column(String, default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -304,6 +321,7 @@ class ProcessRecommendation(Base):
         ForeignKey("conversation_turns.id", ondelete="SET NULL"),
     )
     origin_query_hash: Mapped[str | None] = mapped_column(String)
+    created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

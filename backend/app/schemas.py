@@ -11,6 +11,12 @@ class UserRole(StrEnum):
     COMPLIANCE = "compliance"
 
 
+class AuthMeResponse(BaseModel):
+    user_id: str
+    email: str | None
+    role: UserRole
+
+
 class ProcessingStatus(StrEnum):
     PROTECTED = "protected"
     READY = "ready"
@@ -72,15 +78,14 @@ class IngestionResult(BaseModel):
 
 
 class IngestionRequest(CanonicalIngestionRecord):
-    """Demo request contract; role is caller-selected until authentication is implemented."""
+    """Authenticated manual-ingestion request."""
 
-    role: UserRole
     refresh: bool = False
 
 
 class IngestionResponse(IngestionResult):
     submitted_as: UserRole
-    authorization_mode: str = "demo-role"
+    authorization_mode: str = "supabase-jwt"
 
 
 class StructuredCsvValidationIssue(BaseModel):
@@ -159,7 +164,6 @@ class UploadCommitResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
-    role: UserRole
     conversation_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
@@ -260,7 +264,6 @@ class CitationDetailResponse(BaseModel):
 
 
 class RoleComparisonRequest(BaseModel):
-    requesting_role: UserRole
     comparison_roles: list[UserRole] = Field(min_length=1, max_length=3)
 
 
@@ -318,6 +321,7 @@ class AuditEntryResponse(BaseModel):
     token: str
     authorized: bool
     query_hash: str
+    actor_ref: str
     previous_hash: str
     entry_hash: str
     ts: datetime
@@ -373,7 +377,6 @@ class ProcessAnalysisRequest(BaseModel):
     window_days: int = Field(default=30, ge=1, le=365)
     source_systems: list[str] = Field(default_factory=lambda: ["telegram", "email"])
     minimum_evidence: int = Field(default=3, ge=2, le=20)
-    role: UserRole
 
     @field_validator("source_systems")
     @classmethod
@@ -443,12 +446,10 @@ class RecommendationResponse(BaseModel):
 
 
 class RecommendationDecisionRequest(BaseModel):
-    role: UserRole
     comment: str = Field(default="", max_length=2_000)
 
 
 class QueryRecommendationRequest(BaseModel):
-    role: UserRole
     action_id: str = Field(default="recommended-action", max_length=80)
     suggested_owner: str | None = Field(default=None, min_length=1, max_length=100)
 

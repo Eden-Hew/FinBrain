@@ -4,12 +4,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.auth.dependencies import get_current_user
 from app.db import get_db
 from app.models import Base
 from app.routes.uploads import router
-from app.schemas import ProtectedSummary, SummaryPriority
+from app.schemas import ProtectedSummary, SummaryPriority, UserRole
 from app.services import ingestion
 from app.services.upload_ingestion import upload_digest
+from tests.auth_support import principal
 
 CSV = (
     b"invoice_id,customer,amount,status,assigned_owner,due_date\n"
@@ -17,7 +19,7 @@ CSV = (
 )
 
 
-def _client(monkeypatch) -> tuple[TestClient, Session]:
+def _client(monkeypatch, *, authenticated: bool = True) -> tuple[TestClient, Session]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -28,6 +30,8 @@ def _client(monkeypatch) -> tuple[TestClient, Session]:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_db] = lambda: db
+    if authenticated:
+        app.dependency_overrides[get_current_user] = lambda: principal(UserRole.FINANCE_OPS)
     monkeypatch.setattr(
         ingestion,
         "summarize_protected_text",
@@ -50,7 +54,6 @@ def _headers(**updates) -> dict[str, str]:
         "Content-Type": "text/csv",
         "X-FinBrain-Filename": "invoices.csv",
         "X-FinBrain-Record-Type": "invoice_register",
-        "X-FinBrain-Role": "finance_ops",
     }
     headers.update(updates)
     return headers
@@ -75,7 +78,7 @@ def test_upload_preview_and_commit_routes(monkeypatch):
         db.close()
 
 
-def test_upload_route_rejects_stale_digest_and_missing_demo_role(monkeypatch):
+def test_upload_route_rejects_stale_digest_and_missing_authentication(monkeypatch):
     client, db = _client(monkeypatch)
     try:
         stale = client.post(
@@ -84,10 +87,13 @@ def test_upload_route_rejects_stale_digest_and_missing_demo_role(monkeypatch):
             headers=_headers(**{"X-FinBrain-Preview-Digest": upload_digest(b"other")}),
         )
         assert stale.status_code == 409
-        missing_role = _headers()
-        del missing_role["X-FinBrain-Role"]
-        response = client.post("/uploads/preview", content=CSV, headers=missing_role)
-        assert response.status_code == 422
+        anonymous_client, anonymous_db = _client(monkeypatch, authenticated=False)
+        try:
+            response = anonymous_client.post("/uploads/preview", content=CSV, headers=_headers())
+            assert response.status_code == 401
+        finally:
+            anonymous_client.close()
+            anonymous_db.close()
     finally:
         client.close()
         db.close()
