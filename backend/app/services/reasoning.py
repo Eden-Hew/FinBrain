@@ -38,12 +38,11 @@ def structured_record_listing(hits: list[RetrievalHit]) -> CitedAnswer:
             insufficient_evidence=True,
         )
     source_names = ", ".join(sorted({hit.source_system for hit in hits}))
-    entries = [
-        f"{index}. [SOURCE-{index}] {hit.retrieval_text[:1_000]}"
-        for index, hit in enumerate(hits, 1)
-    ]
     return CitedAnswer(
-        answer=f"Found {len(hits)} ready record(s) from {source_names}:\n\n" + "\n\n".join(entries),
+        answer=(
+            f"Found {len(hits)} ready record(s) from {source_names}. "
+            "Select a cited source to inspect its authorized evidence."
+        ),
         citations=[f"SOURCE-{index}" for index in range(1, len(hits) + 1)],
         insufficient_evidence=False,
     )

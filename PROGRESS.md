@@ -92,6 +92,8 @@ Gmail + Telegram + structured CSV + uploaded documents
 - Supports deterministic source-system counts and lists.
 - Supports filters for dates, record types, categories, priority, action-required state, spreadsheet status, and assigned/unassigned owners.
 - Exact counts are answered from the database without asking Morpheus to estimate from a limited retrieval set.
+- Exact record listings render compact citation cards backed by the shared lazy authorized-evidence
+  drawer instead of duplicating full source text in the chat answer.
 - Eligible analytic result sets are processed in bounded batches instead of the former five-source cap.
 - Natural-language summaries still go to Morpheus after the database establishes the complete eligible record set.
 

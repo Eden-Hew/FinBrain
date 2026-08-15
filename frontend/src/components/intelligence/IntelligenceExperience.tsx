@@ -39,7 +39,7 @@ function CitationButtons({
   onSelect,
 }: {
   ids: string[];
-  onSelect: (id: string) => void;
+  onSelect: (id: string, trigger: HTMLButtonElement) => void;
 }) {
   if (!ids.length) return null;
   return (
@@ -50,7 +50,7 @@ function CitationButtons({
           data-citation-id={id}
           type="button"
           key={id}
-          onClick={() => onSelect(id)}
+          onClick={(event) => onSelect(id, event.currentTarget)}
           aria-label={`Open evidence ${id}`}
         >
           {id.replace("SOURCE-", "[")}]
@@ -71,7 +71,7 @@ function Overlay({
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    closeRef.current?.focus();
+    closeRef.current?.focus({ preventScroll: true });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
@@ -169,6 +169,145 @@ export function StandaloneExposureReceipt({
   );
 }
 
+export function StructuredCitationResults({
+  answer,
+  citations,
+  exposure,
+  turnId,
+  rawQuestion,
+  modelQuestion,
+  protectedAnswer,
+}: {
+  answer: string;
+  citations: QueryCitation[];
+  exposure: ExposureReceipt | null;
+  turnId: number;
+  rawQuestion: string;
+  modelQuestion: string;
+  protectedAnswer: string;
+}) {
+  const [selectedCitation, setSelectedCitation] = useState<string | null>(null);
+  const [citationDetail, setCitationDetail] = useState<CitationDetail | null>(null);
+  const [citationError, setCitationError] = useState("");
+  const [citationLoading, setCitationLoading] = useState(false);
+  const [showExposure, setShowExposure] = useState(false);
+  const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const openCitation = async (citationId: string, trigger?: HTMLButtonElement) => {
+    if (trigger) citationTriggerRef.current = trigger;
+    setSelectedCitation(citationId);
+    setCitationDetail(null);
+    setCitationError("");
+    setCitationLoading(true);
+    try {
+      setCitationDetail(await fetchCitationDetail(turnId, citationId));
+    } catch (error) {
+      setCitationError(error instanceof Error ? error.message : "Evidence is unavailable.");
+    } finally {
+      setCitationLoading(false);
+    }
+  };
+
+  const closeCitation = () => {
+    setSelectedCitation(null);
+    requestAnimationFrame(() => {
+      citationTriggerRef.current?.focus({ preventScroll: true });
+      citationTriggerRef.current = null;
+    });
+  };
+
+  return (
+    <section className="fb-structured-records" aria-label="Matching protected records">
+      <header className="fb-structured-records-head">
+        <div>
+          <span className="fb-eyebrow">Deterministic source listing</span>
+          <h2>Matching protected records</h2>
+          <p>{answer}</p>
+        </div>
+        <span className="fb-intel-status is-healthy">{citations.length} found</span>
+      </header>
+
+      <div className="fb-structured-record-grid">
+        {citations.map((citation) => (
+          <button
+            className="fb-structured-record-card"
+            data-citation-id={citation.citation_id}
+            type="button"
+            key={citation.citation_id}
+            onClick={(event) => openCitation(citation.citation_id, event.currentTarget)}
+          >
+            <span className="fb-structured-record-number">{citation.citation_id}</span>
+            <strong>{citation.record_type ?? "Protected record"}</strong>
+            <span>{citation.source_system}</span>
+            <time>{citation.occurred_at ? new Date(citation.occurred_at).toLocaleDateString() : "Date unavailable"}</time>
+            <small>{citation.freshness} · inspect authorized evidence</small>
+          </button>
+        ))}
+      </div>
+
+      <footer className="fb-intel-trustbar">
+        <button type="button" onClick={() => setShowExposure(true)} disabled={!exposure}>AI Exposure Receipt</button>
+        <button
+          type="button"
+          onClick={(event) => openCitation(citations[0]?.citation_id, event.currentTarget)}
+          disabled={!citations.length}
+        >
+          Inspect {citations.length} cited source{citations.length === 1 ? "" : "s"}
+        </button>
+        <span className="fb-intel-muted">SQL-first · no reasoning model used</span>
+      </footer>
+
+      {selectedCitation && (
+        <Overlay title={`Evidence ${selectedCitation}`} onClose={closeCitation}>
+          <div className="fb-intel-evidence-picker" aria-label="Cited evidence">
+            {citations.map((citation) => (
+              <button
+                className={citation.citation_id === selectedCitation ? "is-current" : ""}
+                type="button"
+                key={citation.citation_id}
+                onClick={() => openCitation(citation.citation_id)}
+              >
+                {citation.citation_id} · {citation.source_system}
+              </button>
+            ))}
+          </div>
+          {citationLoading && <p className="fb-intel-muted">Authorizing protected evidence…</p>}
+          {citationError && <p className="fb-intel-error">{citationError}</p>}
+          {citationDetail && (
+            <div className="fb-intel-evidence-detail">
+              <div className="fb-intel-meta-row">
+                <span>{citationDetail.citation.source_system}</span>
+                <span>{citationDetail.citation.record_type ?? "record"}</span>
+                <span>{citationDetail.citation.freshness}</span>
+                <span>{citationDetail.citation.age_days == null ? "Date unavailable" : `${citationDetail.citation.age_days} days old`}</span>
+              </div>
+              <h3>Protected source</h3>
+              <pre>{citationDetail.citation.protected_excerpt}</pre>
+              <h3>Your permitted view</h3>
+              <p>{citationDetail.authorized_excerpt}</p>
+              <div className="fb-intel-policy-note">
+                {citationDetail.access_explanation} Restored: {citationDetail.restored_tokens}. Withheld: {citationDetail.withheld_tokens}.
+              </div>
+            </div>
+          )}
+        </Overlay>
+      )}
+
+      {showExposure && exposure && (
+        <Overlay title="AI Exposure Receipt" onClose={() => setShowExposure(false)}>
+          <ExposureContent
+            exposure={exposure}
+            rawQuestion={rawQuestion}
+            modelQuestion={modelQuestion}
+            protectedAnswer={protectedAnswer}
+            authorizedAnswer={answer}
+          />
+        </Overlay>
+      )}
+    </section>
+  );
+}
+
 export function IntelligenceExperience({
   brief,
   citations,
@@ -197,8 +336,10 @@ export function IntelligenceExperience({
   const [recommendationError, setRecommendationError] = useState("");
   const [pendingRecommendation, setPendingRecommendation] = useState<PendingRecommendation | null>(null);
   const [createdRecommendationId, setCreatedRecommendationId] = useState<number | null>(null);
+  const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const openCitation = async (citationId: string) => {
+  const openCitation = async (citationId: string, trigger?: HTMLButtonElement) => {
+    if (trigger) citationTriggerRef.current = trigger;
     setSelectedCitation(citationId);
     setCitationDetail(null);
     setCitationError("");
@@ -213,12 +354,10 @@ export function IntelligenceExperience({
   };
 
   const closeCitation = () => {
-    const citationId = selectedCitation;
     setSelectedCitation(null);
     requestAnimationFrame(() => {
-      if (citationId) {
-        document.querySelector<HTMLButtonElement>(`[data-citation-id="${citationId}"]`)?.focus();
-      }
+      citationTriggerRef.current?.focus({ preventScroll: true });
+      citationTriggerRef.current = null;
     });
   };
 
@@ -379,7 +518,11 @@ export function IntelligenceExperience({
 
       <footer className="fb-intel-trustbar">
         <button type="button" onClick={() => setShowExposure(true)}>AI Exposure Receipt</button>
-        <button type="button" onClick={() => openCitation(citations[0]?.citation_id)} disabled={!citations.length}>
+        <button
+          type="button"
+          onClick={(event) => openCitation(citations[0]?.citation_id, event.currentTarget)}
+          disabled={!citations.length}
+        >
           Inspect {citations.length} cited source{citations.length === 1 ? "" : "s"}
         </button>
         {role === "compliance" && (

@@ -228,10 +228,13 @@ def test_exact_email_listing_bypasses_reasoning():
         )
 
     assert response.mode == "structured-filter"
+    assert response.query_intent == "list_records"
     assert response.sources_used == 3
     assert len(response.citations) == 3
     assert {citation.source_system for citation in response.citations} == {"email"}
     assert "Found 3 ready record(s) from email" in response.answer
+    assert "Protected source" not in response.answer
+    assert "SOURCE-1" not in response.answer
 
 
 def test_semantic_question_is_scoped_to_mentioned_source(monkeypatch):

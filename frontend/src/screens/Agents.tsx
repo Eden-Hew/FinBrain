@@ -4,7 +4,11 @@ import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
 import { AppNav } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
-import { IntelligenceExperience, StandaloneExposureReceipt } from "../components/intelligence/IntelligenceExperience";
+import {
+  IntelligenceExperience,
+  StandaloneExposureReceipt,
+  StructuredCitationResults,
+} from "../components/intelligence/IntelligenceExperience";
 import { resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
 import {
   askQuestion,
@@ -13,6 +17,7 @@ import {
   type QueryCitation,
   type CustomerIntelligenceBrief,
   type ExposureReceipt,
+  type QueryIntent,
   type UploadCommitResponse,
   type UploadPreviewResponse,
 } from "../api/client";
@@ -27,6 +32,7 @@ interface Message {
   citations?: QueryCitation[];
   showProtected?: boolean;
   mode?: string;
+  queryIntent?: QueryIntent;
   rawQuestion?: string;
   modelQuestion?: string;
   turnId?: number;
@@ -106,6 +112,7 @@ export default function Agents() {
       let protectedText: string | undefined;
       let citations: QueryCitation[] = [];
       let mode = "scripted-demo";
+      let queryIntent: QueryIntent | undefined;
       let embed = fallback.embed;
       let brief: CustomerIntelligenceBrief | undefined;
       let exposure: ExposureReceipt | undefined;
@@ -120,6 +127,7 @@ export default function Agents() {
         protectedText = response.model_answer;
         citations = response.citations;
         mode = response.mode;
+        queryIntent = response.query_intent;
         brief = response.intelligence_brief ?? undefined;
         exposure = response.exposure_receipt ?? undefined;
         modelQuestion = response.model_question;
@@ -142,6 +150,7 @@ export default function Agents() {
               protectedText,
               citations,
               mode,
+              queryIntent,
               embed,
               rawQuestion: trimmed,
               modelQuestion,
@@ -263,7 +272,7 @@ export default function Agents() {
         <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
             {messages.map((msg) => (
-              <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "")}>
+              <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}>
                 {msg.thinking ? (
                   <div className="fb-intel-building" role="status">
                     <span className="fb-thinking"><span></span><span></span><span></span></span>
@@ -274,7 +283,7 @@ export default function Agents() {
                     {msg.isFallback && (
                       <div className="fb-intel-fallback" role="status">Sample response — the live backend is unavailable.</div>
                     )}
-                    {!msg.brief && (
+                    {!msg.brief && msg.queryIntent !== "list_records" && (
                       <span style={{ whiteSpace: "pre-wrap" }}>
                         {msg.showProtected && msg.protectedText ? msg.protectedText : msg.text}
                       </span>
@@ -293,7 +302,18 @@ export default function Agents() {
                         onOpenApprovals={openApprovalRecommendation}
                       />
                     )}
-                    {msg.from === "agent" && msg.protectedText && !msg.brief && (
+                    {msg.queryIntent === "list_records" && msg.turnId && msg.rawQuestion && msg.modelQuestion && msg.protectedText && (
+                      <StructuredCitationResults
+                        answer={msg.text}
+                        citations={msg.citations ?? []}
+                        exposure={msg.exposure ?? null}
+                        turnId={msg.turnId}
+                        rawQuestion={msg.rawQuestion}
+                        modelQuestion={msg.modelQuestion}
+                        protectedAnswer={msg.protectedText}
+                      />
+                    )}
+                    {msg.from === "agent" && msg.protectedText && !msg.brief && msg.queryIntent !== "list_records" && (
                       <div style={{ display: "flex", gap: ".5rem", marginTop: ".7rem", flexWrap: "wrap" }}>
                         {msg.exposure && msg.rawQuestion && msg.modelQuestion && (
                           <StandaloneExposureReceipt exposure={msg.exposure} rawQuestion={msg.rawQuestion} modelQuestion={msg.modelQuestion} protectedAnswer={msg.protectedText} authorizedAnswer={msg.text} />
@@ -312,7 +332,7 @@ export default function Agents() {
                         )}
                       </div>
                     )}
-                    {!!msg.citations?.length && !msg.brief && (
+                    {!!msg.citations?.length && !msg.brief && msg.queryIntent !== "list_records" && (
                       <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
                         {msg.citations.map((citation) => (
                           <div className="fb-rec-evidence" key={citation.citation_id}>

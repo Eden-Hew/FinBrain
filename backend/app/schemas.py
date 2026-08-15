@@ -243,6 +243,7 @@ class QueryResponse(BaseModel):
     answer: str
     model_answer: str
     model_question: str
+    query_intent: str
     sources_used: int
     mode: str
     insufficient_evidence: bool = False

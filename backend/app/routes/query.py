@@ -227,6 +227,7 @@ def query(
         answer=answer_trace.text,
         model_answer=raw_answer,
         model_question=sanitized_question,
+        query_intent=plan.intent.value,
         sources_used=len(hits),
         mode=reasoning_mode,
         insufficient_evidence=cited_answer.insufficient_evidence,

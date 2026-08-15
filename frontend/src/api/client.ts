@@ -6,10 +6,19 @@ export type Role =
   | "owner_director"
   | "compliance";
 
+export type QueryIntent =
+  | "semantic"
+  | "analyze_all"
+  | "list_records"
+  | "list_sources"
+  | "count_records"
+  | "count_sources";
+
 export interface QueryResponse {
   answer: string;
   model_answer: string;
   model_question: string;
+  query_intent: QueryIntent;
   sources_used: number;
   mode: "morpheus" | "gemini" | "offline-demo" | "structured-filter";
   insufficient_evidence: boolean;

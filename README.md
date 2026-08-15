@@ -1,14 +1,28 @@
 # FinBrain OS
 
-FinBrain OS is a privacy-first customer-intelligence and process-optimization prototype for
-Malaysian MSMEs. It brings protected records from email, Telegram, manual entry, CRM-style data,
-bank exports, meeting notes, and support tickets into one queryable workspace.
+FinBrain OS is a privacy-first customer-intelligence and process-optimization proof of concept for
+Malaysian MSMEs. It unifies email, Telegram, uploaded documents, structured CSV rows, manual notes,
+CRM-style records, bank exports, meetings, and support tickets behind one protected query and
+workflow interface.
 
-Sensitive values are detected and tokenized inside the backend before any external AI call.
-Morpheus analyzes protected content, Gemini creates protected embeddings, and exact values are
-restored only when the authenticated user's backend-assigned role is authorized. Answers retain protected source
-citations, while recurring issues can become evidence-backed recommendations with approval and
-audit history.
+Raw inbound content crosses only the trusted FastAPI privacy boundary. Sensitive values are
+detected, replaced with deterministic tenant-scoped tokens, and encrypted in a token vault before
+external AI processing. Morpheus reasons over protected text, Gemini creates protected embeddings,
+and FastAPI restores exact values only when the authenticated user's backend-owned role permits
+disclosure.
+
+FinBrain now supports the complete hackathon path:
+
+```text
+multi-source records
+  -> protected ingestion
+  -> SQL-first selection
+  -> protected cited analysis
+  -> role-authorized evidence inspection
+  -> evidence-backed recommendation
+  -> approval and implementation decision
+  -> tamper-evident audit history
+```
 
 ## What is implemented
 
@@ -24,6 +38,8 @@ audit history.
 - Supabase Postgres, pgvector, HNSW indexing, forced RLS, and revoked Data API grants.
 - Shared SQL-first counts, listings, date/type/category/action/metadata filters, and complete
   analytical record selection.
+- Dedicated compact citation-card results for exact record listings, with lazy role-authorized
+  evidence inspection and scroll-safe focus restoration.
 - Protected six-turn conversation context with deterministic cited-record follow-ups.
 - Protected Morpheus reasoning with validated `SOURCE-n` citations.
 - Protected 20-record batching and final synthesis for larger analytical result sets.
@@ -37,7 +53,8 @@ audit history.
 - Separate hash-chained disclosure and workflow audit logs with live verification, query
   references, previous hashes, and real entry hashes.
 - Supabase email/password login with locally verified asymmetric JWTs and backend-owned roles.
-- Four provisioned demonstration accounts matching backend authorization roles.
+- Four provisioned demonstration accounts matching the general employee, finance/operations,
+  owner/director, and compliance roles.
 - Twelve-record reset-safe demonstration dataset spanning six source systems.
 
 ## Current architecture
@@ -50,6 +67,7 @@ Telegram / unread IMAP / manual UI / protected file upload / seed adapters
                          |
                          v
               FastAPI privacy boundary
+              Supabase JWT authorization
                  |               |
                  | detect PII    | raw input remains in memory only
                  | tokenize      |
@@ -80,7 +98,10 @@ Telegram / unread IMAP / manual UI / protected file upload / seed adapters
                          role-gated detokenization
                                      |
                                      v
-                              audited response
+              role-authorized cited response
+                                     |
+                                     v
+        recommendation / approval / audit workflow
 ```
 
 The current proof-of-concept deliberately does not apply a top-five vector cap in `/query`.
@@ -279,6 +300,17 @@ Synthetic judging inputs and expected outcomes are in [`demo/`](./demo). Upload
 `demo/chat_upload_invoice_register.csv` through the paperclip or Protected Ingestion page, confirm the
 protected preview, and use `demo/judging_questions.md` for the end-to-end conversation.
 
+### Suggested demonstration flow
+
+1. Sign in as finance/operations and synchronize the configured unread Gmail messages.
+2. Upload `demo/chat_upload_invoice_register.csv`, inspect the protected preview, and confirm it.
+3. Ask an exact question such as `Show all email sources` to demonstrate SQL-first citation cards.
+4. Open a cited source to compare protected evidence with the role-authorized view.
+5. Ask a cross-source analytical question from `demo/judging_questions.md` to demonstrate protected
+   Morpheus reasoning and validated citations.
+6. Create a recommendation from the cited result, then sign in as owner/director to approve it.
+7. Open the Audit workspace to verify disclosure and workflow history.
+
 ### Run backend and frontend separately
 
 Backend, from the repository root:
@@ -424,17 +456,33 @@ The frontend's model-view toggle compares:
 
 ## SQL-first questions and cited analysis
 
-The backend interprets trusted source-system filters before question tokenization changes the text.
-It does not ask Morpheus to generate or execute SQL.
+The backend classifies each question into a trusted query intent and applies deterministic filters
+before question tokenization changes the text. It never asks Morpheus to generate or execute SQL.
+The selected intent is returned with the query response so the frontend can render the correct
+result experience.
 
 Examples:
 
 | Question | Execution |
 | --- | --- |
 | `How many email records are there?` | SQL count; no model call |
-| `Show all email sources` | SQL listing; no model call |
+| `Show all email sources` | SQL listing rendered as citation cards; no model call |
 | `Summarize email sources` | SQL selects every ready email record, then Morpheus |
 | `What issues need attention?` | SQL selects every ready record across all sources, then Morpheus |
+
+Exact record listings return a concise result summary plus one compact card per matching record.
+The chat does not duplicate full protected source text. Selecting a card or **Inspect cited
+sources** loads that turn's evidence through the shared authorization endpoint and opens the same
+drawer used by semantic intelligence answers. The drawer exposes:
+
+- source system, record type, date, freshness, and age;
+- the protected text supplied to the reasoning boundary;
+- the current user's permitted, detokenized view;
+- restored and withheld token counts with an access explanation.
+
+Closing the drawer restores keyboard focus to the exact button that opened it without moving the
+chat scroll position. Switching between cited records inside the drawer keeps the original opener
+as the final focus target.
 
 Morpheus may cite only supplied `SOURCE-n` identifiers. The backend rejects unknown citations,
 invented protected tokens, and recognizable PII before detokenization. The response exposes the
@@ -497,9 +545,11 @@ npm.cmd run build
 ```
 
 Latest verified local result: **100 backend tests passed**, Ruff passed, frontend ESLint reported 0
-errors and 6 existing Fast Refresh warnings, and the frontend production build passed. Two live
-acceptance journeys completed from a cited query through recommendation approval. The final live
-structured-brief request ran in `morpheus` mode and returned a validated five-claim protected brief.
+errors and 6 existing Fast Refresh warnings, and the frontend production build passed. Exact
+SQL-first listings were verified with compact citation cards, lazy authorized evidence, and stable
+drawer focus/scroll behavior. Two live acceptance journeys also completed from a cited query
+through recommendation approval; the final structured-brief request ran in `morpheus` mode and
+returned a validated five-claim protected brief.
 
 ## What is live versus demonstrated
 
