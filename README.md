@@ -362,6 +362,59 @@ Set-Location frontend
 npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
+### Deploy the backend with Docker (Railway)
+
+The backend can run in a single Docker container that hosts the FastAPI API plus the optional
+Telegram and email workers. This is the deployment path for Railway (the frontend is hosted
+separately, e.g. on Vercel). The local `run_demo.ps1` remains the Windows-only launcher and is not
+used inside the container.
+
+Build the image from the repository root:
+
+```powershell
+docker build -t finbrain-backend -f Dockerfile .
+```
+
+Run it locally:
+
+```powershell
+docker run --rm -p 8000:8000 --env-file backend\.env finbrain-backend
+```
+
+The entrypoint (`docker/entrypoint.sh`) starts the API on `0.0.0.0:$PORT` (default 8000), starts the
+Telegram long-polling worker when `TELEGRAM_BOT_TOKEN` is set, and the email worker when
+`EMAIL_CONNECTOR_ENABLED=true`. `/health` is the container healthcheck.
+
+On Railway, create a service from this repository. `railway.json` selects the Dockerfile builder and
+configures the `/health` healthcheck (300s timeout so the first boot can download the GLiNER model).
+Provide the same `backend/.env` values as Railway environment variables, including `DATABASE_URL`,
+`TOKEN_ROOT_SECRET`, `SUPABASE_URL`/`SUPABASE_JWT_*`, `GEMINI_API_KEY`, `MORPHEUS_API_KEY`, and the
+optional `TELEGRAM_BOT_TOKEN`/`EMAIL_*` settings.
+
+The image installs a CPU-only PyTorch build (GLiNER and OCR run on CPU), so it does not ship CUDA
+libraries.
+
+### Deploy the frontend with Vercel
+
+The frontend is a static Vite SPA deployed separately on Vercel. In the Vercel project, set the
+**Root Directory** to `frontend` (the repo also contains `backend/`). `frontend/vercel.json`
+selects the Vite framework and the `dist` output with an SPA fallback rewrite.
+
+Set these build-time environment variables in Vercel:
+
+```dotenv
+VITE_API_URL=https://<your-service>.up.railway.app
+VITE_SUPABASE_URL=https://<PROJECT_REF>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
+```
+
+`VITE_API_URL` must point at the Railway backend; without it the frontend falls back to
+`http://localhost:8000`. In Supabase Auth, set the **Site URL** and add the Vercel URL to
+**Redirect URLs** so confirmation and OAuth links return to the app.
+
+On the backend, set `CORS_ORIGINS` and `CORS_ORIGIN_REGEX` to include the Vercel domain, or the
+browser will reject cross-origin API calls.
+
 ## Unified protected ingestion
 
 Every adapter produces the same canonical fields:
