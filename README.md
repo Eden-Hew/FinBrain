@@ -655,7 +655,7 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
-Latest verified local result: **115 backend tests passed**, Ruff passed, frontend ESLint reported 0
+Latest verified local result: **116 backend tests passed**, Ruff passed, frontend ESLint reported 0
 errors and 6 existing Fast Refresh warnings, and the frontend production build passed. Exact
 SQL-first listings were verified with compact citation cards, lazy authorized evidence, and stable
 drawer focus/scroll behavior. Two live acceptance journeys also completed from a cited query

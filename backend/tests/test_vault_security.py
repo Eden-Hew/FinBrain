@@ -177,3 +177,34 @@ def test_automatic_rotation_resumes_an_unfinished_job(monkeypatch):
     finally:
         db.close()
         engine.dispose()
+
+
+def test_rotation_recovers_rows_stranded_by_a_premature_completion(monkeypatch):
+    engine, db = _database()
+    try:
+        _protected, entries = tokenize_record(
+            "RM 4,500", detect_spans("RM 4,500"), "recovery", db=db
+        )
+        db.add_all(entries)
+        db.commit()
+        monkeypatch.setattr(
+            "app.security.rotation.get_settings",
+            lambda: SimpleNamespace(vault_rotation_batch_size=10),
+        )
+        job = start_rotation(db)
+        old_key = db.get(VaultKeyVersion, job.from_version)
+        assert old_key is not None
+        old_key.status = "retired"
+        job.status = "completed"
+        job.completed_at = job.started_at
+        db.commit()
+
+        recovered = run_rotation(db)
+        assert recovered.id == job.id
+        assert recovered.status == "completed"
+        assert recovered.rows_rotated == 1
+        assert db.scalar(select(TokenVaultEntry.key_version)) == recovered.to_version
+        assert decrypt_vault_entry(db, db.scalar(select(TokenVaultEntry))) == "RM 4,500"
+    finally:
+        db.close()
+        engine.dispose()

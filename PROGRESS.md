@@ -308,3 +308,6 @@ Detailed manual scenarios and fixtures are documented in `TESTING_GUIDE.md`.
   protected vault rows, general-employee RLS exposed 20 ciphertext rows while compliance exposed
   all 28, and a v1 -> v2 rotation re-encrypted all 28 rows with no incomplete jobs or invalid audit
   chains.
+- Hardened concurrent manual/automatic rotation with a transaction advisory lock around every
+  batch. Inconsistent completed jobs are reopened safely when rows remain on their source
+  generation. Live recovery moved all 49 stranded v2 rows to v3 and restored valid audit chains.

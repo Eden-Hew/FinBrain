@@ -30,6 +30,51 @@ def start_rotation(db: Session) -> VaultRotationJob:
     if running is not None:
         return running
     current = ensure_active_key(db)
+    stranded_versions = list(
+        db.execute(
+            select(TokenVaultEntry.key_version, func.count())
+            .where(TokenVaultEntry.key_version != current.version)
+            .group_by(TokenVaultEntry.key_version)
+            .order_by(TokenVaultEntry.key_version)
+        ).all()
+    )
+    if stranded_versions:
+        if len(stranded_versions) != 1:
+            raise ValueError("multiple_stranded_vault_generations")
+        stranded_version, remaining = stranded_versions[0]
+        recovery = db.scalar(
+            select(VaultRotationJob)
+            .where(
+                VaultRotationJob.from_version == stranded_version,
+                VaultRotationJob.to_version == current.version,
+            )
+            .order_by(VaultRotationJob.id.desc())
+            .limit(1)
+        )
+        previous = db.get(VaultKeyVersion, stranded_version)
+        if recovery is None or previous is None:
+            raise ValueError("stranded_vault_generation_without_rotation_job")
+        previous.status = DECRYPT_ONLY
+        previous.retired_at = None
+        recovery.status = "running"
+        recovery.completed_at = None
+        recovery.failure_code = None
+        recovery.rows_total = recovery.rows_rotated + int(remaining)
+        write_workflow_event(
+            db,
+            event_type="vault_rotation_recovered",
+            actor_role="system_worker",
+            actor_ref="vault-rotation-worker",
+            resource_type="vault_key_version",
+            resource_id=str(current.version),
+            event_payload={
+                "from_version": stranded_version,
+                "to_version": current.version,
+                "rows_remaining": int(remaining),
+            },
+        )
+        db.commit()
+        return recovery
     target = create_key_version(db)
     total = db.scalar(
         select(func.count()).select_from(TokenVaultEntry).where(
@@ -65,6 +110,8 @@ def start_rotation(db: Session) -> VaultRotationJob:
 
 
 def rotate_batch(db: Session, job: VaultRotationJob) -> VaultRotationJob:
+    _rotation_lock(db)
+    db.refresh(job)
     if job.status not in {"pending", "running"}:
         return job
     settings = get_settings()
@@ -75,7 +122,7 @@ def rotate_batch(db: Session, job: VaultRotationJob) -> VaultRotationJob:
         .limit(settings.vault_rotation_batch_size)
     )
     if db.bind is not None and db.bind.dialect.name == "postgresql":
-        statement = statement.with_for_update(skip_locked=True)
+        statement = statement.with_for_update()
     rows = list(db.scalars(statement).all())
     for entry in rows:
         plaintext = decrypt_vault_entry(db, entry)
