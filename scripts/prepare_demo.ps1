@@ -16,7 +16,13 @@ foreach ($required in @($pythonRuntime.executable, $envFile, $frontendModules)) 
     throw "A required local dependency is missing. See README setup instructions."
   }
 }
-foreach ($name in @("TOKEN_ROOT_SECRET", "DATABASE_URL", "GEMINI_API_KEY")) {
+foreach ($name in @(
+  "TOKEN_ROOT_SECRET",
+  "TOKEN_HASH_SECRET",
+  "VAULT_MASTER_KEY",
+  "DATABASE_URL",
+  "GEMINI_API_KEY"
+)) {
   if (-not (Test-DemoEnvValue -EnvFile $envFile -Name $name)) {
     throw "$name is not configured in backend/.env."
   }

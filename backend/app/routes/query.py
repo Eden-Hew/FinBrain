@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import CurrentUser
 from app.config import get_settings
 from app.db import get_db
-from app.models import TokenVaultEntry
+from app.models import ProtectedTokenRegistry, VaultKeyVersion
 from app.schemas import CitedAnswer, ExposureReceipt, QueryCitation, QueryRequest, QueryResponse
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.detokenize import TOKEN_PATTERN, detokenize_response_with_trace, hash_query
-from app.security.tokenize import tokenize_record
+from app.security.tokenize import persist_vault_entries, tokenize_record
 from app.services.conversations import (
     get_or_create_conversation,
     is_referential_question,
@@ -58,15 +58,13 @@ def query(
     history = protected_history(db, conversation.id)
     query_id = f"query-{uuid.uuid4()}"
     sanitized_question, query_entries = tokenize_record(
-        payload.question, detect_spans(payload.question), query_id
+        payload.question, detect_spans(payload.question), query_id, db=db
     )
     if contains_known_pii(sanitized_question):
         raise HTTPException(
             status_code=422, detail="The question contains unsupported sensitive data"
         )
-    for entry in query_entries:
-        if db.get(TokenVaultEntry, entry.token) is None:
-            db.add(entry)
+    persist_vault_entries(db, query_entries)
     db.commit()
 
     referential = bool(payload.conversation_id) and is_referential_question(payload.question)
@@ -148,7 +146,7 @@ def query(
         hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters)
         cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
     raw_answer = cited_answer.answer
-    known_tokens = set(db.scalars(select(TokenVaultEntry.token)).all())
+    known_tokens = set(db.scalars(select(ProtectedTokenRegistry.token)).all())
     invented = unknown_tokens(raw_answer, known_tokens)
     if invented:
         raise HTTPException(status_code=502, detail="The model returned an unknown protected token")
@@ -207,6 +205,7 @@ def query(
         principal.role.value,
         query_hash_value,
         actor_ref=principal.actor_ref,
+        turn_ref=str(turn.id),
     )
     authorized_brief, brief_trace = authorize_brief_with_trace(
         db,
@@ -214,6 +213,7 @@ def query(
         role=principal.role.value,
         query_hash=query_hash_value,
         actor_ref=principal.actor_ref,
+        turn_ref=str(turn.id),
     )
     settings = get_settings()
     reasoning_model = (
@@ -277,5 +277,23 @@ def query(
             ),
             active_role=principal.role,
             sources_supplied=len(hits),
+            disclosure_session_ref=(
+                brief_trace.disclosure_session_ref
+                if brief_trace
+                else answer_trace.disclosure_session_ref
+            ),
+            single_use_grants=(
+                brief_trace.single_use_grants
+                if brief_trace
+                else answer_trace.single_use_grants
+            ),
+            vault_key_version=(
+                db.scalar(
+                    select(VaultKeyVersion.version)
+                    .where(VaultKeyVersion.status == "active")
+                    .limit(1)
+                )
+                or 1
+            ),
         ),
     )

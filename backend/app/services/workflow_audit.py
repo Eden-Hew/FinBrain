@@ -2,7 +2,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import WorkflowAuditEntry, utcnow
@@ -49,8 +49,13 @@ def write_workflow_event(
     resource_id: str,
     event_payload: dict,
 ) -> WorkflowAuditEntry:
-    last = db.scalar(select(WorkflowAuditEntry).order_by(WorkflowAuditEntry.id.desc()).limit(1))
-    previous_hash = last.event_hash if last else "genesis"
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        db.execute(text("select pg_advisory_xact_lock(hashtext('finbrain:workflow-audit'))"))
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        previous_hash = db.scalar(text("select public.finbrain_audit_tail('workflow')"))
+    else:
+        last = db.scalar(select(WorkflowAuditEntry).order_by(WorkflowAuditEntry.id.desc()).limit(1))
+        previous_hash = last.event_hash if last else "genesis"
     timestamp = utcnow()
     payload = _payload(
         event_type=event_type,

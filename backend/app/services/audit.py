@@ -2,7 +2,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models import AuditLogEntry, utcnow
@@ -43,8 +43,13 @@ def write_audit_entry(
     *,
     actor_ref: str = "legacy",
 ) -> None:
-    last = db.scalar(select(AuditLogEntry).order_by(AuditLogEntry.id.desc()).limit(1))
-    previous_hash = last.event_hash if last else "genesis"
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        db.execute(text("select pg_advisory_xact_lock(hashtext('finbrain:audit-log'))"))
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        previous_hash = db.scalar(text("select public.finbrain_audit_tail('disclosure')"))
+    else:
+        last = db.scalar(select(AuditLogEntry).order_by(AuditLogEntry.id.desc()).limit(1))
+        previous_hash = last.event_hash if last else "genesis"
     timestamp = utcnow()
     event = _event_payload(role, token, authorized, query_hash, timestamp, actor_ref)
     db.add(

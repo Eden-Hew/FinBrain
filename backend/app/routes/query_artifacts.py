@@ -91,6 +91,7 @@ def citation_detail(
         principal.role.value,
         query_hash_value,
         actor_ref=principal.actor_ref,
+        turn_ref=str(turn.id),
     )
     if trace.withheld_tokens and trace.restored_tokens:
         explanation = "Some protected values are visible to this role; others remain withheld."
@@ -141,6 +142,7 @@ def compare_roles(
             role.value,
             query_hash_value,
             actor_ref=principal.actor_ref,
+            turn_ref=f"{turn.id}:comparison:{role.value}",
         )
         explanations: list[str] = []
         if trace.restored_tokens:

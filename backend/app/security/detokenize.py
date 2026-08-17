@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import TokenVaultEntry
-from app.security.crypto import decrypt_value, derive_key
+from app.models import ProtectedTokenRegistry, TokenVaultEntry
+from app.security.disclosure import new_disclosure_session
+from app.security.keyring import decrypt_vault_entry
 from app.services.audit import write_audit_entry
 
 TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
@@ -31,6 +32,8 @@ class DetokenizationTrace:
     restored_tokens: int
     withheld_tokens: int
     decisions: tuple["DisclosureDecision", ...] = ()
+    disclosure_session_ref: str = ""
+    single_use_grants: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +45,7 @@ class DisclosureDecision:
 
 def hash_query(question: str) -> str:
     return hmac.new(
-        get_settings().token_root_secret.encode(),
+        get_settings().token_identity_secret.encode(),
         question.encode(),
         hashlib.sha256,
     ).hexdigest()[:16]
@@ -62,45 +65,69 @@ def detokenize_response_with_trace(
     role: str,
     query_hash: str,
     actor_ref: str = "legacy",
+    turn_ref: str = "unbound",
 ) -> DetokenizationTrace:
     result = text
     restored = 0
     withheld = 0
     decisions: list[DisclosureDecision] = []
-    for token in sorted(set(TOKEN_PATTERN.findall(text)), key=len, reverse=True):
-        entry = db.scalar(select(TokenVaultEntry).where(TokenVaultEntry.token == token))
-        if entry is None:
-            if token.startswith("AMOUNT_BAND_"):
-                result = result.replace(token, _band_label(token))
-            continue
-        authorized = role in entry.allowed_roles
-        if authorized:
-            key = derive_key(info=f"vault:{token}".encode())
-            replacement = decrypt_value(entry.encrypted_value, entry.nonce, key)
-            restored += 1
-        else:
-            replacement = (
-                _band_label(token)
-                if entry.entity_type == "AMOUNT"
-                else f"[{entry.entity_type.lower()} — restricted]"
-            )
-            withheld += 1
-        result = result.replace(token, replacement)
-        decisions.append(
-            DisclosureDecision(
-                token=token,
-                entity_type=entry.entity_type,
-                authorized=authorized,
-            )
-        )
-        write_audit_entry(db, role, token, authorized, query_hash, actor_ref=actor_ref)
-    db.commit()
-    return DetokenizationTrace(
-        text=result,
-        restored_tokens=restored,
-        withheld_tokens=withheld,
-        decisions=tuple(decisions),
+    session = new_disclosure_session(
+        query_hash=query_hash,
+        actor_ref=actor_ref,
+        role=role,
+        turn_ref=turn_ref,
     )
+    try:
+        for token in sorted(set(TOKEN_PATTERN.findall(text)), key=len, reverse=True):
+            registry = db.get(ProtectedTokenRegistry, token)
+            entry = db.scalar(select(TokenVaultEntry).where(TokenVaultEntry.token == token))
+            if registry is None:
+                if token.startswith("AMOUNT_BAND_"):
+                    result = result.replace(token, _band_label(token))
+                continue
+            # PostgreSQL RLS hides ciphertext rows from roles outside allowed_roles.
+            # The explicit check preserves identical behavior in SQLite tests.
+            authorized = entry is not None and role in entry.allowed_roles
+            if authorized:
+                assert entry is not None
+                plaintext = decrypt_vault_entry(db, entry)
+                grant = session.issue(token, plaintext)
+                replacement = session.consume(grant)
+                restored += 1
+            else:
+                replacement = (
+                    _band_label(token)
+                    if registry.entity_type == "AMOUNT"
+                    else registry.masked_value
+                )
+                withheld += 1
+            result = result.replace(token, replacement)
+            decisions.append(
+                DisclosureDecision(
+                    token=token,
+                    entity_type=registry.entity_type,
+                    authorized=authorized,
+                )
+            )
+            write_audit_entry(
+                db,
+                role,
+                token,
+                authorized,
+                query_hash,
+                actor_ref=actor_ref,
+            )
+        db.commit()
+        return DetokenizationTrace(
+            text=result,
+            restored_tokens=restored,
+            withheld_tokens=withheld,
+            decisions=tuple(decisions),
+            disclosure_session_ref=session.public_ref,
+            single_use_grants=session.consumed_count,
+        )
+    finally:
+        session.close()
 
 
 def detokenize_response(
@@ -109,7 +136,8 @@ def detokenize_response(
     role: str,
     query_hash: str,
     actor_ref: str = "legacy",
+    turn_ref: str = "unbound",
 ) -> str:
     return detokenize_response_with_trace(
-        db, text, role, query_hash, actor_ref=actor_ref
+        db, text, role, query_hash, actor_ref=actor_ref, turn_ref=turn_ref
     ).text

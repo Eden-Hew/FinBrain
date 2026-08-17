@@ -237,6 +237,9 @@ class ExposureReceipt(BaseModel):
     withheld_tokens: int
     active_role: UserRole
     sources_supplied: int
+    disclosure_session_ref: str
+    single_use_grants: int
+    vault_key_version: int
 
 
 class QueryResponse(BaseModel):

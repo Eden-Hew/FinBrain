@@ -103,6 +103,12 @@ try {
       -Arguments (@($pythonRuntime.arguments) + @("-m", "app.integrations.email_connector.runner")) `
       -WorkingDirectory (Join-Path $repoRoot "backend")
   }
+  $rotationEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "VAULT_AUTO_ROTATION_ENABLED"
+  if ($rotationEnabled) {
+    Start-DemoComponent -Name "vault-rotation" -Executable $pythonRuntime.executable `
+      -Arguments (@($pythonRuntime.arguments) + @("-m", "app.security.rotation_runner")) `
+      -WorkingDirectory (Join-Path $repoRoot "backend")
+  }
 
   Write-Output "Waiting for the backend and frontend health checks..."
   $ready = $false
@@ -121,7 +127,7 @@ try {
       throw "$($entry.name) was configured but exited during startup. Check .runtime/logs."
     }
   }
-  if ($telegramEnabled -or $emailEnabled) {
+  if ($telegramEnabled -or $emailEnabled -or $rotationEnabled) {
     Write-Output "Verifying configured connector processes..."
     # Connector status endpoints require a signed-in user's JWT. The local
     # launcher therefore checks only the worker processes it created and
@@ -136,6 +142,7 @@ try {
   Write-Output "FinBrain API docs: http://127.0.0.1:8000/docs"
   Write-Output "Telegram worker: $(if ($telegramEnabled) { 'started' } else { 'disabled' })"
   Write-Output "Email worker: $(if ($emailEnabled) { 'started' } else { 'disabled' })"
+  Write-Output "Vault rotation worker: $(if ($rotationEnabled) { 'started' } else { 'disabled' })"
 } catch {
   $cleanupEntries = [object[]]$processes.Clone()
   [array]::Reverse($cleanupEntries)

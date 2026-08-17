@@ -65,4 +65,17 @@ if (-not $emailEnabled) {
   }
 }
 
+$rotationEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "VAULT_AUTO_ROTATION_ENABLED"
+if (-not $rotationEnabled) {
+  Write-Output "Vault rotation worker: disabled (optional)"
+} else {
+  $rotationEntry = Get-TrackedDemoComponent -Name "vault-rotation"
+  if ($rotationEntry -and (Get-DemoValidatedProcess -Entry $rotationEntry)) {
+    Write-Output "Vault rotation worker: running (tracked local process)"
+  } else {
+    Write-Output "Vault rotation worker: unavailable"
+    $failed = $true
+  }
+}
+
 if ($failed) { exit 1 }

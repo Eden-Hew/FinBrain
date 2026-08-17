@@ -33,9 +33,14 @@ multi-source records
 - Private Telegram capture bot using local long polling.
 - Read-only IMAP ingestion of new unread email and supported attachments.
 - Regex and optional GLiNER sensitive-data detection.
-- Deterministic tenant-secret tokens and an AES-256-GCM encrypted token vault.
+- Stable HMAC token identities separated from a versioned AES-256-GCM encrypted token vault.
+- Random wrapped vault generations, per-token HKDF keys, authenticated row context, resumable
+  rotation, and optional automatic rotation through a tracked worker.
+- Query/actor/turn-bound in-memory disclosure sessions with single-use grants and safe
+  format-shaped masks for unauthorized roles.
 - Reversible, band-aware amount tokens with role-gated exact disclosure.
-- Supabase Postgres, pgvector, HNSW indexing, forced RLS, and revoked Data API grants.
+- Supabase Postgres, pgvector, HNSW indexing, forced RLS, non-bypass application/worker roles,
+  database-enforced vault ACLs, and revoked Data API grants.
 - Shared SQL-first counts, listings, date/type/category/action/metadata filters, and complete
   analytical record selection.
 - Dedicated compact citation-card results for exact record listings, with lazy role-authorized
@@ -186,13 +191,19 @@ Generate a stable 32-byte root secret in PowerShell:
 [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
 ```
 
-Copy the output into `TOKEN_ROOT_SECRET`. Changing this secret later makes existing vault entries
-undecryptable unless they are re-encrypted.
+Generate three independent values. `TOKEN_ROOT_SECRET` protects application fingerprints and actor
+references. `TOKEN_HASH_SECRET` fixes token identity so rotation does not change tokens.
+`VAULT_MASTER_KEY` wraps random database-resident vault generations. Do not rotate the master key
+by editing the environment; use the documented vault-generation rotation command.
 
 Minimum local AI configuration:
 
 ```dotenv
 TOKEN_ROOT_SECRET=your-generated-secret
+TOKEN_HASH_SECRET=your-independent-stable-token-secret
+VAULT_MASTER_KEY=your-independent-vault-wrapping-secret
+VAULT_AUTO_ROTATION_ENABLED=true
+VAULT_ROTATION_INTERVAL_DAYS=30
 MORPHEUS_API_KEY=your-morpheus-key
 MORPHEUS_BASE_URL=https://api.mor.org/api/v1
 MORPHEUS_MODEL=deepseek-v4-flash
@@ -266,9 +277,11 @@ uv run --active --no-sync python -m scripts.check_supabase
 uv run --active --no-sync python -m seed.seed_data
 ```
 
-The migration set creates protected content, token vault, audit, connector, structured-batch,
-conversation, recommendation, evidence, decision, and workflow-audit tables. It also installs
-pgvector, the `vector(768)` column, the HNSW index, JSONB role lists, and forced RLS.
+The migration set creates protected content, a safe token registry, versioned token vault, wrapped
+key generations, rotation jobs, audit, connector, structured-batch, conversation,
+recommendation, evidence, decision, and workflow-audit tables. It also installs pgvector, the
+`vector(768)` column, the HNSW index, JSONB role lists, forced RLS, non-bypass database roles, and
+append-only audit triggers.
 
 See [infra/supabase/README.md](./infra/supabase/README.md) for connection and security details.
 
@@ -470,6 +483,25 @@ employee sees a safe label such as `RM2.5K-5K`; finance/operations, owner/direct
 roles can recover the normalized exact value through the encrypted vault. Authorized and denied
 disclosures are both audited.
 
+The database exposes safe token metadata to authenticated requests but applies `allowed_roles`
+inside the token-vault RLS policy before ciphertext can be selected. An authorized value is
+unwrapped only inside a short-lived disclosure session bound to the query hash, actor, role, and
+stored turn. Its per-token grant is consumed once and then the session key is discarded. The AI
+Exposure Receipt displays the vault generation, single-use grant count, and opaque session
+reference.
+
+Vault rows use random generation keys wrapped by `VAULT_MASTER_KEY`; each row then derives a
+separate key from its token and generation. To rotate immediately from `backend`:
+
+```powershell
+uv run --active --no-sync python -m scripts.rotate_vault_key
+```
+
+Rotation activates a fresh random generation first, then re-encrypts old rows in bounded,
+restart-safe batches without changing their tokens. With `VAULT_AUTO_ROTATION_ENABLED=true`,
+`run_demo.ps1` starts the tracked rotation worker and `stop_demo.ps1` stops it with the other demo
+processes.
+
 The frontend's model-view toggle compares:
 
 - **User view:** original question and role-authorized answer.
@@ -542,8 +574,9 @@ uv run --active --no-sync python -m seed.seed_data --reset --yes
 uv run --active --no-sync python -m scripts.check_demo_data
 ```
 
-The reset removes protected content, vault entries, connector cursors and receipts,
-recommendations, and audit history. It then seeds email, Telegram, CRM, bank CSV, meeting-note, and
+The reset removes protected content, token registry/vault entries, wrapped key generations,
+rotation jobs, connector cursors and receipts, recommendations, and audit history. It then creates
+a fresh active vault generation and seeds email, Telegram, CRM, bank CSV, meeting-note, and
 support-ticket records through the real protected ingestion service.
 
 ## Verification
@@ -566,7 +599,7 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
-Latest verified local result: **100 backend tests passed**, Ruff passed, frontend ESLint reported 0
+Latest verified local result: **115 backend tests passed**, Ruff passed, frontend ESLint reported 0
 errors and 6 existing Fast Refresh warnings, and the frontend production build passed. Exact
 SQL-first listings were verified with compact citation cards, lazy authorized evidence, and stable
 drawer focus/scroll behavior. Two live acceptance journeys also completed from a cited query
@@ -588,8 +621,9 @@ returned a validated five-claim protected brief.
   by the backend. They are not generated by the Audit page.
 - Seed records and demonstration accounts are synthetic. User identity is verified by Supabase;
   roles are loaded from the backend-owned `user_roles` table.
-- The audit chains are tamper-evident application records, not externally anchored or digitally
-  signed ledgers. A privileged database operator could rewrite and recompute an entire chain.
+- The audit chains are hash-linked and protected from update/delete through database triggers, but
+  are not externally anchored or digitally signed. A privileged database administrator remains
+  inside the trust boundary.
 
 ## Important proof-of-concept boundaries
 
@@ -607,7 +641,8 @@ returned a validated five-claim protected brief.
 - Email uses IMAP app-password authentication rather than provider OAuth.
 - The current complete-record analytical policy prioritizes demo correctness over production-scale
   latency and context cost.
-- Production still requires managed secrets, key rotation, backups, monitoring, rate limits,
+- Automatic vault-generation rotation is implemented; production still requires a managed KMS or
+  HSM for the wrapping key, backups, monitoring, rate limits,
   incident response, formal PDPA review, and adversarial privacy testing.
 
 For implementation history and team handoff, see:

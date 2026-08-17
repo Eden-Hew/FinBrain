@@ -92,6 +92,9 @@ export interface ExposureReceipt {
   withheld_tokens: number;
   active_role: Role;
   sources_supplied: number;
+  disclosure_session_ref: string;
+  single_use_grants: number;
+  vault_key_version: number;
 }
 
 export interface CitationDetail {

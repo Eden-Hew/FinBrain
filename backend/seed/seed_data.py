@@ -24,7 +24,10 @@ RESET_TABLES = (
     "telegram_update_receipts",
     "integration_status",
     "token_vault",
+    "protected_token_registry",
     "tokenized_content",
+    "vault_rotation_jobs",
+    "vault_key_versions",
 )
 
 

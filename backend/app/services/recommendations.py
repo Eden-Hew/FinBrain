@@ -18,7 +18,6 @@ from app.models import (
     RecommendationDecision,
     RecommendationEvidence,
     TokenizedContent,
-    TokenVaultEntry,
 )
 from app.schemas import (
     CustomerIntelligenceBrief,
@@ -30,7 +29,7 @@ from app.schemas import (
 )
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.detokenize import hash_query
-from app.security.tokenize import tokenize_record
+from app.security.tokenize import persist_vault_entries, tokenize_record
 from app.services.morpheus import morpheus_chat
 from app.services.reasoning import TOKEN_PATTERN, unknown_tokens
 from app.services.workflow_audit import write_workflow_event
@@ -485,13 +484,11 @@ def decide_recommendation(
     if comment.strip():
         source_id = f"decision:{uuid.uuid4()}"
         protected_comment, entries = tokenize_record(
-            comment.strip(), detect_spans(comment.strip()), source_id
+            comment.strip(), detect_spans(comment.strip()), source_id, db=db
         )
         if contains_known_pii(protected_comment):
             raise ValueError("Decision comment contains unsupported sensitive data")
-        for entry in entries:
-            if db.get(TokenVaultEntry, entry.token) is None:
-                db.add(entry)
+        persist_vault_entries(db, entries)
     row.status = decision
     resolved_actor_ref = actor_ref or _actor_ref(role)
     db.add(

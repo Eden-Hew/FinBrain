@@ -286,3 +286,25 @@ Detailed manual scenarios and fixtures are documented in `TESTING_GUIDE.md`.
   workflow events, and audit hashes come from the live backend path.
 - Hash chains are tamper-evident rather than tamper-proof: they detect an unrecomputed edit or gap,
   but are not signed or anchored outside the application database.
+
+## 2026-08-17 — versioned vault security
+
+- Split stable HMAC token identity from vault wrapping secrets.
+- Added random wrapped vault generations and per-token HKDF-derived AES-256-GCM keys.
+- Bound ciphertext authentication to token, entity type, source record, and key version.
+- Added safe format-shaped token metadata separate from ciphertext-bearing vault rows.
+- Added PostgreSQL non-bypass application and worker roles; vault RLS now checks `allowed_roles`
+  before returning ciphertext.
+- Added query/actor/role/turn-bound ephemeral disclosure sessions and replay-resistant single-use
+  grants.
+- Added resumable bounded vault re-encryption, manual rotation, and an optional tracked automatic
+  rotation worker.
+- Added append-only database triggers and serialized hash-chain appends for disclosure and workflow
+  audits.
+- Extended schema/demo checks and the frontend AI Exposure Receipt with vault generation and
+  disclosure-session evidence.
+- Local verification: 115 backend tests pass and Ruff reports no errors.
+- Live Supabase verification completed on 2026-08-17: the clean 12-record seed produced 28
+  protected vault rows, general-employee RLS exposed 20 ciphertext rows while compliance exposed
+  all 28, and a v1 -> v2 rotation re-encrypted all 28 rows with no incomplete jobs or invalid audit
+  chains.

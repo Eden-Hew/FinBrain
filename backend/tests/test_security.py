@@ -9,8 +9,11 @@ from app.services.audit import verify_audit_chain
 
 
 def test_tokenization_removes_structured_pii_and_bands_amounts():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
     raw = "Call 012-345 6789 about RM4,850; IC 901231-14-5566."
-    sanitized, entries = tokenize_record(raw, detect_spans(raw), "test-1")
+    with Session(engine) as db:
+        sanitized, entries = tokenize_record(raw, detect_spans(raw), "test-1", db=db)
 
     assert "012-345 6789" not in sanitized
     assert "901231-14-5566" not in sanitized
@@ -25,13 +28,11 @@ def test_exact_amount_is_vaulted_and_role_gated():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     raw = "Invoice INV-1024 requires payment of RM 4,500."
-    sanitized, entries = tokenize_record(raw, detect_spans(raw), "amount-gate")
-    token = next(entry.token for entry in entries if entry.entity_type == "AMOUNT")
-
-    assert token.startswith("AMOUNT_BAND_3_")
-    assert "4,500" not in sanitized
-
     with Session(engine) as db:
+        sanitized, entries = tokenize_record(raw, detect_spans(raw), "amount-gate", db=db)
+        token = next(entry.token for entry in entries if entry.entity_type == "AMOUNT")
+        assert token.startswith("AMOUNT_BAND_3_")
+        assert "4,500" not in sanitized
         db.add_all(entries)
         db.commit()
 
@@ -48,17 +49,20 @@ def test_exact_amount_is_vaulted_and_role_gated():
 
 
 def test_equivalent_amount_formats_share_token_and_preserve_cents():
-    variants = ["RM4,500", "RM 4500.00", "rm4,500.0"]
-    tokens = []
-    for index, value in enumerate(variants):
-        _protected, entries = tokenize_record(value, detect_spans(value), f"amount-{index}")
-        tokens.append(next(entry.token for entry in entries if entry.entity_type == "AMOUNT"))
-    assert len(set(tokens)) == 1
-
-    protected, entries = tokenize_record("RM 4,500.75", detect_spans("RM 4,500.75"), "cents")
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
+    variants = ["RM4,500", "RM 4500.00", "rm4,500.0"]
+    tokens = []
     with Session(engine) as db:
+        for index, value in enumerate(variants):
+            _protected, entries = tokenize_record(
+                value, detect_spans(value), f"amount-{index}", db=db
+            )
+            tokens.append(next(entry.token for entry in entries if entry.entity_type == "AMOUNT"))
+        assert len(set(tokens)) == 1
+        protected, entries = tokenize_record(
+            "RM 4,500.75", detect_spans("RM 4,500.75"), "cents", db=db
+        )
         db.add_all(entries)
         db.commit()
         assert detokenize_response(db, protected, "owner_director", "cents-query") == "RM 4,500.75"
@@ -88,15 +92,14 @@ def test_role_gate_and_audit_chain():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     raw = "IC 901231-14-5566"
-    sanitized, entries = tokenize_record(raw, detect_spans(raw), "gate-test")
-
     with Session(engine) as db:
+        sanitized, entries = tokenize_record(raw, detect_spans(raw), "gate-test", db=db)
         db.add_all(entries)
         db.commit()
         token = db.scalar(select(TokenVaultEntry.token))
 
         employee = detokenize_response(db, sanitized, "general_employee", "query-a")
-        assert "restricted" in employee
+        assert "******-**-****" in employee
         assert "901231-14-5566" not in employee
 
         compliance = detokenize_response(db, token, "compliance", "query-b")
@@ -108,9 +111,10 @@ def test_multiple_disclosures_form_one_continuous_chain():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     raw = "Call 012-345 6789 or email lim.ck@example.com"
-    sanitized, entries = tokenize_record(raw, detect_spans(raw), "multi-token-test")
-
     with Session(engine, autoflush=False) as db:
+        sanitized, entries = tokenize_record(
+            raw, detect_spans(raw), "multi-token-test", db=db
+        )
         db.add_all(entries)
         db.commit()
         response = detokenize_response(db, sanitized, "compliance", "query-multi")

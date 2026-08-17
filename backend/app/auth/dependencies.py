@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.jwt import AccessTokenError, verify_access_token
 from app.auth.principal import AuthPrincipal
-from app.db import get_db
+from app.db import get_db, set_rls_context
 from app.models import AuthUserRole
 from app.schemas import UserRole
 
@@ -44,7 +44,14 @@ def get_current_user(
     token_role = claims.get("user_role")
     if token_role is not None and token_role != role.value:
         raise HTTPException(status_code=403, detail="stale_user_role_claim")
-    return AuthPrincipal(user_id=user_id, email=claims.get("email"), role=role)
+    principal = AuthPrincipal(user_id=user_id, email=claims.get("email"), role=role)
+    set_rls_context(
+        db,
+        user_id=str(principal.user_id),
+        user_role=principal.role.value,
+        actor_ref=principal.actor_ref,
+    )
+    return principal
 
 
 CurrentUser = Annotated[AuthPrincipal, Depends(get_current_user)]

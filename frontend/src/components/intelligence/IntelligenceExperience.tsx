@@ -131,6 +131,9 @@ function ExposureContent({
         <div><dt>Recognized sensitive values sent in raw form</dt><dd>0</dd></div>
         <div><dt>Active policy</dt><dd>{PERSONAS[exposure.active_role].label}</dd></div>
         <div><dt>Sources supplied</dt><dd>{exposure.sources_supplied}</dd></div>
+        <div><dt>Vault key generation</dt><dd>v{exposure.vault_key_version}</dd></div>
+        <div><dt>Single-use disclosure grants</dt><dd>{exposure.single_use_grants}</dd></div>
+        <div><dt>Disclosure session</dt><dd>{exposure.disclosure_session_ref}</dd></div>
         <div><dt>Audit reference</dt><dd>{exposure.query_hash}</dd></div>
       </dl>
       <div className="fb-intel-text-compare">

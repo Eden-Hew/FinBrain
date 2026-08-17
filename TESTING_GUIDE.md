@@ -45,6 +45,8 @@ Ensure `backend/.env` contains non-empty values for:
 
 ```text
 TOKEN_ROOT_SECRET
+TOKEN_HASH_SECRET
+VAULT_MASTER_KEY
 DATABASE_URL
 MORPHEUS_API_KEY
 GEMINI_API_KEY
@@ -55,8 +57,9 @@ For live Gmail and Telegram tests, also configure their connector values as desc
 
 ## 2. Apply and verify the database schema
 
-Structured ingestion, conversation persistence, and the five-feature lineage fields require all
-current Supabase migrations, including `202608150001_query_recommendation_lineage.sql`.
+Structured ingestion, conversation persistence, lineage, authentication, and versioned vault
+security require every current migration through
+`202608170002_audit_returning_rls.sql`.
 Review pending migrations, then apply them from the repository root:
 
 ```powershell
@@ -498,3 +501,29 @@ is configured, and the numeric operator ID is allowlisted.
 Run `scripts/prepare_demo.ps1` before judging. It prewarms the detector. CPU is the portable
 default; this workstation may set `GLINER_DEVICE=cuda` while preserving its compatible global
 Torch installation.
+
+## 17. Versioned vault and single-use disclosure
+
+After applying migrations and reseeding, run from `backend`:
+
+```powershell
+uv run --active --no-sync python -m scripts.check_supabase
+uv run --active --no-sync python -m scripts.check_demo_data
+uv run --active --no-sync python -m scripts.rotate_vault_key
+uv run --active --no-sync python -m scripts.check_demo_data
+```
+
+Expected behavior:
+
+- exactly one active wrapped vault generation exists;
+- every vault row has safe registry metadata and decrypts under its recorded generation;
+- manual rotation reports the old/new versions and preserves every deterministic token;
+- the disclosure and workflow audit chains remain valid;
+- a general employee sees amount bands and restricted identifier masks;
+- finance/owner/compliance roles receive only their allowed exact values;
+- the AI Exposure Receipt shows a non-secret disclosure-session reference and the count of
+  single-use grants consumed for that response.
+
+For automatic rotation, set `VAULT_AUTO_ROTATION_ENABLED=true`, start the demo, and confirm
+`scripts/check_demo.ps1` reports the tracked `vault-rotation` worker. The normal interval is 30
+days; use the manual command above for a deterministic demonstration.

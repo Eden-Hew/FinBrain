@@ -32,7 +32,7 @@ def _database() -> tuple:
 
 def _turn_with_amount(db: Session) -> tuple[ConversationTurn, TokenizedContent, str]:
     raw = "Meranti Trading has an overdue payment approval for RM 4,500 with no owner."
-    protected, entries = tokenize_record(raw, detect_spans(raw), "five-feature-test")
+    protected, entries = tokenize_record(raw, detect_spans(raw), "five-feature-test", db=db)
     db.add_all(entries)
     content = TokenizedContent(
         source_record_id="email:five-feature-test",

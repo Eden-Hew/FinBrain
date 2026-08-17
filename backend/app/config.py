@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     app_name: str = "FinBrain OS"
     database_url: str = "sqlite:///./finbrain.db"
     token_root_secret: str = "development-only-secret-change-me-now"
+    token_hash_secret: str | None = None
+    vault_master_key: str | None = None
+    vault_auto_rotation_enabled: bool = False
+    vault_rotation_interval_days: int = 30
+    vault_rotation_check_seconds: int = 60
+    vault_rotation_batch_size: int = 100
     gemini_api_key: str | None = None
     gemini_reasoning_model: str = "gemini-3.6-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
@@ -84,12 +90,23 @@ class Settings(BaseSettings):
         "structured_csv_max_rows",
         "structured_csv_max_columns",
         "structured_csv_max_cell_chars",
+        "vault_rotation_interval_days",
+        "vault_rotation_check_seconds",
+        "vault_rotation_batch_size",
     )
     @classmethod
     def positive_connector_limits(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("Connector and ingestion limits must be positive")
         return value
+
+    @property
+    def token_identity_secret(self) -> str:
+        return self.token_hash_secret or self.token_root_secret
+
+    @property
+    def vault_wrapping_secret(self) -> str:
+        return self.vault_master_key or self.token_root_secret
 
     @field_validator("telegram_mode")
     @classmethod
@@ -147,9 +164,17 @@ class Settings(BaseSettings):
 
     @property
     def production_secret_configured(self) -> bool:
-        return len(self.token_root_secret) >= 32 and not self.token_root_secret.startswith(
-            "development-only"
+        secrets = (
+            self.token_root_secret,
+            self.token_hash_secret,
+            self.vault_master_key,
         )
+        return all(
+            secret is not None
+            and len(secret) >= 32
+            and not secret.startswith(("development-only", "replace-with-"))
+            for secret in secrets
+        ) and len(set(secrets)) == len(secrets)
 
     @property
     def supabase_jwks_url(self) -> str:

@@ -5,7 +5,10 @@ from app.db import engine
 
 REQUIRED_TABLES = (
     "tokenized_content",
+    "protected_token_registry",
     "token_vault",
+    "vault_key_versions",
+    "vault_rotation_jobs",
     "audit_log",
     "telegram_update_receipts",
     "integration_status",
@@ -31,6 +34,11 @@ REQUIRED_INGESTION_COLUMNS = {
     "processing_error",
     "enrichment_mode",
     "updated_at",
+}
+REQUIRED_VAULT_COLUMNS = {
+    "key_version",
+    "masked_value",
+    "encryption_algorithm",
 }
 
 
@@ -93,6 +101,15 @@ def main() -> None:
         conversation_expiry_index = connection.scalar(
             text("select to_regclass('public.conversation_expiry_idx')")
         )
+        vault_columns = {
+            row.column_name
+            for row in connection.execute(
+                text(
+                    "select column_name from information_schema.columns "
+                    "where table_schema = 'public' and table_name = 'token_vault'"
+                )
+            )
+        }
         auth_hook = connection.scalar(
             text("select to_regprocedure('public.custom_access_token_hook(jsonb)')")
         )
@@ -117,6 +134,31 @@ def main() -> None:
             ),
             {"tables": list(REQUIRED_TABLES)},
         ).all()
+        security_roles = {
+            row.rolname: row.rolbypassrls
+            for row in connection.execute(
+                text(
+                    "select rolname, rolbypassrls from pg_roles "
+                    "where rolname in ('finbrain_app', 'finbrain_worker')"
+                )
+            )
+        }
+        append_only_triggers = {
+            row.tgname
+            for row in connection.execute(
+                text(
+                    "select tgname from pg_trigger where not tgisinternal "
+                    "and tgname in ('audit_log_append_only', "
+                    "'workflow_audit_log_append_only')"
+                )
+            )
+        }
+        vault_role_policy = connection.scalar(
+            text(
+                "select qual from pg_policies where schemaname = 'public' "
+                "and tablename = 'token_vault' and policyname = 'finbrain_app_vault'"
+            )
+        )
 
     missing = [name for name, relation in tables.items() if relation is None]
     if vector_version is None:
@@ -139,6 +181,12 @@ def main() -> None:
         raise SystemExit("Embedding must be nullable for retryable protected records.")
     if role_list_type != "jsonb":
         raise SystemExit(f"Expected allowed_roles jsonb, found {role_list_type!r}.")
+    missing_vault_columns = REQUIRED_VAULT_COLUMNS - vault_columns
+    if missing_vault_columns:
+        raise SystemExit(
+            "Versioned vault columns are missing: "
+            + ", ".join(sorted(missing_vault_columns))
+        )
     if vector_index is None:
         raise SystemExit("The HNSW embedding index is missing.")
     if workflow_index is None:
@@ -157,6 +205,15 @@ def main() -> None:
     insecure_tables = [name for name, enabled, forced in rls_status if not enabled or not forced]
     if insecure_tables:
         raise SystemExit(f"RLS is not enabled and forced for: {', '.join(insecure_tables)}")
+    if security_roles != {"finbrain_app": False, "finbrain_worker": False}:
+        raise SystemExit("FinBrain database roles are missing or can bypass RLS.")
+    if append_only_triggers != {
+        "audit_log_append_only",
+        "workflow_audit_log_append_only",
+    }:
+        raise SystemExit("Append-only audit triggers are missing.")
+    if vault_role_policy is None or "allowed_roles" not in vault_role_policy:
+        raise SystemExit("The token vault policy does not enforce allowed_roles.")
 
     print(f"Database: {database}")
     print(f"Database user: {user}")
@@ -171,6 +228,8 @@ def main() -> None:
     print("Structured ingestion schema: present")
     print("Protected conversation schema: present")
     print("Supabase Auth role and ownership schema: present")
+    print("Versioned vault schema and role-enforced ciphertext RLS: present")
+    print("Append-only audit triggers: present")
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 

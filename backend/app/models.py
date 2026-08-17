@@ -131,10 +131,57 @@ class TokenVaultEntry(Base):
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     encrypted_value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    masked_value: Mapped[str] = mapped_column(String, default="[restricted]", nullable=False)
+    encryption_algorithm: Mapped[str] = mapped_column(
+        String, default="AES-256-GCM", nullable=False
+    )
     allowed_roles: Mapped[list[str]] = mapped_column(RoleListType(), nullable=False)
     sensitivity: Mapped[str] = mapped_column(String, default="high")
     source_record_id: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ProtectedTokenRegistry(Base):
+    """Non-secret token metadata available without exposing encrypted values."""
+
+    __tablename__ = "protected_token_registry"
+
+    token: Mapped[str] = mapped_column(String, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String, nullable=False)
+    masked_value: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class VaultKeyVersion(Base):
+    """A random vault-generation key wrapped by the environment-held master key."""
+
+    __tablename__ = "vault_key_versions"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    wrapped_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    wrap_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class VaultRotationJob(Base):
+    """Resumable progress for re-encrypting vault rows under a new generation."""
+
+    __tablename__ = "vault_rotation_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    from_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    to_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    rows_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    rows_rotated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_token: Mapped[str | None] = mapped_column(String)
+    failure_code: Mapped[str | None] = mapped_column(String)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuditLogEntry(Base):

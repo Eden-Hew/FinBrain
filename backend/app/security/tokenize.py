@@ -3,9 +3,11 @@ import hmac
 import re
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
-from app.models import TokenVaultEntry
-from app.security.crypto import derive_key, encrypt_value
+from app.models import ProtectedTokenRegistry, TokenVaultEntry
+from app.security.keyring import encrypt_vault_value
 
 LABEL_TOKEN_MAP = {
     "person": "PERSON",
@@ -63,16 +65,31 @@ def _display_amount(text: str) -> str:
     return f"RM {value:,.0f}" if value == value.to_integral() else f"RM {value:,.2f}"
 
 
+def _masked_value(label: str, text: str, token: str) -> str:
+    if label == "AMOUNT":
+        return f"AMOUNT_BAND_{_band_index(_parse_amount(text))}"
+    return {
+        "NRIC": "******-**-****",
+        "PHONE": "01*-***-****",
+        "EMAIL": "*****@*******.***",
+        "BANKACC": "****-****-****",
+        "CARD": "**** **** **** ****",
+        "ADDR": "[address — restricted]",
+        "PERSON": "[person — restricted]",
+        "ORG": "[organization — restricted]",
+    }.get(label, f"[{label.lower()} — restricted]")
+
+
 def _token_for(span) -> str:
     label = LABEL_TOKEN_MAP.get(span.label, "MISC")
     if label == "AMOUNT":
         canonical = _canonical_amount(span.text)
         digest = hmac.new(
-            get_settings().token_root_secret.encode(), canonical.encode(), hashlib.sha256
+            get_settings().token_identity_secret.encode(), canonical.encode(), hashlib.sha256
         ).hexdigest()[:10]
         return f"AMOUNT_BAND_{_band_index(_parse_amount(span.text))}_{digest}"
     digest = hmac.new(
-        get_settings().token_root_secret.encode(),
+        get_settings().token_identity_secret.encode(),
         span.text.strip().casefold().encode(),
         hashlib.sha256,
     ).hexdigest()[:10]
@@ -80,7 +97,10 @@ def _token_for(span) -> str:
 
 
 def tokenize_record(
-    text: str, spans: list, source_record_id: str
+    text: str,
+    spans: list,
+    source_record_id: str,
+    db: Session | None = None,
 ) -> tuple[str, list[TokenVaultEntry]]:
     sanitized = text
     vault_entries: dict[str, TokenVaultEntry] = {}
@@ -88,18 +108,41 @@ def tokenize_record(
         token = _token_for(span)
         sanitized = f"{sanitized[: span.start]}{token}{sanitized[span.end :]}"
         label = LABEL_TOKEN_MAP.get(span.label, "MISC")
-        if token in vault_entries:
+        if token in vault_entries or db is None:
             continue
-        key = derive_key(info=f"vault:{token}".encode())
         vault_value = _display_amount(span.text) if label == "AMOUNT" else span.text
-        ciphertext, nonce = encrypt_value(vault_value, key)
+        ciphertext, nonce, key_version = encrypt_vault_value(
+            db,
+            token=token,
+            entity_type=label,
+            source_record_id=source_record_id,
+            value=vault_value,
+        )
         vault_entries[token] = TokenVaultEntry(
             token=token,
             entity_type=label,
             encrypted_value=ciphertext,
             nonce=nonce,
+            key_version=key_version,
+            masked_value=_masked_value(label, span.text, token),
+            encryption_algorithm="AES-256-GCM",
             allowed_roles=ACL_POLICY.get(label, ["compliance"]),
             sensitivity="high" if label in {"NRIC", "CARD"} else "medium",
             source_record_id=source_record_id,
         )
+        if db.get(ProtectedTokenRegistry, token) is None:
+            db.add(
+                ProtectedTokenRegistry(
+                    token=token,
+                    entity_type=label,
+                    masked_value=_masked_value(label, span.text, token),
+                )
+            )
     return sanitized, list(vault_entries.values())
+
+
+def persist_vault_entries(db: Session, entries: list[TokenVaultEntry]) -> None:
+    """Persist ciphertext and safe public token metadata idempotently."""
+    for entry in entries:
+        if db.get(TokenVaultEntry, entry.token) is None:
+            db.add(entry)
