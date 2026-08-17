@@ -1,3 +1,47 @@
+function Get-DemoPythonRuntime {
+  param([Parameter(Mandatory)][string]$RepoRoot)
+
+  $configuredPython = [Environment]::GetEnvironmentVariable("FINBRAIN_PYTHON")
+  if (-not [string]::IsNullOrWhiteSpace($configuredPython)) {
+    $candidate = if ([System.IO.Path]::IsPathRooted($configuredPython)) {
+      $configuredPython
+    } else {
+      Join-Path $RepoRoot $configuredPython
+    }
+    $candidate = [System.IO.Path]::GetFullPath($candidate)
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+      throw "FINBRAIN_PYTHON does not point to an existing Python executable."
+    }
+    return [pscustomobject]@{
+      executable = $candidate
+      arguments = @()
+      devArguments = @()
+      description = "FINBRAIN_PYTHON (direct; dependency sync disabled)"
+    }
+  }
+
+  $rootPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+  if (Test-Path -LiteralPath $rootPython -PathType Leaf) {
+    return [pscustomobject]@{
+      executable = $rootPython
+      arguments = @()
+      devArguments = @()
+      description = "root .venv (direct; dependency sync disabled)"
+    }
+  }
+
+  $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
+  if (-not $uvCommand) {
+    throw "Python is unavailable: create the root .venv, set FINBRAIN_PYTHON, or install uv on PATH."
+  }
+  return [pscustomobject]@{
+    executable = $uvCommand.Source
+    arguments = @("run", "python")
+    devArguments = @("run", "--extra", "dev", "python")
+    description = "uv-managed backend environment (automatic dependency sync enabled)"
+  }
+}
+
 function Get-DemoValidatedProcess {
   param([Parameter(Mandatory)]$Entry)
   $process = Get-Process -Id ([int]$Entry.pid) -ErrorAction SilentlyContinue

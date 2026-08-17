@@ -136,8 +136,10 @@ npm.cmd ci
 Set-Location ..
 ```
 
-`uv run` manages the Python environment automatically, so no `.venv` activation is required.
-The demo launcher scripts use `uv run` to sync and run the backend on demand.
+For a conventional installation, `uv run` manages the backend environment automatically, so no
+activation is required. The demo scripts also support workstation-specific Python environments:
+they prefer `FINBRAIN_PYTHON` when set, then the root `.venv`, and use the uv-managed backend
+environment only when neither direct Python option is available.
 
 The standard installation includes GLiNER and PyTorch. GLiNER defaults to CPU for portability.
 Set `GLINER_DEVICE=cuda` for a compatible CUDA environment or `GLINER_DEVICE=auto` for automatic
@@ -157,6 +159,21 @@ python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
 Use `uv run --active --no-sync ...` afterward so uv does not replace the inherited Torch build.
+The demo scripts detect this root `.venv` automatically and invoke its Python executable directly,
+without running dependency synchronization. After pulling dependency changes, install the new
+packages explicitly while preserving Torch:
+
+```powershell
+Set-Location backend
+uv sync --active --extra dev --no-install-package torch
+```
+
+To select a different compatible Python executable for the scripts, set a process-scoped override
+before launching the demo:
+
+```powershell
+$env:FINBRAIN_PYTHON = "C:\path\to\python.exe"
+```
 
 ## 2. Configure `backend/.env`
 
@@ -285,9 +302,11 @@ Check and stop the tracked processes:
 & .\scripts\stop_demo.ps1
 ```
 
-The launcher requires `backend/.env`, `uv` on PATH, installed frontend dependencies, and free
-ports 8000 and 5173. `uv` creates and syncs the backend environment automatically on first run.
-It records validated process ownership and writes privacy-safe diagnostics to
+The launcher requires `backend/.env`, installed frontend dependencies, free ports 8000 and 5173,
+and one usable Python strategy: `FINBRAIN_PYTHON`, the root `.venv`, or `uv` on PATH. Direct Python
+strategies never synchronize dependencies; the uv fallback creates and synchronizes the backend
+environment automatically on first run. The selected strategy is printed during startup. The
+launcher records validated process ownership and writes privacy-safe diagnostics to
 `.runtime/logs`. The stop script validates PID start time, executable, and descendant ancestry
 before stopping anything, then verifies both ports are free.
 

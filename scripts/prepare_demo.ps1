@@ -7,15 +7,11 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "demo_processes.ps1")
-$uvCommand = Get-Command uv -ErrorAction SilentlyContinue
-if (-not $uvCommand) {
-  throw "A required local dependency is missing: uv is not installed or not on PATH."
-}
-$uv = $uvCommand.Source
+$pythonRuntime = Get-DemoPythonRuntime -RepoRoot $repoRoot
 $envFile = Join-Path $repoRoot "backend\.env"
 $frontendModules = Join-Path $repoRoot "frontend\node_modules"
 
-foreach ($required in @($uv, $envFile, $frontendModules)) {
+foreach ($required in @($pythonRuntime.executable, $envFile, $frontendModules)) {
   if (-not (Test-Path -LiteralPath $required)) {
     throw "A required local dependency is missing. See README setup instructions."
   }
@@ -31,30 +27,39 @@ if (Get-NetTCPConnection -State Listen -LocalPort 8000,5173 -ErrorAction Silentl
 
 Push-Location (Join-Path $repoRoot "backend")
 try {
+  Write-Output "Python runtime: $($pythonRuntime.description)"
   if (-not $SkipDetector) {
-    & $uv run python -m scripts.prewarm_detector
+    $arguments = @($pythonRuntime.arguments) + @("-m", "scripts.prewarm_detector")
+    & $pythonRuntime.executable @arguments
     if ($LASTEXITCODE -ne 0) { throw "Detector prewarm failed." }
   }
   if (-not $SkipNetworkChecks) {
-    & $uv run python -m scripts.check_gemini
+    $arguments = @($pythonRuntime.arguments) + @("-m", "scripts.check_gemini")
+    & $pythonRuntime.executable @arguments
     if ($LASTEXITCODE -ne 0) { throw "Gemini connectivity check failed." }
-    & $uv run python -m scripts.check_supabase
+    $arguments = @($pythonRuntime.arguments) + @("-m", "scripts.check_supabase")
+    & $pythonRuntime.executable @arguments
     if ($LASTEXITCODE -ne 0) { throw "Supabase schema check failed." }
     if (Test-DemoEnvValue -EnvFile $envFile -Name "TELEGRAM_BOT_TOKEN") {
-      & $uv run python -m scripts.check_telegram
+      $arguments = @($pythonRuntime.arguments) + @("-m", "scripts.check_telegram")
+      & $pythonRuntime.executable @arguments
       if ($LASTEXITCODE -ne 0) { throw "Telegram connectivity check failed." }
     } else { Write-Output "Telegram: disabled; optional check skipped." }
     if (Test-DemoEnvFlag -EnvFile $envFile -Name "EMAIL_CONNECTOR_ENABLED") {
-      & $uv run python -m scripts.check_email
+      $arguments = @($pythonRuntime.arguments) + @("-m", "scripts.check_email")
+      & $pythonRuntime.executable @arguments
       if ($LASTEXITCODE -ne 0) { throw "Email connectivity check failed." }
     } else { Write-Output "Email: disabled; optional check skipped." }
-    & $uv run python -m scripts.check_demo_data
+    $arguments = @($pythonRuntime.arguments) + @("-m", "scripts.check_demo_data")
+    & $pythonRuntime.executable @arguments
     if ($LASTEXITCODE -ne 0) { throw "Demo data verification failed." }
   }
   if (-not $SkipTests) {
-    & $uv run --extra dev python -m pytest -q
+    $arguments = @($pythonRuntime.devArguments) + @("-m", "pytest", "-q")
+    & $pythonRuntime.executable @arguments
     if ($LASTEXITCODE -ne 0) { throw "Backend tests failed." }
-    & $uv run --extra dev ruff check app tests scripts
+    $arguments = @($pythonRuntime.devArguments) + @("-m", "ruff", "check", "app", "tests", "scripts")
+    & $pythonRuntime.executable @arguments
     if ($LASTEXITCODE -ne 0) { throw "Backend lint failed." }
   }
 } finally {

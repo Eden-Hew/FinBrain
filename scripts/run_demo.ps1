@@ -2,11 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "demo_processes.ps1")
-$uvCommand = Get-Command uv -ErrorAction SilentlyContinue
-if (-not $uvCommand) {
-  throw "Required demo dependency is missing: uv is not installed or not on PATH."
-}
-$uv = $uvCommand.Source
+$pythonRuntime = Get-DemoPythonRuntime -RepoRoot $repoRoot
 $node = "C:\Program Files\nodejs\node.exe"
 $vite = Join-Path $repoRoot "frontend\node_modules\vite\bin\vite.js"
 $envFile = Join-Path $repoRoot "backend\.env"
@@ -14,7 +10,7 @@ $runtimeDir = Join-Path $repoRoot ".runtime"
 $logDir = Join-Path $runtimeDir "logs"
 $pidFile = Join-Path $runtimeDir "demo-processes.json"
 
-foreach ($required in @($uv, $node, $vite, $envFile)) {
+foreach ($required in @($pythonRuntime.executable, $node, $vite, $envFile)) {
   if (-not (Test-Path -LiteralPath $required)) { throw "Required demo dependency is missing: $required" }
 }
 $listeners = @(Get-NetTCPConnection -State Listen -LocalPort 8000,5173 -ErrorAction SilentlyContinue)
@@ -87,8 +83,9 @@ function Assert-DemoProcessesRunning {
 }
 
 try {
-  Start-DemoComponent -Name "backend" -Executable $uv `
-    -Arguments @("run", "python", "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000") `
+  Write-Output "Python runtime: $($pythonRuntime.description)"
+  Start-DemoComponent -Name "backend" -Executable $pythonRuntime.executable `
+    -Arguments (@($pythonRuntime.arguments) + @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000")) `
     -WorkingDirectory (Join-Path $repoRoot "backend") -Required $true
   Start-DemoComponent -Name "frontend" -Executable $node `
     -Arguments @($vite, "--host", "127.0.0.1", "--port", "5173", "--strictPort") `
@@ -96,14 +93,14 @@ try {
 
   $telegramEnabled = Test-DemoEnvValue -EnvFile $envFile -Name "TELEGRAM_BOT_TOKEN"
   if ($telegramEnabled) {
-    Start-DemoComponent -Name "telegram" -Executable $uv `
-      -Arguments @("run", "python", "-m", "app.integrations.telegram.runner") `
+    Start-DemoComponent -Name "telegram" -Executable $pythonRuntime.executable `
+      -Arguments (@($pythonRuntime.arguments) + @("-m", "app.integrations.telegram.runner")) `
       -WorkingDirectory (Join-Path $repoRoot "backend")
   }
   $emailEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "EMAIL_CONNECTOR_ENABLED"
   if ($emailEnabled) {
-    Start-DemoComponent -Name "email" -Executable $uv `
-      -Arguments @("run", "python", "-m", "app.integrations.email_connector.runner") `
+    Start-DemoComponent -Name "email" -Executable $pythonRuntime.executable `
+      -Arguments (@($pythonRuntime.arguments) + @("-m", "app.integrations.email_connector.runner")) `
       -WorkingDirectory (Join-Path $repoRoot "backend")
   }
 
