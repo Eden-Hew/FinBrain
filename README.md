@@ -362,6 +362,27 @@ optional `TELEGRAM_BOT_TOKEN`/`EMAIL_*` settings.
 The image installs a CPU-only PyTorch build (GLiNER and OCR run on CPU), so it does not ship CUDA
 libraries.
 
+### Deploy the frontend with Vercel
+
+The frontend is a static Vite SPA deployed separately on Vercel. In the Vercel project, set the
+**Root Directory** to `frontend` (the repo also contains `backend/`). `frontend/vercel.json`
+selects the Vite framework and the `dist` output with an SPA fallback rewrite.
+
+Set these build-time environment variables in Vercel:
+
+```dotenv
+VITE_API_URL=https://<your-service>.up.railway.app
+VITE_SUPABASE_URL=https://<PROJECT_REF>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
+```
+
+`VITE_API_URL` must point at the Railway backend; without it the frontend falls back to
+`http://localhost:8000`. In Supabase Auth, set the **Site URL** and add the Vercel URL to
+**Redirect URLs** so confirmation and OAuth links return to the app.
+
+On the backend, set `CORS_ORIGINS` and `CORS_ORIGIN_REGEX` to include the Vercel domain, or the
+browser will reject cross-origin API calls.
+
 ## Unified protected ingestion
 
 Every adapter produces the same canonical fields:
