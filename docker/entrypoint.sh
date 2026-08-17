@@ -15,5 +15,11 @@ if [ "${EMAIL_CONNECTOR_ENABLED:-}" = "true" ]; then
   python -m app.integrations.email_connector.runner &
 fi
 
+# Optional resumable vault-generation rotation worker.
+if [ "${VAULT_AUTO_ROTATION_ENABLED:-}" = "true" ]; then
+  echo "[entrypoint] starting vault rotation worker"
+  python -m app.security.rotation_runner &
+fi
+
 echo "[entrypoint] starting API on 0.0.0.0:${PORT:-8000}"
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
