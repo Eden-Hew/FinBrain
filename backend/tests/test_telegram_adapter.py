@@ -53,4 +53,5 @@ def test_canonical_mapping_contains_only_fixed_provenance_keys(monkeypatch):
         "forwarded",
         "mime_type",
         "filename",
+        "extraction_method",
     }

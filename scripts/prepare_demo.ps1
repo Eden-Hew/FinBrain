@@ -7,11 +7,15 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot "demo_processes.ps1")
-$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+$uvCommand = Get-Command uv -ErrorAction SilentlyContinue
+if (-not $uvCommand) {
+  throw "A required local dependency is missing: uv is not installed or not on PATH."
+}
+$uv = $uvCommand.Source
 $envFile = Join-Path $repoRoot "backend\.env"
 $frontendModules = Join-Path $repoRoot "frontend\node_modules"
 
-foreach ($required in @($python, $envFile, $frontendModules)) {
+foreach ($required in @($uv, $envFile, $frontendModules)) {
   if (-not (Test-Path -LiteralPath $required)) {
     throw "A required local dependency is missing. See README setup instructions."
   }
@@ -28,29 +32,29 @@ if (Get-NetTCPConnection -State Listen -LocalPort 8000,5173 -ErrorAction Silentl
 Push-Location (Join-Path $repoRoot "backend")
 try {
   if (-not $SkipDetector) {
-    & $python -m scripts.prewarm_detector
+    & $uv run python -m scripts.prewarm_detector
     if ($LASTEXITCODE -ne 0) { throw "Detector prewarm failed." }
   }
   if (-not $SkipNetworkChecks) {
-    & $python -m scripts.check_gemini
+    & $uv run python -m scripts.check_gemini
     if ($LASTEXITCODE -ne 0) { throw "Gemini connectivity check failed." }
-    & $python -m scripts.check_supabase
+    & $uv run python -m scripts.check_supabase
     if ($LASTEXITCODE -ne 0) { throw "Supabase schema check failed." }
     if (Test-DemoEnvValue -EnvFile $envFile -Name "TELEGRAM_BOT_TOKEN") {
-      & $python -m scripts.check_telegram
+      & $uv run python -m scripts.check_telegram
       if ($LASTEXITCODE -ne 0) { throw "Telegram connectivity check failed." }
     } else { Write-Output "Telegram: disabled; optional check skipped." }
     if (Test-DemoEnvFlag -EnvFile $envFile -Name "EMAIL_CONNECTOR_ENABLED") {
-      & $python -m scripts.check_email
+      & $uv run python -m scripts.check_email
       if ($LASTEXITCODE -ne 0) { throw "Email connectivity check failed." }
     } else { Write-Output "Email: disabled; optional check skipped." }
-    & $python -m scripts.check_demo_data
+    & $uv run python -m scripts.check_demo_data
     if ($LASTEXITCODE -ne 0) { throw "Demo data verification failed." }
   }
   if (-not $SkipTests) {
-    & $python -m pytest -q
+    & $uv run --extra dev python -m pytest -q
     if ($LASTEXITCODE -ne 0) { throw "Backend tests failed." }
-    & (Join-Path $repoRoot ".venv\Scripts\ruff.exe") check app tests scripts
+    & $uv run --extra dev ruff check app tests scripts
     if ($LASTEXITCODE -ne 0) { throw "Backend lint failed." }
   }
 } finally {

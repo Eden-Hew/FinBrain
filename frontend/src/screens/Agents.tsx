@@ -447,7 +447,7 @@ export default function Agents() {
               />
               <input
                 type="file"
-                accept=".txt,.md,.csv,.eml,.pdf,.docx"
+                accept=".txt,.md,.csv,.eml,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tiff"
                 ref={fileInputRef}
                 style={{ display: "none" }}
                 onChange={handleFile}

@@ -49,6 +49,7 @@ def _document_record(
         metadata={
             "input_kind": extracted.input_kind,
             "mime_type": extracted.mime_type,
+            "extraction_method": extracted.extraction_method or "text",
             **({"page_count": str(extracted.page_count)} if extracted.page_count else {}),
             "origin_channel": "web_upload",
         },

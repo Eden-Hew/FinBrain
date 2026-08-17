@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     telegram_max_pdf_pages: int = 50
     telegram_max_docx_members: int = 1_000
     telegram_max_docx_uncompressed_bytes: int = 25_000_000
+    enable_ocr: bool = True
+    ocr_min_text_chars: int = 40
+    ocr_max_pages: int = 20
+    ocr_max_image_bytes: int = 10_000_000
     telegram_delete_source_after_ingest: bool = False
     telegram_status_limit: int = 5
     telegram_heartbeat_seconds: int = 30
@@ -66,6 +70,9 @@ class Settings(BaseSettings):
         "telegram_max_pdf_pages",
         "telegram_max_docx_members",
         "telegram_max_docx_uncompressed_bytes",
+        "ocr_min_text_chars",
+        "ocr_max_pages",
+        "ocr_max_image_bytes",
         "telegram_status_limit",
         "telegram_heartbeat_seconds",
         "telegram_preview_chars",

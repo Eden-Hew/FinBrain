@@ -92,7 +92,7 @@ function ProtectedFilePanel() {
         <input
           ref={inputRef}
           type="file"
-          accept=".txt,.md,.csv,.eml,.pdf,.docx"
+          accept=".txt,.md,.csv,.eml,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tiff"
           onChange={(event) => select(event.target.files?.[0])}
         />
       </div>

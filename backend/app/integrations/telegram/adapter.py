@@ -40,6 +40,7 @@ def canonical_record(
         "input_kind": extracted.input_kind,
         "forwarded": str(forwarded).lower(),
         "mime_type": extracted.mime_type,
+        "extraction_method": extracted.extraction_method or "text",
     }
     if extracted.filename:
         metadata["filename"] = extracted.filename

@@ -126,17 +126,18 @@ From the repository root:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-uv venv .venv --prompt FinBrain
-& .\.venv\Scripts\Activate.ps1
 Copy-Item backend\.env.example backend\.env
 
 Set-Location backend
-uv sync --active --extra dev
+uv sync --extra dev
 
 Set-Location ..\frontend
 npm.cmd ci
 Set-Location ..
 ```
+
+`uv run` manages the Python environment automatically, so no `.venv` activation is required.
+The demo launcher scripts use `uv run` to sync and run the backend on demand.
 
 The standard installation includes GLiNER and PyTorch. GLiNER defaults to CPU for portability.
 Set `GLINER_DEVICE=cuda` for a compatible CUDA environment or `GLINER_DEVICE=auto` for automatic
@@ -284,8 +285,9 @@ Check and stop the tracked processes:
 & .\scripts\stop_demo.ps1
 ```
 
-The launcher requires `backend/.env`, the root `.venv`, installed frontend dependencies, and free
-ports 8000 and 5173. It records validated process ownership and writes privacy-safe diagnostics to
+The launcher requires `backend/.env`, `uv` on PATH, installed frontend dependencies, and free
+ports 8000 and 5173. `uv` creates and syncs the backend environment automatically on first run.
+It records validated process ownership and writes privacy-safe diagnostics to
 `.runtime/logs`. The stop script validates PID start time, executable, and descendant ancestry
 before stopping anything, then verifies both ports are free.
 
@@ -317,9 +319,8 @@ Backend, from the repository root:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-& .\.venv\Scripts\Activate.ps1
 Set-Location backend
-uv run --active --no-sync uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Frontend, in a second terminal:
@@ -396,11 +397,13 @@ by default and show a protected preview before confirmation.
 
 ```powershell
 Set-Location backend
-& ..\.venv\Scripts\python.exe -m app.integrations.telegram.runner
+uv run python -m app.integrations.telegram.runner
 ```
 
-Supported inputs include text, forwarded text, TXT, Markdown, CSV, EML, text-based PDF, and DOCX.
-OCR for scanned images and scanned PDFs is not implemented.
+Supported inputs include text, forwarded text, TXT, Markdown, CSV, EML, PDF, DOCX, and image files
+(PNG, JPG, JPEG, WebP, BMP, TIFF). Scanned PDFs and images are processed with a local RapidOCR
+fallback when the built-in text layer yields little or no text. OCR runs entirely on the machine —
+no document image ever leaves the deployment.
 
 ## Gmail and IMAP connector
 
@@ -426,7 +429,7 @@ EMAIL_INCLUDE_ATTACHMENTS=true
 Start the worker from `backend`:
 
 ```powershell
-& ..\.venv\Scripts\python.exe -m app.integrations.email_connector.runner
+& uv run python -m app.integrations.email_connector.runner
 ```
 
 The frontend also provides a local **Sync now** action. Marking an older message unread after the
@@ -580,7 +583,8 @@ returned a validated five-claim protected brief.
 - Chat file selection supports protected preview and confirmed ingestion for the documented file
   types; merely selecting a file does not commit it until the user confirms.
 - The web-search control is visual only.
-- Live WhatsApp Business, banking APIs, Google Drive/SharePoint connectors, and OCR are deferred.
+- Live WhatsApp Business, banking APIs, and Google Drive/SharePoint connectors are deferred.
+  Scanned-image OCR is implemented locally with RapidOCR; cloud OCR providers are deferred.
 - Email uses IMAP app-password authentication rather than provider OAuth.
 - The current complete-record analytical policy prioritizes demo correctness over production-scale
   latency and context cost.

@@ -64,5 +64,6 @@ def health() -> dict[str, str | bool]:
         ),
         "database": settings.database_backend,
         "gliner_enabled": settings.enable_gliner,
+        "ocr_enabled": settings.enable_ocr,
         "production_secret_configured": settings.production_secret_configured,
     }

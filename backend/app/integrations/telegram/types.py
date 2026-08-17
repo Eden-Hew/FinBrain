@@ -11,6 +11,7 @@ class ExtractedContent:
     mime_type: str
     filename: str | None = None
     page_count: int | None = None
+    extraction_method: str | None = None
 
 
 @dataclass(slots=True)

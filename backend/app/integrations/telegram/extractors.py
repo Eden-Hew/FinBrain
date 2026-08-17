@@ -10,6 +10,7 @@ from docx import Document
 from pypdf import PdfReader
 
 from app.config import get_settings
+from app.integrations.ocr.engine import ocr_image, ocr_pdf_pages
 from app.integrations.telegram.types import ExtractedContent
 
 
@@ -17,7 +18,20 @@ class ExtractionError(ValueError):
     pass
 
 
-ALLOWED_EXTENSIONS = {".txt", ".md", ".csv", ".eml", ".pdf", ".docx"}
+ALLOWED_EXTENSIONS = {
+    ".txt",
+    ".md",
+    ".csv",
+    ".eml",
+    ".pdf",
+    ".docx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".bmp",
+    ".tiff",
+}
 MIME_TYPES = {
     ".txt": {"text/plain", "application/octet-stream"},
     ".md": {"text/markdown", "text/plain", "application/octet-stream"},
@@ -28,7 +42,15 @@ MIME_TYPES = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/octet-stream",
     },
+    ".png": {"image/png", "application/octet-stream"},
+    ".jpg": {"image/jpeg", "application/octet-stream"},
+    ".jpeg": {"image/jpeg", "application/octet-stream"},
+    ".webp": {"image/webp", "application/octet-stream"},
+    ".bmp": {"image/bmp", "application/octet-stream"},
+    ".tiff": {"image/tiff", "application/octet-stream"},
 }
+TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"}
 
 
 def _normalize(text: str) -> str:
@@ -98,7 +120,7 @@ def _extract_eml(data: bytes) -> str:
         raise ExtractionError("malformed_document") from error
 
 
-def _extract_pdf(data: bytes) -> tuple[str, int]:
+def _extract_pdf(data: bytes) -> tuple[str, int, str]:
     if not data.startswith(b"%PDF-"):
         raise ExtractionError("invalid_file_signature")
     try:
@@ -107,15 +129,40 @@ def _extract_pdf(data: bytes) -> tuple[str, int]:
             raise ExtractionError("encrypted_pdf")
         if len(reader.pages) > get_settings().telegram_max_pdf_pages:
             raise ExtractionError("pdf_page_limit")
+        page_texts = [page.extract_text() or "" for page in reader.pages]
+        raw_text = "\n".join(text.strip() for text in page_texts if text.strip())
+        settings = get_settings()
+        if settings.enable_ocr and len(raw_text) < settings.ocr_min_text_chars:
+            ocr_pages = ocr_pdf_pages(data, max_pages=settings.ocr_max_pages)
+            if any(text.strip() for text in ocr_pages):
+                return (
+                    "\n\n".join(
+                        f"--- Page {index} ---\n{text}"
+                        for index, text in enumerate(ocr_pages, 1)
+                        if text.strip()
+                    ),
+                    len(ocr_pages),
+                    "ocr",
+                )
+        if not raw_text:
+            raise ExtractionError("no_extractable_text")
         pages = [
-            f"--- Page {index} ---\n{page.extract_text() or ''}"
-            for index, page in enumerate(reader.pages, 1)
+            f"--- Page {index} ---\n{text}" for index, text in enumerate(page_texts, 1)
         ]
-        return "\n\n".join(pages), len(reader.pages)
+        return "\n\n".join(pages), len(reader.pages), "text"
     except ExtractionError:
         raise
     except Exception as error:
         raise ExtractionError("malformed_document") from error
+
+
+def _extract_image(data: bytes, suffix: str) -> str:
+    if len(data) > get_settings().ocr_max_image_bytes:
+        raise ExtractionError("file_too_large")
+    text = ocr_image(data)
+    if not text:
+        raise ExtractionError("no_extractable_text")
+    return text
 
 
 def _validate_docx_zip(data: bytes) -> None:
@@ -164,20 +211,28 @@ def extract_document(data: bytes, *, filename: str, mime_type: str) -> Extracted
     if normalized_mime not in MIME_TYPES[suffix]:
         raise ExtractionError("unsupported_file_type")
     page_count = None
-    if suffix in {".txt", ".md", ".csv"}:
+    extraction_method = None
+    if suffix in TEXT_EXTENSIONS:
         text = _decode_text(data)
+        extraction_method = "text"
     elif suffix == ".eml":
         text = _extract_eml(data)
+        extraction_method = "text"
     elif suffix == ".pdf":
-        text, page_count = _extract_pdf(data)
+        text, page_count, extraction_method = _extract_pdf(data)
+    elif suffix in IMAGE_EXTENSIONS:
+        text = _extract_image(data, suffix)
+        extraction_method = "ocr"
     else:
         text = _extract_docx(data)
+        extraction_method = "text"
     return ExtractedContent(
         text=_normalize(text),
         input_kind=suffix.removeprefix("."),
         mime_type=normalized_mime,
         filename=filename,
         page_count=page_count,
+        extraction_method=extraction_method,
     )
 
 
