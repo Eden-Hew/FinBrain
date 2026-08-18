@@ -381,10 +381,12 @@ Run it locally:
 docker run --rm -p 8000:8000 --env-file backend\.env finbrain-backend
 ```
 
-The entrypoint (`docker/entrypoint.sh`) starts the API on `0.0.0.0:$PORT` (default 8000), starts the
-Telegram long-polling worker when `TELEGRAM_BOT_TOKEN` is set, the email worker when
-`EMAIL_CONNECTOR_ENABLED=true`, and the resumable vault worker when
-`VAULT_AUTO_ROTATION_ENABLED=true`. `/health` is the container healthcheck.
+The entrypoint (`docker/entrypoint.sh`) runs the same backend services as the local `run_demo.ps1`
+launcher, minus the frontend (which Vercel hosts). It starts the API on `0.0.0.0:$PORT` (default
+8000) as the main process, plus the Telegram long-polling worker when `TELEGRAM_BOT_TOKEN` is set,
+the email worker when `EMAIL_CONNECTOR_ENABLED=true`, and the resumable vault worker when
+`VAULT_AUTO_ROTATION_ENABLED=true`. Each worker runs in an auto-restart loop, so a transient worker
+crash is logged and retried without taking the API down. `/health` is the container healthcheck.
 
 On Railway, create a service from this repository. `railway.json` selects the Dockerfile builder and
 configures the `/health` healthcheck (300s timeout so the first boot can download the GLiNER model).

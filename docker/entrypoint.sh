@@ -3,23 +3,40 @@ set -eu
 
 cd /app
 
-# Optional Telegram long-polling worker, mirroring run_demo.ps1's component set.
+# Run an optional worker with an auto-restart loop so a transient crash does not
+# take down the container. Each worker logs its start/exit transitions to the
+# container stdout, which Railway surfaces in its deploy logs.
+start_worker() {
+  name="$1"
+  shift
+  while :; do
+    echo "[entrypoint] starting $name worker"
+    if "$@"; then
+      echo "[entrypoint] $name worker exited normally, restarting in 3s"
+    else
+      echo "[entrypoint] $name worker exited with code $?, restarting in 3s"
+    fi
+    sleep 3
+  done &
+}
+
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-  echo "[entrypoint] starting telegram worker"
-  python -m app.integrations.telegram.runner &
+  start_worker "telegram" python -m app.integrations.telegram.runner
 fi
 
-# Optional email polling worker.
 if [ "${EMAIL_CONNECTOR_ENABLED:-}" = "true" ]; then
-  echo "[entrypoint] starting email worker"
-  python -m app.integrations.email_connector.runner &
+  start_worker "email" python -m app.integrations.email_connector.runner
 fi
 
-# Optional resumable vault-generation rotation worker.
 if [ "${VAULT_AUTO_ROTATION_ENABLED:-}" = "true" ]; then
-  echo "[entrypoint] starting vault rotation worker"
-  python -m app.security.rotation_runner &
+  start_worker "vault-rotation" python -m app.security.rotation_runner
 fi
+
+cleanup() {
+  trap - TERM INT
+  jobs -p | xargs -r kill 2>/dev/null || true
+}
+trap cleanup TERM INT
 
 echo "[entrypoint] starting API on 0.0.0.0:${PORT:-8000}"
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
