@@ -61,6 +61,8 @@ multi-source records
 - Four provisioned demonstration accounts matching the general employee, finance/operations,
   owner/director, and compliance roles.
 - Twelve-record reset-safe demonstration dataset spanning six source systems.
+- An unauthenticated `/status` service page reporting the backend and each configured worker
+  (Telegram, email, vault rotation) with live status, uptime, started-at, and last-heartbeat times.
 
 ## Current architecture
 
@@ -280,8 +282,9 @@ uv run --active --no-sync python -m seed.seed_data
 The migration set creates protected content, a safe token registry, versioned token vault, wrapped
 key generations, rotation jobs, audit, connector, structured-batch, conversation,
 recommendation, evidence, decision, and workflow-audit tables. It also installs pgvector, the
-`vector(768)` column, the HNSW index, JSONB role lists, forced RLS, non-bypass database roles, and
-append-only audit triggers.
+`vector(768)` column, the HNSW index, JSONB role lists, forced RLS, non-bypass database roles,
+append-only audit triggers, and the `started_at` heartbeat column used by the `/status` service
+page.
 
 See [infra/supabase/README.md](./infra/supabase/README.md) for connection and security details.
 
@@ -305,6 +308,7 @@ This starts:
 
 - Frontend: <http://127.0.0.1:5173>
 - API and Swagger documentation: <http://127.0.0.1:8000/docs>
+- Service status page: <http://127.0.0.1:8000/status>
 - Telegram long-polling worker
 - Email polling worker when `EMAIL_CONNECTOR_ENABLED=true`
 
@@ -386,7 +390,9 @@ launcher, minus the frontend (which Vercel hosts). It starts the API on `0.0.0.0
 8000) as the main process, plus the Telegram long-polling worker when `TELEGRAM_BOT_TOKEN` is set,
 the email worker when `EMAIL_CONNECTOR_ENABLED=true`, and the resumable vault worker when
 `VAULT_AUTO_ROTATION_ENABLED=true`. Each worker runs in an auto-restart loop, so a transient worker
-crash is logged and retried without taking the API down. `/health` is the container healthcheck.
+crash is logged and retried without taking the API down. `/health` is the container healthcheck,
+and `/status` renders a service status page that reports each service's status, uptime,
+started-at, and last-heartbeat times.
 
 On Railway, create a service from this repository. `railway.json` selects the Dockerfile builder and
 configures the `/health` healthcheck (300s timeout so the first boot can download the GLiNER model).
