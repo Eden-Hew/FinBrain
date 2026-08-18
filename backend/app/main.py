@@ -9,6 +9,7 @@ from app.routes import (
     audit_log,
     auth,
     conversations,
+    health,
     ingestion,
     integrations,
     query,
@@ -49,6 +50,7 @@ app.include_router(integrations.router)
 app.include_router(recommendations.router)
 app.include_router(uploads.router)
 app.include_router(conversations.router)
+app.include_router(health.router)
 
 
 @app.get("/health", tags=["system"])

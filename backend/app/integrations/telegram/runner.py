@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from telegram import Update
 
@@ -7,25 +8,26 @@ from app.config import get_settings
 from app.db import SessionLocal, initialize_local_schema
 from app.integrations.telegram.bot import build_application
 from app.integrations.telegram.drafts import draft_store
-from app.models import IntegrationStatus, utcnow
 from app.security.detect import warm_detector
+from app.services.health import write_heartbeat
 
 
-def _write_status(status: str, detector_ready: bool, failure_code: str | None = None) -> None:
+def _write_status(
+    status: str,
+    detector_ready: bool,
+    failure_code: str | None = None,
+    started_at: datetime | None = None,
+) -> None:
     with SessionLocal() as db:
-        row = db.get(IntegrationStatus, "telegram") or IntegrationStatus(
-            integration_key="telegram",
+        write_heartbeat(
+            db,
+            key="telegram",
             status=status,
             mode="polling",
             detector_ready=detector_ready,
-            last_heartbeat_at=utcnow(),
+            failure_code=failure_code,
+            started_at=started_at,
         )
-        row.status = status
-        row.detector_ready = detector_ready
-        row.last_heartbeat_at = utcnow()
-        row.failure_code = failure_code
-        db.add(row)
-        db.commit()
 
 
 async def _heartbeat(detector_ready: bool) -> None:
@@ -51,7 +53,8 @@ def main() -> None:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
     initialize_local_schema()
-    _write_status("starting", False)
+    started_at = datetime.now(UTC)
+    _write_status("starting", False, started_at=started_at)
     detector = warm_detector()
     if not detector.loaded:
         _write_status("degraded", False, detector.failure_code or "detector_unavailable")

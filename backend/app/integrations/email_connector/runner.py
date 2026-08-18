@@ -1,9 +1,11 @@
 import logging
 import time
+from datetime import UTC, datetime
 
 from app.config import get_settings
 from app.db import SessionLocal, initialize_local_schema
 from app.integrations.email_connector.service import sync_mailbox
+from app.services.health import write_heartbeat
 
 
 def main() -> None:
@@ -12,7 +14,19 @@ def main() -> None:
     if not settings.email_configured:
         raise RuntimeError("Email connector is not configured")
     initialize_local_schema()
+    started_at = datetime.now(UTC)
     while True:
+        try:
+            with SessionLocal() as db:
+                write_heartbeat(
+                    db,
+                    key="email",
+                    status="healthy",
+                    mode="imap",
+                    started_at=started_at,
+                )
+        except Exception:
+            logging.exception("email_heartbeat_failed")
         try:
             with SessionLocal() as db:
                 sync_mailbox(db)
