@@ -36,7 +36,7 @@ def _format_time(value: datetime | None) -> str:
 
 def _row_service(db: Session) -> list[dict]:
     settings = get_settings()
-    rows = heartbeat_rows(db)
+    rows = heartbeat_rows(db, settings.effective_service_instance_id)
 
     def build(key, label, configured, mode, stale_seconds):
         row = rows.get(key)

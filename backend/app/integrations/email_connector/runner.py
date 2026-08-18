@@ -15,16 +15,20 @@ def main() -> None:
         raise RuntimeError("Email connector is not configured")
     initialize_local_schema()
     started_at = datetime.now(UTC)
+    first_heartbeat = True
     while True:
         try:
             with SessionLocal() as db:
                 write_heartbeat(
                     db,
                     key="email",
+                    instance_id=settings.effective_service_instance_id,
                     status="healthy",
                     mode="imap",
                     started_at=started_at,
+                    reset_started_at=first_heartbeat,
                 )
+                first_heartbeat = False
         except Exception:
             logging.exception("email_heartbeat_failed")
         try:

@@ -17,6 +17,7 @@ from app.schemas import (
     TelegramIntegrationStatusResponse,
     UserRole,
 )
+from app.services.health import heartbeat_key
 
 router = APIRouter(tags=["integrations"])
 
@@ -31,7 +32,10 @@ def telegram_status(
     db: Session = Depends(get_db),
 ) -> TelegramIntegrationStatusResponse:
     settings = get_settings()
-    row = db.get(IntegrationStatus, "telegram")
+    row = db.get(
+        IntegrationStatus,
+        heartbeat_key(settings.effective_service_instance_id, "telegram"),
+    )
     status = "not_configured"
     if row:
         heartbeat = row.last_heartbeat_at

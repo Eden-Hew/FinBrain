@@ -17,16 +17,20 @@ def _write_status(
     detector_ready: bool,
     failure_code: str | None = None,
     started_at: datetime | None = None,
+    reset_started_at: bool = False,
 ) -> None:
+    settings = get_settings()
     with SessionLocal() as db:
         write_heartbeat(
             db,
             key="telegram",
+            instance_id=settings.effective_service_instance_id,
             status=status,
             mode="polling",
             detector_ready=detector_ready,
             failure_code=failure_code,
             started_at=started_at,
+            reset_started_at=reset_started_at,
         )
 
 
@@ -54,7 +58,7 @@ def main() -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
     initialize_local_schema()
     started_at = datetime.now(UTC)
-    _write_status("starting", False, started_at=started_at)
+    _write_status("starting", False, started_at=started_at, reset_started_at=True)
     detector = warm_detector()
     if not detector.loaded:
         _write_status("degraded", False, detector.failure_code or "detector_unavailable")

@@ -5,6 +5,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.models import IntegrationStatus, utcnow
 from app.schemas import CanonicalIngestionRecord, IngestionResult
+from app.services.health import heartbeat_key
 from app.services.ingestion import enrich_protected_record, protect_canonical_record
 
 _semaphore: asyncio.Semaphore | None = None
@@ -13,7 +14,10 @@ _semaphore: asyncio.Semaphore | None = None
 def protect(record: CanonicalIngestionRecord) -> IngestionResult:
     with SessionLocal() as db:
         result = protect_canonical_record(db, record)
-        status = db.get(IntegrationStatus, "telegram")
+        status = db.get(
+            IntegrationStatus,
+            heartbeat_key(get_settings().effective_service_instance_id, "telegram"),
+        )
         if status:
             status.last_update_at = utcnow()
             db.commit()

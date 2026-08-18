@@ -58,8 +58,8 @@ For live Gmail and Telegram tests, also configure their connector values as desc
 ## 2. Apply and verify the database schema
 
 Structured ingestion, conversation persistence, lineage, authentication, and versioned vault
-security require every current migration through
-`202608170002_audit_returning_rls.sql`.
+security and worker uptime require every current migration through
+`202608180001_health_uptime.sql`.
 Review pending migrations, then apply them from the repository root:
 
 ```powershell
@@ -140,11 +140,18 @@ Open:
 
 - Frontend: <http://127.0.0.1:5173>
 - API documentation: <http://127.0.0.1:8000/docs>
+- Runtime-scoped service status: <http://127.0.0.1:8000/status>
 
 The health check should report the backend and frontend healthy and each configured connector
 worker as a running tracked process. Detailed connector status is available after sign-in because
 the corresponding API routes require a Supabase JWT. Gmail and Telegram are optional only when
 they are disabled. Startup diagnostics are written to ignored `.runtime/logs` files.
+
+The status page reads only the current runtime namespace (`local` by default). A Railway deployment
+uses its injected service ID, so it cannot overwrite the local heartbeat row. Verify that a worker
+restart resets its uptime and that the local Telegram status stays stable for at least two
+30-second heartbeat intervals. Do not run the same Telegram bot token in local and Railway polling
+workers simultaneously.
 
 ## 6. Test structured CSV upload
 

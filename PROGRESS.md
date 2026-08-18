@@ -311,3 +311,14 @@ Detailed manual scenarios and fixtures are documented in `TESTING_GUIDE.md`.
 - Hardened concurrent manual/automatic rotation with a transaction advisory lock around every
   batch. Inconsistent completed jobs are reopened safely when rows remain on their source
   generation. Live recovery moved all 49 stranded v2 rows to v3 and restored valid audit chains.
+
+## 2026-08-18 — runtime-scoped worker health
+
+- Isolated Telegram, email, and vault-rotation heartbeats by runtime instance so local and Railway
+  services sharing Supabase cannot overwrite each other's status.
+- Added automatic Railway service namespacing with an explicit `SERVICE_INSTANCE_ID` override.
+- Corrected worker uptime by replacing `started_at` on each new process and retaining it only for
+  subsequent heartbeats from that process.
+- Updated Telegram ingestion and authenticated status lookups to use the same scoped worker row.
+- Added regression coverage for local/Railway isolation, startup-time replacement, and runtime-ID
+  selection.

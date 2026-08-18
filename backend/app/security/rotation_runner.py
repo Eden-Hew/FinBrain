@@ -14,6 +14,7 @@ def main() -> None:
         return
     print("Vault rotation worker started.")
     started_at = datetime.now(UTC)
+    first_heartbeat = True
     while True:
         try:
             with SessionLocal() as db:
@@ -21,10 +22,13 @@ def main() -> None:
                 write_heartbeat(
                     db,
                     key="vault-rotation",
+                    instance_id=settings.effective_service_instance_id,
                     status="healthy",
                     mode="scheduled",
                     started_at=started_at,
+                    reset_started_at=first_heartbeat,
                 )
+                first_heartbeat = False
         except Exception:
             print("vault_rotation_heartbeat_failed")
         with SessionLocal() as db:

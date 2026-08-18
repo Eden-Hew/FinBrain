@@ -331,6 +331,12 @@ The local launcher and checker validate connector workers through their tracked 
 Detailed Gmail and Telegram status remains behind Supabase JWT authentication in the application;
 the PowerShell lifecycle scripts do not bypass those protected API routes.
 
+Worker heartbeat rows are scoped to the current runtime instance. Local runs use `local`; Railway
+automatically uses its injected `RAILWAY_SERVICE_ID`. Set `SERVICE_INSTANCE_ID` only when an
+explicit stable name is preferred. This prevents local and deployed workers connected to the same
+Supabase project from overwriting each other's `/status` state, and each worker restart replaces
+its own `started_at` value.
+
 The complete setup, connector, query, conversation, authorization, recommendation, audit, and
 lifecycle test procedure is in [`TESTING_GUIDE.md`](./TESTING_GUIDE.md).
 
@@ -392,7 +398,7 @@ the email worker when `EMAIL_CONNECTOR_ENABLED=true`, and the resumable vault wo
 `VAULT_AUTO_ROTATION_ENABLED=true`. Each worker runs in an auto-restart loop, so a transient worker
 crash is logged and retried without taking the API down. `/health` is the container healthcheck,
 and `/status` renders a service status page that reports each service's status, uptime,
-started-at, and last-heartbeat times.
+started-at, and last-heartbeat times for that Railway service only.
 
 On Railway, create a service from this repository. `railway.json` selects the Dockerfile builder and
 configures the `/health` healthcheck (300s timeout so the first boot can download the GLiNER model).
@@ -401,6 +407,11 @@ the distinct `TOKEN_ROOT_SECRET`, `TOKEN_HASH_SECRET`, and `VAULT_MASTER_KEY` va
 `SUPABASE_URL`/`SUPABASE_JWT_*`, `GEMINI_API_KEY`, and `MORPHEUS_API_KEY`. Optional worker settings
 include `TELEGRAM_BOT_TOKEN`, `EMAIL_*`, and `VAULT_AUTO_ROTATION_ENABLED` with its interval,
 check-frequency, and batch-size values.
+
+Run only one long-polling worker for a given Telegram bot token. When testing Telegram locally,
+disable the Railway Telegram worker or remove its `TELEGRAM_BOT_TOKEN`; when demonstrating the
+deployed service, stop the local worker. Instance-scoped status prevents misleading heartbeat
+overwrites, but Telegram itself still permits only one active `getUpdates` poller per bot.
 
 The image installs a CPU-only PyTorch build (GLiNER and OCR run on CPU), so it does not ship CUDA
 libraries.
@@ -663,7 +674,7 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
-Latest verified local result: **116 backend tests passed**, Ruff passed, frontend ESLint reported 0
+Latest verified local result: **122 backend tests passed**, Ruff passed, frontend ESLint reported 0
 errors and 6 existing Fast Refresh warnings, and the frontend production build passed. Exact
 SQL-first listings were verified with compact citation cards, lazy authorized evidence, and stable
 drawer focus/scroll behavior. Two live acceptance journeys also completed from a cited query

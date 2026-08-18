@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -64,6 +65,8 @@ class Settings(BaseSettings):
     structured_csv_max_columns: int = 20
     structured_csv_max_cell_chars: int = 4_000
     application_timezone: str = "Asia/Kuala_Lumpur"
+    service_instance_id: str | None = None
+    railway_service_id: str | None = None
     supabase_url: str = ""
     supabase_jwt_issuer: str = ""
     supabase_jwt_audience: str = "authenticated"
@@ -175,6 +178,15 @@ class Settings(BaseSettings):
             and not secret.startswith(("development-only", "replace-with-"))
             for secret in secrets
         ) and len(set(secrets)) == len(secrets)
+
+    @property
+    def effective_service_instance_id(self) -> str:
+        """Stable namespace separating local and deployed worker heartbeats."""
+        raw = self.service_instance_id or (
+            f"railway-{self.railway_service_id}" if self.railway_service_id else "local"
+        )
+        normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", raw.strip()).strip("-.")
+        return (normalized or "local")[:100]
 
     @property
     def supabase_jwks_url(self) -> str:
