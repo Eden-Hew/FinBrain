@@ -19,6 +19,7 @@ from app.schemas import (
     UserRole,
 )
 from app.services import storage
+from app.services.einvoice_pdf import render_einvoice_pdf
 from app.services.ingestion import ingest_canonical_record
 from app.services.workflow_audit import write_workflow_event
 
@@ -53,7 +54,7 @@ def record_response(
         total_amount=row.total_amount,
         status=row.status,
         created_at=row.created_at,
-        document_available=bool(row.document_storage_path),
+        document_available=True,
         readiness_reason=reason,
         uin=row.uin,
     )
@@ -365,11 +366,18 @@ def get_document_url(db: Session, record_id: int) -> EinvoiceDocumentUrlResponse
     record = db.get(EInvoiceRecord, record_id)
     if record is None:
         raise LookupError(f"e-invoice record {record_id} not found")
+
+    bucket = get_settings().einvoice_document_bucket
+    storage.ensure_bucket(bucket)
+
     if not record.document_storage_path:
-        raise LookupError(f"e-invoice record {record_id} has no document on file")
+        pdf_bytes = render_einvoice_pdf(record)
+        path = f"{record.id}.pdf"
+        storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
+        record.document_storage_path = path
+        db.commit()
 
     expires_in = 300
-    bucket = get_settings().einvoice_document_bucket
     url = storage.create_signed_url(bucket, record.document_storage_path, expires_in=expires_in)
     return EinvoiceDocumentUrlResponse(url=url, expires_in=expires_in)
 

@@ -213,3 +213,23 @@ def test_render_einvoice_pdf_multi_item_and_shipping(sample_full_invoice_payload
     assert len(pdf_bytes) > 1000
 
 
+def test_seed_module_reexport_compatibility():
+    from seed.generate_einvoice_pdf import render_einvoice_pdf as seed_render
+    pdf_bytes = seed_render(
+        supplier_name="Grab Malaysia",
+        supplier_tin="C9988776655",
+        buyer_name="FINBRAIN Sdn Bhd",
+        invoice_no="GRB-4471209",
+        issue_date="2026-08-09",
+        currency="MYR",
+        tax_type="SST",
+        tax_rate="0%",
+        total_amount="86.40",
+        status="submitted",
+    )
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+
+
+
