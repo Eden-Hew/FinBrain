@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useAppState } from "../lib/appState";
 import { MarketingNav } from "../components/Nav";
 import { LogoMark, Wordmark } from "../components/Logo";
@@ -131,16 +131,69 @@ function buildSupportTopics(
   ];
 }
 
+const FAQ_ITEMS = [
+  {
+    q: "Is this a real product, or a demo?",
+    a: "It's a working prototype — the finance dashboard, audit trail, and e-invoicing flow are functional, not mockups. Pricing and billing are illustrative, not a live payment system, and that's stated wherever numbers appear.",
+  },
+  {
+    q: "How is my data protected under PDPA?",
+    a: "Personal identifiers like IC numbers and phone numbers are masked immediately after OCR — before any extracted field is stored or sent to an AI model. Only the fields MyInvois requires are retained.",
+  },
+  {
+    q: "Can FinBrain actually submit e-invoices to LHDN?",
+    a: "Yes — receipts and invoices are mapped to the MyInvois schema, validated for missing fields before submission, and tracked through the same status pipeline your finance team would use manually.",
+  },
+  {
+    q: "What happens if someone asks for data outside their role?",
+    a: "The AI agent enforces the same role-based access as the rest of the app. A request outside your role is declined and logged in the audit trail at the point of the request — not filtered out afterward.",
+  },
+  {
+    q: "What languages does it support?",
+    a: "English, Bahasa Malaysia, and Chinese for the AI agent and interface — switchable anytime from your profile menu, no separate setup required.",
+  },
+  {
+    q: "Do I need to connect anything before I can try it?",
+    a: "No — the free trial starts with a sample workspace so you can explore the dashboard, audit trail, and AI agent before connecting Telegram, email, or your own records.",
+  },
+];
+
+function FaqAccordion() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  return (
+    <div className="fb-mkt-faq-list">
+      {FAQ_ITEMS.map((item, i) => {
+        const open = openIndex === i;
+        return (
+          <div className={"fb-mkt-faq-item" + (open ? " is-open" : "")} key={item.q}>
+            <button
+              className="fb-mkt-faq-question"
+              type="button"
+              onClick={() => setOpenIndex(open ? null : i)}
+              aria-expanded={open}
+            >
+              {item.q}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {open && <p className="fb-mkt-faq-answer">{item.a}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Reveal({ children, className = "", id, style }: { children: ReactNode; className?: string; id?: string; style?: CSSProperties }) {
   const [ref, inView] = useInView<HTMLElement>();
   const cls = className + " fb-mkt-reveal" + (inView ? " is-visible" : "");
   return <section ref={ref} id={id} className={cls} style={style}>{children}</section>;
 }
 
-function AgentCard({ tone, title, body, icon, index }: { tone: string; title: string; body: string; icon: ReactNode; index: number }) {
+function AgentCard({ tone, title, body, icon, index, featured }: { tone: string; title: string; body: string; icon: ReactNode; index: number; featured?: boolean }) {
   const [ref, inView] = useInView<HTMLDivElement>();
   return (
-    <div ref={ref} className={"fb-mkt-agent-card fb-mkt-reveal" + (inView ? " is-visible" : "")} style={{ transitionDelay: inView ? `${index * 80}ms` : "0ms" }}>
+    <div ref={ref} className={"fb-mkt-agent-card fb-mkt-reveal" + (featured ? " is-featured" : "") + (inView ? " is-visible" : "")} style={{ transitionDelay: inView ? `${index * 80}ms` : "0ms" }}>
+      {featured && <span className="fb-mkt-agent-featured-tag">Start here</span>}
       <div className={"fb-mkt-icon-badge " + tone}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icon}</svg>
       </div>
@@ -387,12 +440,12 @@ export default function Landing() {
         </div>
         <div className="fb-mkt-agent-grid">
           {AGENTS.map((agent, i) => (
-            <AgentCard key={agent.title} tone={agent.tone} title={agent.title} body={agent.body} icon={agent.icon} index={i} />
+            <AgentCard key={agent.title} tone={agent.tone} title={agent.title} body={agent.body} icon={agent.icon} index={i} featured={i === 0} />
           ))}
         </div>
       </Reveal>
 
-      <Reveal className="fb-mkt-section fb-mkt-section-alt" id="landing-proof">
+      <Reveal className="fb-mkt-section fb-mkt-proof-dark" id="landing-proof">
         <div className="fb-mkt-section-head">
           <div className="fb-mkt-eyebrow is-plain">Proof, not just promises</div>
           <h2>The same dashboard your team sees after signing in</h2>
@@ -471,7 +524,7 @@ export default function Landing() {
       </Reveal>
 
       <Reveal className="fb-mkt-section fb-mkt-section-alt" id="landing-pricing">
-        <div className="fb-mkt-section-head">
+        <div className="fb-mkt-section-head is-left">
           <div className="fb-mkt-eyebrow is-plain">Pricing</div>
           <h2>Simple pricing, built for finance teams</h2>
           <p>Every plan includes permission-aware retrieval, the tamper-evident audit trail, and PDPA-aligned e-invoicing.</p>
@@ -482,6 +535,15 @@ export default function Landing() {
           ))}
         </div>
         <p className="fb-mkt-fineprint">Prices shown in MYR — illustrative for this prototype, not a live billing system. <span tabIndex={0} role="button" onClick={() => goToSecurity("landing")}>Read about our security &amp; compliance approach →</span></p>
+      </Reveal>
+
+      <Reveal className="fb-mkt-section" id="landing-faq">
+        <div className="fb-mkt-section-head">
+          <div className="fb-mkt-eyebrow is-plain">FAQ</div>
+          <h2>Questions finance teams actually ask</h2>
+          <p>Straight answers, including where this prototype's limits are.</p>
+        </div>
+        <FaqAccordion />
       </Reveal>
 
       <Reveal className="fb-mkt-closing">

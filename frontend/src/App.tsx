@@ -21,6 +21,15 @@ import Audit from "./screens/Audit";
 import Approvals from "./screens/Approvals";
 import Ingestion from "./screens/Ingestion";
 
+function GlobalThemeToggle() {
+  // The landing page has its own inline toggle in the marketing nav, so the
+  // floating one is suppressed there to avoid stacking two theme controls
+  // in the same bottom-right corner as the support chat launcher.
+  const { screen } = useAppState();
+  if (screen === "landing") return null;
+  return <ThemeToggleButton />;
+}
+
 function Screens() {
   const { screen, show, setAskRole } = useAppState();
   const { identity, loading } = useAuth();
@@ -69,7 +78,7 @@ export default function App() {
               <QuickActionsPalette />
             </UiChromeProvider>
           </AuthProvider>
-          <ThemeToggleButton />
+          <GlobalThemeToggle />
         </AppStateProvider>
       </I18nProvider>
     </ThemeProvider>

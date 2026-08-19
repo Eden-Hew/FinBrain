@@ -5,9 +5,10 @@ import { useI18n } from "../lib/i18n";
 import { PERSONAS } from "../lib/personas";
 import { useActiveSection, useScrollY } from "../lib/interactivity";
 import { useUiChrome } from "../lib/uiChrome";
+import { useTheme } from "../lib/theme";
 import { LogoMark, Wordmark } from "./Logo";
 
-const MARKETING_SECTIONS = ["landing-flow", "landing-agents", "landing-proof", "landing-why", "landing-pricing"];
+const MARKETING_SECTIONS = ["landing-flow", "landing-agents", "landing-proof", "landing-why", "landing-pricing", "landing-faq"];
 
 export function LandingNav() {
   const { show } = useAppState();
@@ -36,10 +37,12 @@ const MARKETING_NAV_ITEMS = [
   { id: "landing-proof", label: "Proof" },
   { id: "landing-why", label: "Why Us" },
   { id: "landing-pricing", label: "Pricing" },
+  { id: "landing-faq", label: "FAQ" },
 ];
 
 export function MarketingNav() {
   const { show } = useAppState();
+  const { theme, toggle } = useTheme();
   const scrollY = useScrollY();
   const active = useActiveSection(MARKETING_SECTIONS);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -59,6 +62,14 @@ export function MarketingNav() {
         ))}
       </div>
       <div className="fb-mkt-nav-actions">
+        <button
+          className="fb-mkt-theme-toggle"
+          type="button"
+          onClick={toggle}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+        >
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
         <span tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
         <button className="fb-mkt-btn is-accent" onClick={() => show("signup")}>Get Started</button>
         <button
