@@ -2,8 +2,7 @@ import { useRef, useState } from "react";
 import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
-import { AppNav } from "../components/Nav";
-import { PersonaSelector } from "../components/PersonaSelector";
+import { Sidebar } from "../components/Nav";
 import {
   IntelligenceExperience,
   StandaloneExposureReceipt,
@@ -63,6 +62,9 @@ export default function Agents() {
     sampleBanner,
     dismissSampleBanner,
     openApprovalRecommendation,
+    show,
+    approvalsCount,
+    einvoices,
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
@@ -244,9 +246,11 @@ export default function Agents() {
     send(phrase);
   };
 
+  const einvoicesPending = Object.values(einvoices).filter((inv) => inv.status === "pending").length;
+
   return (
-    <div className="fb-root">
-      <AppNav current="agents" />
+    <div className="fb-root fb-shell">
+      <Sidebar current="agents" />
 
       {sampleBanner && (
         <div className="fb-callout fb-sample-banner">
@@ -258,8 +262,22 @@ export default function Agents() {
       <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
         <h1>{t("nav.aiAgents")}</h1>
         <p>{t("agents.desc")}</p>
-        <PersonaSelector compact />
       </header>
+
+      <div className="fb-agents-overview">
+        <button className="fb-overview-stat" type="button" onClick={() => show("approvals")}>
+          <span className="fb-overview-value">{approvalsCount}</span>
+          <span className="fb-overview-label">Pending approvals</span>
+        </button>
+        <button className="fb-overview-stat" type="button" onClick={() => show("einvoice")}>
+          <span className="fb-overview-value">{einvoicesPending}</span>
+          <span className="fb-overview-label">e-Invoices to review</span>
+        </button>
+        <button className="fb-overview-stat" type="button" onClick={() => show("finance")}>
+          <span className="fb-overview-value">RM 94K</span>
+          <span className="fb-overview-label">Outstanding AR</span>
+        </button>
+      </div>
 
       <div className="fb-unified-wrap">
         <div className="fb-suggest-row">
@@ -455,6 +473,7 @@ export default function Agents() {
               <button
                 className={"fb-icon-btn" + (recording ? " is-recording" : "")}
                 type="button"
+                title="Hold to record"
                 aria-label="Hold, or press Enter/Space, to record"
                 onMouseDown={() => setRecording(true)}
                 onMouseUp={stopRecording}
@@ -477,7 +496,7 @@ export default function Agents() {
                   New chat
                 </button>
                 <div style={{ position: "relative" }}>
-                  <button className="fb-icon-btn" type="button" onClick={() => setContextMenuOpen((v) => !v)} aria-haspopup="true" aria-label="Add context">
+                  <button className="fb-icon-btn" type="button" title="Add context" onClick={() => setContextMenuOpen((v) => !v)} aria-haspopup="true" aria-label="Add context">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                   </button>
                   {contextMenuOpen && (
@@ -488,10 +507,10 @@ export default function Agents() {
                     </div>
                   )}
                 </div>
-                <button className="fb-icon-btn" type="button" onClick={() => fileInputRef.current?.click()} aria-label="Upload from computer">
+                <button className="fb-icon-btn" type="button" title="Upload a file" onClick={() => fileInputRef.current?.click()} aria-label="Upload from computer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
-                <button className={"fb-icon-btn" + (webSearchOn ? " is-active" : "")} type="button" onClick={() => setWebSearchOn((v) => !v)} aria-label="Browse the internet" aria-pressed={webSearchOn}>
+                <button className={"fb-icon-btn" + (webSearchOn ? " is-active" : "")} type="button" title="Browse the internet" onClick={() => setWebSearchOn((v) => !v)} aria-label="Browse the internet" aria-pressed={webSearchOn}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" strokeLinecap="round" /><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" strokeLinecap="round" /></svg>
                 </button>
                 <span className="fb-fine">Context: {protectedTurnCount} protected turns</span>

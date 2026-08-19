@@ -1,233 +1,431 @@
+import type { CSSProperties, ReactNode } from "react";
 import { useAppState } from "../lib/appState";
-import { LandingNav } from "../components/Nav";
-import { Wordmark } from "../components/Logo";
+import { MarketingNav } from "../components/Nav";
+import { LogoMark, Wordmark } from "../components/Logo";
+import { useCountUp, useCycle, useInView, useParallax, useTilt, useTypewriterDemo, type TypewriterDemoItem } from "../lib/interactivity";
+
+const HERO_NAV_ICONS: Record<string, ReactNode> = {
+  agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
+  einvoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
+  finance: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
+  audit: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
+  approvals: <path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />,
+  ingestion: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />,
+};
+
+const HERO_NAV_GROUPS: { label: string | null; items: { key: string; label: string }[] }[] = [
+  { label: null, items: [{ key: "agents", label: "Customer Intelligence" }] },
+  { label: "Records", items: [{ key: "einvoice", label: "e-Invoicing" }, { key: "finance", label: "Finance Dashboard" }] },
+  { label: "Oversight", items: [{ key: "audit", label: "Audit Trail" }, { key: "approvals", label: "Approvals" }, { key: "ingestion", label: "Ingestion" }] },
+];
+
+const HERO_SCREENS = ["agents", "finance", "audit"];
+
+const HERO_DEMOS: TypewriterDemoItem[] = [
+  {
+    question: "Which accounts are overdue?",
+    answer: "Meridian Corp (RM 18,400) and 2 other accounts are 30+ days past due. Draft a follow-up?",
+    citation: "Bank statement reconciliation",
+    pill: "Restricted",
+  },
+  {
+    question: "Which invoices need review?",
+    answer: "Office Supplies Sdn Bhd (RM 545.90) is flagged — missing a supplier TIN. Send back for correction?",
+    citation: "MyInvois validation",
+    pill: "Restricted",
+  },
+];
+
+const AGENTS = [
+  {
+    tone: "is-blue",
+    title: "Customer Intelligence",
+    body: "Ask a question, get a cited answer instantly — drafts follow-ups and collections chases, permission-filtered to your role.",
+    icon: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
+  },
+  {
+    tone: "is-green",
+    title: "e-Invoicing",
+    body: "Snap a receipt → OCR → MyInvois-compliant e-invoice, PDPA-masked before it's ever stored.",
+    icon: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
+  },
+  {
+    tone: "is-purple",
+    title: "Finance Dashboard",
+    body: "Interactive revenue, profit, and AR charts — hover for exact figures, jump straight into what's overdue.",
+    icon: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
+  },
+  {
+    tone: "is-orange",
+    title: "Audit Trail",
+    body: "Every access decision hash-chained, searchable by actor, grouped by day — nothing gets buried.",
+    icon: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
+  },
+  {
+    tone: "is-blue",
+    title: "Approvals",
+    body: "Every agent action — an invoice, a client email — waits for your confirmation. Nothing ships on its own.",
+    icon: <path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />,
+  },
+  {
+    tone: "is-green",
+    title: "Ingestion",
+    body: "Telegram, email, and file uploads — captured live, protected before any text reaches an AI model.",
+    icon: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />,
+  },
+];
+
+const PRICING = [
+  {
+    tier: "Starter", highlighted: false, price: "RM 299", note: "For a single finance lead getting started.",
+    features: ["1 seat", "100 AI queries / month", "Up to 50 e-invoices / month", "English only", "Email support"],
+    cta: "Start free trial",
+  },
+  {
+    tier: "Team · Most popular", highlighted: true, price: "RM 899", note: "For a finance team running invoicing, collections and reporting together.",
+    features: ["5 seats", "Unlimited AI queries", "Up to 500 e-invoices / month", "English, Malay & Chinese", "Telegram receipt bot", "Priority support"],
+    cta: "Start free trial",
+  },
+  {
+    tier: "Enterprise", highlighted: false, price: "Custom", note: "For multi-entity finance functions with compliance requirements.",
+    features: ["Unlimited seats", "SSO & role-based provisioning", "Extended audit retention", "Custom integrations", "Dedicated success manager"],
+    cta: "Contact us",
+  },
+];
+
+function Reveal({ children, className = "", id, style }: { children: ReactNode; className?: string; id?: string; style?: CSSProperties }) {
+  const [ref, inView] = useInView<HTMLElement>();
+  const cls = className + " fb-mkt-reveal" + (inView ? " is-visible" : "");
+  return <section ref={ref} id={id} className={cls} style={style}>{children}</section>;
+}
+
+function AgentCard({ tone, title, body, icon, index }: { tone: string; title: string; body: string; icon: ReactNode; index: number }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  return (
+    <div ref={ref} className={"fb-mkt-agent-card fb-mkt-reveal" + (inView ? " is-visible" : "")} style={{ transitionDelay: inView ? `${index * 80}ms` : "0ms" }}>
+      <div className={"fb-mkt-icon-badge " + tone}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icon}</svg>
+      </div>
+      <h3>{title}</h3>
+      <p>{body}</p>
+    </div>
+  );
+}
+
+function PricingCard({ tier, highlighted, price, note, features, cta, onCta, index }: { tier: string; highlighted: boolean; price: string; note: string; features: string[]; cta: string; onCta: () => void; index: number }) {
+  const [ref, inView] = useInView<HTMLDivElement>();
+  return (
+    <div ref={ref} className={"fb-mkt-pricing-card fb-mkt-reveal" + (highlighted ? " is-highlighted" : "") + (inView ? " is-visible" : "")} style={{ transitionDelay: inView ? `${index * 90}ms` : "0ms" }}>
+      <div className={"fb-mkt-eyebrow" + (highlighted ? "" : " is-plain")}>{tier}</div>
+      <div className="fb-mkt-pricing-amount">{price}{price !== "Custom" && <span>/month</span>}</div>
+      <p className="fb-mkt-pricing-note">{note}</p>
+      <ul className="fb-mkt-pricing-features">
+        {features.map((f) => <li key={f}>{f}</li>)}
+      </ul>
+      {cta === "Contact us" ? (
+        <a className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} href="mailto:hello@finbrainos.example">Contact us</a>
+      ) : (
+        <button className={"fb-mkt-btn " + (highlighted ? "is-accent" : "is-outline")} style={{ width: "100%", justifyContent: "center" }} type="button" onClick={onCta}>{cta}</button>
+      )}
+    </div>
+  );
+}
+
+function AnimatedStat({ value, label, active }: { value: string; label: string; active: boolean }) {
+  const match = value.match(/^([^\d]*)(\d+(?:\.\d+)?)(.*)$/);
+  const prefix = match?.[1] ?? "";
+  const numStr = match?.[2] ?? "0";
+  const suffix = match?.[3] ?? "";
+  const decimals = numStr.includes(".") ? numStr.split(".")[1].length : 0;
+  const target = parseFloat(numStr);
+  const current = useCountUp(target, active, 1200);
+  return (
+    <div className="fb-mkt-stat">
+      <strong>{prefix}{current.toFixed(decimals)}{suffix}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
 
 export default function Landing() {
   const { show, goToSecurity, goToLegal } = useAppState();
+  const heroParallax = useParallax<HTMLElement>(20);
+  const previewTilt = useTilt<HTMLDivElement>(9);
+  const [statsRef, statsIn] = useInView<HTMLDivElement>({ threshold: 0.4 });
+  const { demo, typed, phase } = useTypewriterDemo(HERO_DEMOS);
+  const screenIndex = useCycle(HERO_SCREENS.length, 4500);
+  const activeScreen = HERO_SCREENS[screenIndex];
 
   return (
-    <div className="fb-root">
-      <LandingNav />
+    <div className="fb-root fb-mkt">
+      <MarketingNav />
 
-      <section className="fb-hero fb-reveal is-visible">
-        <div className="fb-hero-copy">
-          <div className="fb-eyebrow">Permission-Aware AI for Finance Teams</div>
+      <section className="fb-mkt-hero" ref={heroParallax.ref} onMouseMove={heroParallax.onMouseMove} onMouseLeave={heroParallax.onMouseLeave}>
+        <div
+          className="fb-mkt-blob"
+          style={{ width: 460, height: 460, top: -160, left: -120, background: "var(--a-accent)", transform: `translate3d(${heroParallax.offset.x}px, ${heroParallax.offset.y}px, 0)` }}
+          aria-hidden="true"
+        />
+        <div
+          className="fb-mkt-blob"
+          style={{ width: 360, height: 360, top: 60, right: -140, background: "var(--a-purple)", transform: `translate3d(${-heroParallax.offset.x * 1.3}px, ${-heroParallax.offset.y * 1.3}px, 0)` }}
+          aria-hidden="true"
+        />
+        <div className="fb-mkt-hero-copy">
+          <div className="fb-mkt-eyebrow">Permission-Aware AI for Finance Teams</div>
           <h1>Ask your business.<br />Get answers you can prove.</h1>
-          <p>One knowledge base, cited answers, and AI agents that handle the busywork — invoicing, spreadsheets, follow-ups — without touching data they shouldn't see.</p>
-          <div className="fb-hero-ctas">
-            <button className="fb-btn fb-btn-solid" onClick={() => show("signup")}>Start free trial</button>
-            <button className="fb-btn fb-btn-outline" type="button" onClick={() => document.getElementById("landing-agents")?.scrollIntoView()}>See it in action</button>
+          <p>One knowledge base, cited answers, and AI agents that handle the busywork — invoicing, approvals, follow-ups — without touching data they shouldn't see.</p>
+          <div className="fb-mkt-hero-ctas">
+            <button className="fb-mkt-btn is-accent is-lg" onClick={() => show("signup")}>Start free trial</button>
+            <button className="fb-mkt-btn is-outline is-lg" type="button" onClick={() => document.getElementById("landing-agents")?.scrollIntoView({ behavior: "smooth" })}>See it in action</button>
           </div>
         </div>
-        <div className="fb-hero-preview" aria-hidden="true">
-          <div className="fb-ask-question"><div className="fb-eyebrow">Question asked</div><p>"Which accounts are overdue?"</p></div>
-          <div className="fb-answer-card">
-            <p className="fb-answer-text">Meridian Corp (RM 18,400) and 2 other accounts are 30+ days past due.<sup>1</sup> Draft a follow-up?</p>
-            <div className="fb-citation-list">
-              <div className="fb-citation-row"><span>Bank statement reconciliation</span><span>Restricted</span></div>
+        <div className="fb-mkt-preview" aria-hidden="true">
+          <div
+            className="fb-mkt-preview-card"
+            ref={previewTilt.ref}
+            onMouseMove={previewTilt.onMouseMove}
+            onMouseLeave={previewTilt.onMouseLeave}
+            style={previewTilt.style}
+          >
+            <div className="fb-mkt-preview-chrome"><span /><span /><span /></div>
+            <div className="fb-mkt-preview-shell">
+              <div className="fb-mkt-preview-sidebar">
+                <div className="fb-mkt-preview-sidebar-logo"><LogoMark /><span>FINBRAIN OS</span></div>
+                {HERO_NAV_GROUPS.map((group) => (
+                  <div className="fb-mkt-preview-nav-group" key={group.label ?? "primary"}>
+                    {group.label && <div className="fb-mkt-preview-nav-label">{group.label}</div>}
+                    {group.items.map((item) => (
+                      <div key={item.key} className={"fb-mkt-preview-nav-item" + (activeScreen === item.key ? " is-active" : "")}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{HERO_NAV_ICONS[item.key]}</svg>
+                        {item.label}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <div className="fb-mkt-preview-content" key={activeScreen}>
+                {activeScreen === "agents" && (
+                  <div className="fb-mkt-preview-pane">
+                    <div className="fb-mkt-ask">
+                      <div className="fb-mkt-eyebrow is-plain">Question asked</div>
+                      <p>"{typed}{phase === "typing" && <span className="fb-mkt-caret" aria-hidden="true" />}"</p>
+                    </div>
+                    <div className={"fb-mkt-answer" + (phase !== "typing" ? " is-visible" : "")}>
+                      {phase === "thinking" ? (
+                        <div className="fb-mkt-thinking-row"><span className="fb-mkt-thinking-dots"><span /><span /><span /></span>Thinking…</div>
+                      ) : phase === "answered" ? (
+                        <>
+                          <p>{demo.answer}<sup>1</sup></p>
+                          <div className="fb-mkt-citation"><span>{demo.citation}</span><span className="fb-mkt-pill is-restricted">{demo.pill}</span></div>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+                {activeScreen === "finance" && (
+                  <div className="fb-mkt-preview-pane">
+                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Finance Dashboard</div>
+                    <div className="fb-mkt-preview-kpis">
+                      <div>
+                        <span>Total revenue</span>
+                        <strong>RM 1.84M</strong>
+                        <em className="is-good">▲ 12.4%</em>
+                      </div>
+                      <div>
+                        <span>Outstanding AR</span>
+                        <strong>RM 94K</strong>
+                        <em className="is-attn">⚠ 4.2%</em>
+                      </div>
+                    </div>
+                    <svg className="fb-mkt-preview-chart" viewBox="0 0 320 90" role="img" aria-label="Revenue trending upward">
+                      <polyline points="4,70 45,60 86,55 127,48 168,42 209,30 250,26 296,18" fill="none" stroke="var(--a-green)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                      <circle cx="296" cy="18" r="4" fill="var(--a-green)" />
+                      <polyline points="4,82 45,80 86,78 127,76 168,74 209,72 250,68 296,60" fill="none" stroke="var(--a-orange)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                      <circle cx="296" cy="60" r="4" fill="var(--a-orange)" />
+                    </svg>
+                  </div>
+                )}
+                {activeScreen === "audit" && (
+                  <div className="fb-mkt-preview-pane">
+                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Audit Trail</div>
+                    <div className="fb-mkt-preview-chain-ok"><span className="fb-mkt-dot" />Valid hash chain · 128 entries</div>
+                    <div className="fb-mkt-preview-log-row"><span>chloe@finbrain.my · Chat Query</span><span className="fb-mkt-pill is-allowed">Allowed</span></div>
+                    <div className="fb-mkt-preview-log-row"><span>invoicing-agent · Agent Run</span><span className="fb-mkt-pill is-allowed">Allowed</span></div>
+                    <div className="fb-mkt-preview-log-row"><span>guest-7f2a · Chat Query</span><span className="fb-mkt-pill is-restricted">Denied</span></div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+          <div className="fb-mkt-float-badge"><span className="fb-mkt-dot" /> Chain verified · 0 gaps</div>
         </div>
       </section>
 
-      <section className="fb-section fb-section-alt fb-reveal is-visible" id="landing-flow">
-        <div className="fb-section-head">
+      <div className="fb-mkt-stats" ref={statsRef}>
+        <AnimatedStat value="RM 1.84M" label="Revenue tracked on the live dashboard" active={statsIn} />
+        <AnimatedStat value="128" label="Hash-chained audit entries, 0 gaps" active={statsIn} />
+        <AnimatedStat value="~2 min" label="Average invoice review time" active={statsIn} />
+        <AnimatedStat value="3 languages" label="English, Bahasa Malaysia & Chinese" active={statsIn} />
+      </div>
+
+      <Reveal className="fb-mkt-section fb-mkt-section-alt" id="landing-flow">
+        <div className="fb-mkt-section-head">
+          <div className="fb-mkt-eyebrow is-plain">How it fits in</div>
           <h2>Agents embedded where the work already happens</h2>
           <p>Let AI agents handle your team's repetitive finance and ops work.</p>
         </div>
-        <div className="fb-flow-row">
-          <div className="fb-flow-card">
+        <div className="fb-mkt-flow-grid">
+          <div className="fb-mkt-flow-card">
+            <div className="fb-mkt-icon-badge is-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6" /><path d="M17 14v6M14 17h6" /></svg></div>
             <h3>Receipt / invoice in →</h3>
-            <p>Agent watches inbox, Slack, and photo uploads for invoices.</p>
-            <div className="fb-flow-chain">
-              <span>Gmail · Slack</span><span>→</span><strong>FINBRAIN Agent</strong><span>→</span><span>MyInvois · Sheets</span>
+            <p>Agent watches your Telegram bot and inbox for receipts and invoices.</p>
+            <div className="fb-mkt-flow-chain">
+              <span>Telegram · Email</span><span>→</span><strong>FINBRAIN Agent</strong><span>→</span><span>MyInvois · Finance</span>
             </div>
-            <div className="fb-flow-note">OCR-extracts fields, maps to e-invoice, logs the row.</div>
+            <div className="fb-mkt-flow-note">OCR-extracts fields, masks PII, maps to a MyInvois e-invoice.</div>
           </div>
-          <div className="fb-flow-card">
+          <div className="fb-mkt-flow-card">
+            <div className="fb-mkt-icon-badge is-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a9 9 0 1 0 9 9" /><path d="M12 3v9l6 3" /></svg></div>
             <h3>Question in →</h3>
-            <p>Agent answers from your knowledge base, permission-filtered.</p>
-            <div className="fb-flow-chain">
-              <span>Chat · Drive</span><span>→</span><strong>FINBRAIN Agent</strong><span>→</span><span>Cited answer</span>
+            <p>Ask from Customer Intelligence, or the Ask FinBrain panel on any screen.</p>
+            <div className="fb-mkt-flow-chain">
+              <span>Ask FinBrain</span><span>→</span><strong>FINBRAIN Agent</strong><span>→</span><span>Cited answer</span>
             </div>
-            <div className="fb-flow-note">Updates Drive folders and Sheets logs automatically.</div>
+            <div className="fb-mkt-flow-note">Every answer cites its source and respects your role's access.</div>
           </div>
         </div>
-      </section>
+      </Reveal>
 
-      <section className="fb-section fb-reveal is-visible" id="landing-agents">
-        <div className="fb-section-head">
-          <h2>AI Agents</h2>
-          <p>Handle the repetitive operational work your team shouldn't have to.</p>
+      <Reveal className="fb-mkt-section" id="landing-agents">
+        <div className="fb-mkt-section-head">
+          <div className="fb-mkt-eyebrow is-plain">AI Agents</div>
+          <h2>Handle the repetitive operational work your team shouldn't have to</h2>
+          <p>Every agent runs inside the same permission and audit boundaries as your team.</p>
         </div>
-        <div className="fb-agent-grid">
-          <div className="fb-agent-card">
-            <svg className="fb-agent-icon" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 2h9l3 3v17H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></svg>
-            <h3>Invoicing Agent</h3><p>Snap a receipt → OCR → MyInvois-compliant e-invoice, submitted after approval.</p>
-          </div>
-          <div className="fb-agent-card">
-            <svg className="fb-agent-icon" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 10v10" /></svg>
-            <h3>Sheets Logger</h3><p>Every transaction, ticket, or approval logged into Google Sheets automatically.</p>
-          </div>
-          <div className="fb-agent-card">
-            <svg className="fb-agent-icon" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
-            <h3>Drive Organizer</h3><p>Keeps Drive folders current — files, renames, and archives without manual upkeep.</p>
-          </div>
-          <div className="fb-agent-card">
-            <svg className="fb-agent-icon" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></svg>
-            <h3>Sales &amp; Finance Bot</h3><p>Answers pipeline and finance questions, drafts follow-ups and collections chases.</p>
-          </div>
+        <div className="fb-mkt-agent-grid">
+          {AGENTS.map((agent, i) => (
+            <AgentCard key={agent.title} tone={agent.tone} title={agent.title} body={agent.body} icon={agent.icon} index={i} />
+          ))}
         </div>
-      </section>
+      </Reveal>
 
-      <section className="fb-section fb-reveal is-visible" id="landing-proof">
-        <div className="fb-section-head">
-          <h2>Proof, not just promises</h2>
-          <p>The same dashboard and audit trail your team sees after signing in — not marketing screenshots.</p>
+      <Reveal className="fb-mkt-section fb-mkt-section-alt" id="landing-proof">
+        <div className="fb-mkt-section-head">
+          <div className="fb-mkt-eyebrow is-plain">Proof, not just promises</div>
+          <h2>The same dashboard your team sees after signing in</h2>
+          <p>Not marketing screenshots — the actual finance dashboard and audit trail.</p>
         </div>
-        <div className="fb-proof-grid">
-          <div className="fb-proof-panel">
-            <div className="fb-eyebrow" style={{ marginBottom: ".9rem" }}>Finance Dashboard</div>
-            <div className="fb-proof-kpi-row">
+        <div className="fb-mkt-proof-grid">
+          <div className="fb-mkt-proof-panel">
+            <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: "1rem" }}>Finance Dashboard</div>
+            <div className="fb-mkt-proof-kpi-row">
               <div>
-                <div className="fb-kpi-label">Total revenue</div>
-                <div className="fb-kpi-value">RM 1.84M</div>
-                <div className="fb-kpi-delta is-good">▲ 12.4% vs last quarter</div>
+                <span style={{ fontSize: ".7rem", color: "var(--a-ink-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>Total revenue</span>
+                <strong>RM 1.84M</strong>
+                <div className="fb-mkt-delta is-good">▲ 12.4% vs last quarter</div>
               </div>
               <div>
-                <div className="fb-kpi-label">Outstanding AR</div>
-                <div className="fb-kpi-value">RM 94K</div>
-                <div className="fb-kpi-delta is-attn">⚠ 4.2% vs last quarter — review</div>
+                <span style={{ fontSize: ".7rem", color: "var(--a-ink-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>Outstanding AR</span>
+                <strong>RM 94K</strong>
+                <div className="fb-mkt-delta is-attn">⚠ 4.2% vs last quarter — review</div>
               </div>
             </div>
-            <button className="fb-btn fb-btn-outline" style={{ width: "100%" }} type="button" onClick={() => show("signup")}>See the full dashboard</button>
+            <button className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} type="button" onClick={() => show("signup")}>See the full dashboard</button>
           </div>
-          <div className="fb-proof-panel">
-            <div className="fb-eyebrow" style={{ marginBottom: ".9rem" }}>Audit Trail</div>
-            <div className="fb-callout" style={{ margin: "0 0 1rem" }}>Chain verified — 128 entries, 0 gaps.</div>
-            <div className="fb-proof-audit-rows">
-              <div className="fb-log-row"><div className="fb-log-row-time">chloe@finbrain.my · Chat Query</div><div className="fb-log-row-text">Board Meeting — 14 Jul 2026 minutes <span className="fb-status-pill is-active" style={{ marginLeft: ".4rem" }}><span className="fb-status-dot"></span>Allowed</span></div></div>
-              <div className="fb-log-row"><div className="fb-log-row-time">guest-7f2a · Chat Query</div><div className="fb-log-row-text">Board Meeting — 14 Jul 2026 minutes <span className="fb-status-pill is-review" style={{ marginLeft: ".4rem" }}><span className="fb-status-dot"></span>Denied</span></div></div>
-              <div className="fb-log-row"><div className="fb-log-row-time">invoicing-agent · Agent Run</div><div className="fb-log-row-text">Receipt OCR — Grab Malaysia <span className="fb-status-pill is-active" style={{ marginLeft: ".4rem" }}><span className="fb-status-dot"></span>Allowed</span></div></div>
+          <div className="fb-mkt-proof-panel">
+            <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: "1rem" }}>Audit Trail</div>
+            <div style={{ padding: ".9rem 1rem", borderRadius: "var(--a-radius-sm)", background: "var(--a-green-soft)", color: "var(--a-green)", fontSize: ".8rem", fontWeight: 600, marginBottom: "1rem" }}>Chain verified — 128 entries, 0 gaps.</div>
+            <div className="fb-mkt-proof-audit-rows">
+              <div className="fb-mkt-log-row"><div className="fb-mkt-log-row-time">chloe@finbrain.my · Chat Query</div><div className="fb-mkt-log-row-text">Board Meeting — 14 Jul 2026 minutes <span className="fb-mkt-pill is-allowed">Allowed</span></div></div>
+              <div className="fb-mkt-log-row"><div className="fb-mkt-log-row-time">guest-7f2a · Chat Query</div><div className="fb-mkt-log-row-text">Board Meeting — 14 Jul 2026 minutes <span className="fb-mkt-pill is-restricted">Denied</span></div></div>
+              <div className="fb-mkt-log-row"><div className="fb-mkt-log-row-time">invoicing-agent · Agent Run</div><div className="fb-mkt-log-row-text">Receipt OCR — Grab Malaysia <span className="fb-mkt-pill is-allowed">Allowed</span></div></div>
             </div>
-            <button className="fb-btn fb-btn-outline" style={{ width: "100%" }} type="button" onClick={() => show("signup")}>See the full audit trail</button>
+            <button className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} type="button" onClick={() => show("signup")}>See the full audit trail</button>
           </div>
         </div>
-      </section>
+      </Reveal>
 
-      <section className="fb-section fb-reveal is-visible" id="landing-why">
-        <div className="fb-section-head">
+      <Reveal className="fb-mkt-section" id="landing-why">
+        <div className="fb-mkt-section-head">
+          <div className="fb-mkt-eyebrow is-plain">Why FinBrain</div>
           <h2>Why finance teams choose FINBRAIN over a general AI tool</h2>
           <p>A general assistant can answer a question. It can't natively file with LHDN, mask PDPA-covered data, or gate a table by role.</p>
         </div>
-        <div className="fb-table-wrap" style={{ maxWidth: "820px" }}>
-          <table className="fb-table fb-compare-table">
+        <div className="fb-mkt-compare-wrap">
+          <table className="fb-mkt-compare">
             <thead>
-              <tr><th>Capability</th><th>General AI assistant<br />(ChatGPT, Copilot + manual setup)</th><th>Generic accounting software</th><th>FINBRAIN OS</th></tr>
+              <tr><th>Capability</th><th>General AI assistant<br />(ChatGPT, Copilot + manual setup)</th><th>Generic accounting software</th><th className="is-highlight">FINBRAIN OS</th></tr>
             </thead>
             <tbody>
-              <tr><td>MyInvois / LHDN e-invoicing</td><td className="fb-compare-no">Not built in</td><td className="fb-compare-partial">Varies by vendor</td><td className="fb-compare-yes">Native</td></tr>
-              <tr><td>PDPA-aligned data masking</td><td className="fb-compare-no">You'd build this yourself</td><td className="fb-compare-partial">Rarely AI-aware</td><td className="fb-compare-yes">Masked before storage</td></tr>
-              <tr><td>Bahasa Malaysia &amp; Chinese</td><td className="fb-compare-partial">General language, not finance-tuned</td><td className="fb-compare-partial">Usually UI translation only</td><td className="fb-compare-yes">Native to the AI agent</td></tr>
-              <tr><td>Permission-aware retrieval</td><td className="fb-compare-no">Sees whatever you paste in</td><td className="fb-compare-partial">Role-gated UI, not retrieval</td><td className="fb-compare-yes">Enforced on every query</td></tr>
-              <tr><td>Tamper-evident audit trail</td><td className="fb-compare-no">None</td><td className="fb-compare-partial">Transaction logs, not hash-chained</td><td className="fb-compare-yes">Append-only, hash-chained</td></tr>
-              <tr><td>Human sign-off on agent actions</td><td className="fb-compare-no">No workflow at all</td><td className="fb-compare-partial">Sometimes, for invoices only</td><td className="fb-compare-yes">Approvals queue for every agent action</td></tr>
+              <tr><td>MyInvois / LHDN e-invoicing</td><td className="fb-mkt-no">Not built in</td><td className="fb-mkt-partial">Varies by vendor</td><td className="fb-mkt-yes is-highlight">Native</td></tr>
+              <tr><td>PDPA-aligned data masking</td><td className="fb-mkt-no">You'd build this yourself</td><td className="fb-mkt-partial">Rarely AI-aware</td><td className="fb-mkt-yes is-highlight">Masked before storage</td></tr>
+              <tr><td>Bahasa Malaysia &amp; Chinese</td><td className="fb-mkt-partial">General language, not finance-tuned</td><td className="fb-mkt-partial">Usually UI translation only</td><td className="fb-mkt-yes is-highlight">Native to the AI agent</td></tr>
+              <tr><td>Permission-aware retrieval</td><td className="fb-mkt-no">Sees whatever you paste in</td><td className="fb-mkt-partial">Role-gated UI, not retrieval</td><td className="fb-mkt-yes is-highlight">Enforced on every query</td></tr>
+              <tr><td>Tamper-evident audit trail</td><td className="fb-mkt-no">None</td><td className="fb-mkt-partial">Transaction logs, not hash-chained</td><td className="fb-mkt-yes is-highlight">Append-only, hash-chained</td></tr>
+              <tr><td>Human sign-off on agent actions</td><td className="fb-mkt-no">No workflow at all</td><td className="fb-mkt-partial">Sometimes, for invoices only</td><td className="fb-mkt-yes is-highlight">Approvals queue for every agent action</td></tr>
             </tbody>
           </table>
         </div>
 
-        <div className="fb-kpi-row" style={{ paddingTop: "2.2rem" }}>
-          <div className="fb-kpi-tile">
-            <div className="fb-kpi-label">Invoice review time</div>
-            <div className="fb-kpi-value">~15 min → ~2 min</div>
-            <div className="fb-kpi-delta is-good">Manual entry vs. reviewing an OCR'd draft</div>
+        <div className="fb-mkt-kpi-row">
+          <div className="fb-mkt-kpi-tile">
+            <div className="fb-mkt-kpi-label">Invoice review time</div>
+            <div className="fb-mkt-kpi-value">~15 min → ~2 min</div>
+            <div className="fb-mkt-delta is-good">Manual entry vs. reviewing an OCR'd draft</div>
           </div>
-          <div className="fb-kpi-tile">
-            <div className="fb-kpi-label">Approval cycle</div>
-            <div className="fb-kpi-value">Days → Same day</div>
-            <div className="fb-kpi-delta is-good">Email chains vs. one Approvals queue</div>
+          <div className="fb-mkt-kpi-tile">
+            <div className="fb-mkt-kpi-label">Approval cycle</div>
+            <div className="fb-mkt-kpi-value">Days → Same day</div>
+            <div className="fb-mkt-delta is-good">Email chains vs. one Approvals queue</div>
           </div>
-          <div className="fb-kpi-tile">
-            <div className="fb-kpi-label">Missing-TIN catch rate</div>
-            <div className="fb-kpi-value">Before submission</div>
-            <div className="fb-kpi-delta is-good">Flagged automatically, not after LHDN rejects it</div>
+          <div className="fb-mkt-kpi-tile">
+            <div className="fb-mkt-kpi-label">Missing-TIN catch rate</div>
+            <div className="fb-mkt-kpi-value">Before submission</div>
+            <div className="fb-mkt-delta is-good">Flagged automatically, not after LHDN rejects it</div>
           </div>
         </div>
-        <p className="fb-pricing-fineprint">Illustrative estimates based on the workflow design above, not measured customer results — this is a prototype, not a case study.</p>
-      </section>
+        <p className="fb-mkt-fineprint">Illustrative estimates based on the workflow design above, not measured customer results — this is a prototype, not a case study.</p>
+      </Reveal>
 
-      <section className="fb-section fb-section-alt fb-reveal is-visible" id="landing-pricing">
-        <div className="fb-section-head">
+      <Reveal className="fb-mkt-section fb-mkt-section-alt" id="landing-pricing">
+        <div className="fb-mkt-section-head">
+          <div className="fb-mkt-eyebrow is-plain">Pricing</div>
           <h2>Simple pricing, built for finance teams</h2>
           <p>Every plan includes permission-aware retrieval, the tamper-evident audit trail, and PDPA-aligned e-invoicing.</p>
         </div>
-        <div className="fb-pricing-grid">
-          <div className="fb-pricing-card">
-            <div className="fb-eyebrow">Starter</div>
-            <div className="fb-pricing-amount">RM 299<span>/month</span></div>
-            <p className="fb-pricing-note">For a single finance lead getting started.</p>
-            <ul className="fb-pricing-features">
-              <li>1 seat</li>
-              <li>100 AI queries / month</li>
-              <li>Up to 50 e-invoices / month</li>
-              <li>English only</li>
-              <li>Email support</li>
-            </ul>
-            <button className="fb-btn fb-btn-outline" style={{ width: "100%" }} type="button" onClick={() => show("signup")}>Start free trial</button>
-          </div>
-          <div className="fb-pricing-card is-highlighted">
-            <div className="fb-eyebrow">Team · Most popular</div>
-            <div className="fb-pricing-amount">RM 899<span>/month</span></div>
-            <p className="fb-pricing-note">For a finance team running invoicing, collections and reporting together.</p>
-            <ul className="fb-pricing-features">
-              <li>5 seats</li>
-              <li>Unlimited AI queries</li>
-              <li>Up to 500 e-invoices / month</li>
-              <li>English, Malay &amp; Chinese</li>
-              <li>Telegram receipt bot</li>
-              <li>Priority support</li>
-            </ul>
-            <button className="fb-btn fb-btn-solid" style={{ width: "100%" }} type="button" onClick={() => show("signup")}>Start free trial</button>
-          </div>
-          <div className="fb-pricing-card">
-            <div className="fb-eyebrow">Enterprise</div>
-            <div className="fb-pricing-amount">Custom</div>
-            <p className="fb-pricing-note">For multi-entity finance functions with compliance requirements.</p>
-            <ul className="fb-pricing-features">
-              <li>Unlimited seats</li>
-              <li>SSO &amp; role-based provisioning</li>
-              <li>Extended audit retention</li>
-              <li>Custom integrations</li>
-              <li>Dedicated success manager</li>
-            </ul>
-            <a className="fb-btn fb-btn-outline" style={{ width: "100%" }} href="mailto:hello@finbrainos.example">Contact us</a>
-          </div>
+        <div className="fb-mkt-pricing-grid">
+          {PRICING.map((p, i) => (
+            <PricingCard key={p.tier} {...p} index={i} onCta={() => show("signup")} />
+          ))}
         </div>
-        <p className="fb-pricing-fineprint">Prices shown in MYR — illustrative for this prototype, not a live billing system. <span tabIndex={0} role="button" style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => goToSecurity("landing")}>Read about our security &amp; compliance approach →</span></p>
-      </section>
+        <p className="fb-mkt-fineprint">Prices shown in MYR — illustrative for this prototype, not a live billing system. <span tabIndex={0} role="button" onClick={() => goToSecurity("landing")}>Read about our security &amp; compliance approach →</span></p>
+      </Reveal>
 
-      <section className="fb-closing fb-reveal is-visible">
+      <Reveal className="fb-mkt-closing">
+        <div className="fb-mkt-blob" style={{ width: 500, height: 500, top: -220, left: "50%", transform: "translateX(-50%)", background: "var(--a-accent)", opacity: 0.28 }} aria-hidden="true" />
         <h2>Ready to give your team answers it can prove?</h2>
-        <div className="fb-hero-ctas" style={{ justifyContent: "center" }}>
-          <button className="fb-btn fb-btn-solid" onClick={() => show("signup")}>Start your free trial</button>
-          <button className="fb-btn fb-btn-outline" type="button" onClick={() => show("login")}>Log in</button>
+        <div className="fb-mkt-hero-ctas">
+          <button className="fb-mkt-btn is-solid is-lg" onClick={() => show("signup")}>Start your free trial</button>
+          <button className="fb-mkt-btn is-outline is-lg" type="button" onClick={() => show("login")}>Log in</button>
         </div>
-      </section>
+      </Reveal>
 
-      <footer className="fb-footer">
-        <div className="fb-footer-top">
+      <footer className="fb-mkt-footer">
+        <div className="fb-mkt-footer-top">
           <div>
             <Wordmark />
             <p>Permission-aware AI for finance teams. This site is a prototype.</p>
           </div>
-          <div className="fb-footer-links">
+          <div className="fb-mkt-footer-links">
             <span tabIndex={0} role="button" onClick={() => goToSecurity("landing")}>Security</span>
             <span tabIndex={0} role="button" onClick={() => goToLegal("privacy", "landing")}>Privacy Policy</span>
             <span tabIndex={0} role="button" onClick={() => goToLegal("terms", "landing")}>Terms of Service</span>
             <a href="mailto:hello@finbrainos.example">Contact us</a>
           </div>
         </div>
-        <div className="fb-footer-bottom">© 2026 FINBRAIN OS. Prototype for demonstration purposes — not a live product.</div>
+        <div className="fb-mkt-footer-bottom">© 2026 FINBRAIN OS. Prototype for demonstration purposes — not a live product.</div>
       </footer>
     </div>
   );

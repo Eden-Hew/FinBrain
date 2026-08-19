@@ -1,8 +1,13 @@
+import { useState, type ReactNode } from "react";
 import { useAppState, type Screen } from "../lib/appState";
 import { useAuth } from "../auth/AuthProvider";
 import { useI18n } from "../lib/i18n";
 import { PERSONAS } from "../lib/personas";
-import { Wordmark } from "./Logo";
+import { useActiveSection, useScrollY } from "../lib/interactivity";
+import { useUiChrome } from "../lib/uiChrome";
+import { LogoMark, Wordmark } from "./Logo";
+
+const MARKETING_SECTIONS = ["landing-flow", "landing-agents", "landing-proof", "landing-why", "landing-pricing"];
 
 export function LandingNav() {
   const { show } = useAppState();
@@ -20,6 +25,32 @@ export function LandingNav() {
       <div className="fb-nav-actions">
         <span style={{ cursor: "pointer", color: "var(--ink-soft)" }} tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
         <button className="fb-btn fb-btn-solid" onClick={() => show("signup")}>Get Started</button>
+      </div>
+    </nav>
+  );
+}
+
+export function MarketingNav() {
+  const { show } = useAppState();
+  const scrollY = useScrollY();
+  const active = useActiveSection(MARKETING_SECTIONS);
+  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  const linkClass = (id: string) => (active === id ? "is-current" : undefined);
+  return (
+    <nav className={"fb-mkt-nav" + (scrollY > 12 ? " is-scrolled" : "")}>
+      <button className="fb-mkt-wordmark" onClick={() => show("landing")}>
+        <LogoMark large />FINBRAIN OS
+      </button>
+      <div className="fb-mkt-nav-links">
+        <span className={linkClass("landing-flow")} tabIndex={0} role="button" onClick={() => scrollTo("landing-flow")}>Product</span>
+        <span className={linkClass("landing-agents")} tabIndex={0} role="button" onClick={() => scrollTo("landing-agents")}>AI Agents</span>
+        <span className={linkClass("landing-proof")} tabIndex={0} role="button" onClick={() => scrollTo("landing-proof")}>Proof</span>
+        <span className={linkClass("landing-why")} tabIndex={0} role="button" onClick={() => scrollTo("landing-why")}>Why Us</span>
+        <span className={linkClass("landing-pricing")} tabIndex={0} role="button" onClick={() => scrollTo("landing-pricing")}>Pricing</span>
+      </div>
+      <div className="fb-mkt-nav-actions">
+        <span tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
+        <button className="fb-mkt-btn is-accent" onClick={() => show("signup")}>Get Started</button>
       </div>
     </nav>
   );
@@ -43,55 +74,131 @@ export function ContextNav() {
   );
 }
 
-const NAV_LINKS: { screen: Screen; key: string }[] = [
-  { screen: "agents", key: "nav.aiAgents" },
-  { screen: "einvoice", key: "nav.einvoicing" },
-  { screen: "finance", key: "nav.financeDashboard" },
-  { screen: "audit", key: "nav.audit" },
-  { screen: "approvals", key: "nav.approvals" },
-  { screen: "ingestion", key: "nav.ingestion" },
+const NAV_ICONS: Record<string, ReactNode> = {
+  agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
+  einvoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
+  finance: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
+  audit: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
+  approvals: <path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />,
+  ingestion: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />,
+};
+
+const NAV_GROUPS: { label: string | null; items: { screen: Screen; key: string }[] }[] = [
+  { label: null, items: [{ screen: "agents", key: "nav.aiAgents" }] },
+  { label: "Records", items: [
+    { screen: "einvoice", key: "nav.einvoicing" },
+    { screen: "finance", key: "nav.financeDashboard" },
+  ] },
+  { label: "Oversight", items: [
+    { screen: "audit", key: "nav.audit" },
+    { screen: "approvals", key: "nav.approvals" },
+    { screen: "ingestion", key: "nav.ingestion" },
+  ] },
 ];
 
-export function AppNav({ current, backTo, backLabel }: { current?: Screen; backTo?: () => void; backLabel?: string }) {
+export function Sidebar({ current, backTo, backLabel }: { current?: Screen; backTo?: () => void; backLabel?: string }) {
   const { show, askRole, approvalsCount } = useAppState();
   const { identity, signOut } = useAuth();
   const { lang, setLang, t } = useI18n();
+  const { openPalette } = useUiChrome();
+  const [accountOpen, setAccountOpen] = useState(false);
   const activeRole = identity?.role ?? askRole;
+  const email = identity?.email ?? "Authenticated user";
 
   return (
-    <nav className="fb-app-nav">
-      {backTo ? (
-        <div style={{ display: "flex", alignItems: "center", gap: "1.2rem" }}>
-          <Wordmark onClick={() => show("landing")} />
-          <span className="fb-sans" style={{ cursor: "pointer", color: "var(--ink-soft)", fontSize: ".75rem" }} tabIndex={0} role="button" onClick={backTo}>
-            {backLabel}
-          </span>
-        </div>
-      ) : (
-        <>
-          <Wordmark onClick={() => show("landing")} />
-          <div className="fb-app-nav-links">
-            {NAV_LINKS.map((link) => (
-              <span key={link.screen} className={current === link.screen ? "is-current" : undefined} onClick={() => show(link.screen)}>
-                <span>{t(link.key)}</span>
-                {link.screen === "approvals" && approvalsCount > 0 && (
-                  <span className="fb-nav-badge">{approvalsCount}</span>
-                )}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-      <div className="fb-app-nav-user">
-        <div className="fb-role-switch" role="tablist" style={{ margin: 0 }}>
-          <button className={"fb-role-btn fb-lang-btn" + (lang === "en" ? " is-current" : "")} type="button" onClick={() => setLang("en")}>EN</button>
-          <button className={"fb-role-btn fb-lang-btn" + (lang === "ms" ? " is-current" : "")} type="button" onClick={() => setLang("ms")}>BM</button>
-          <button className={"fb-role-btn fb-lang-btn" + (lang === "zh" ? " is-current" : "")} type="button" onClick={() => setLang("zh")}>中文</button>
-        </div>
-        <span className="fb-nav-user-name">{identity?.email ?? "Authenticated user"}</span>
-        <span className="fb-nav-user-role">{PERSONAS[activeRole].label}</span>
-        <span style={{ cursor: "pointer" }} tabIndex={0} role="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</span>
+    <aside className="fb-sidebar">
+      <div className="fb-sidebar-top">
+        <Wordmark onClick={() => show("landing")} />
       </div>
-    </nav>
+
+      <button className="fb-sidebar-quick-actions" type="button" onClick={openPalette}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+        <span>Quick Actions</span>
+        <span className="fb-sidebar-kbd">⌘K</span>
+      </button>
+
+      {backTo ? (
+        <button className="fb-sidebar-back" type="button" onClick={backTo}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+          {backLabel}
+        </button>
+      ) : (
+        <nav className="fb-sidebar-nav">
+          {NAV_GROUPS.map((group) => (
+            <div className="fb-sidebar-group" key={group.label ?? "primary"}>
+              {group.label && <div className="fb-sidebar-group-label">{group.label}</div>}
+              {group.items.map((link) => (
+                <button
+                  key={link.screen}
+                  className={"fb-sidebar-link" + (current === link.screen ? " is-current" : "")}
+                  type="button"
+                  onClick={() => show(link.screen)}
+                >
+                  <span className="fb-sidebar-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{NAV_ICONS[link.screen]}</svg>
+                  </span>
+                  <span className="fb-sidebar-label">{t(link.key)}</span>
+                  {link.screen === "approvals" && approvalsCount > 0 && (
+                    <span className="fb-nav-badge">{approvalsCount}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+
+      <div
+        className="fb-sidebar-bottom"
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) setAccountOpen(false);
+        }}
+      >
+        {accountOpen && (
+          <div className="fb-sidebar-account-menu" role="menu">
+            <div className="fb-sidebar-lang-row" role="tablist" aria-label="Language">
+              <button className={lang === "en" ? "is-current" : undefined} type="button" onClick={() => setLang("en")}>EN</button>
+              <button className={lang === "ms" ? "is-current" : undefined} type="button" onClick={() => setLang("ms")}>BM</button>
+              <button className={lang === "zh" ? "is-current" : undefined} type="button" onClick={() => setLang("zh")}>中文</button>
+            </div>
+            <button className="fb-sidebar-logout" type="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</button>
+          </div>
+        )}
+        <button className="fb-sidebar-account" type="button" onClick={() => setAccountOpen((v) => !v)} aria-haspopup="true" aria-expanded={accountOpen}>
+          <span className="fb-sidebar-avatar" aria-hidden="true">{email[0]?.toUpperCase() ?? "?"}</span>
+          <span className="fb-sidebar-account-text">
+            <span className="fb-sidebar-account-email">{email}</span>
+            <span className="fb-sidebar-account-role">{PERSONAS[activeRole].label}</span>
+          </span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+const SCREEN_TITLES: Partial<Record<Screen, string>> = {
+  einvoice: "e-Invoicing",
+  "einvoice-detail": "e-Invoicing",
+  finance: "Finance Dashboard",
+  audit: "Audit Trail",
+  approvals: "Approvals",
+  ingestion: "Ingestion",
+};
+
+export function AppTopBar({ current }: { current: Screen }) {
+  const { show } = useAppState();
+  const { openAsk } = useUiChrome();
+  return (
+    <div className="fb-topbar">
+      <div className="fb-topbar-crumb">
+        <span tabIndex={0} role="button" onClick={() => show("agents")}>Home</span>
+        <span className="fb-topbar-sep">/</span>
+        <span className="fb-topbar-current">{SCREEN_TITLES[current] ?? current}</span>
+      </div>
+      <button className="fb-topbar-ask" type="button" onClick={openAsk}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></svg>
+        Ask FinBrain
+      </button>
+    </div>
   );
 }

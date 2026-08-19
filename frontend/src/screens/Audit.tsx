@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../lib/i18n";
-import { AppNav } from "../components/Nav";
+import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
@@ -61,6 +61,39 @@ function shortHash(value: string) {
   return value.length > 24 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value;
 }
 
+function dayLabel(iso: string) {
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (sameDay(date, today)) return "Today";
+  if (sameDay(date, yesterday)) return "Yesterday";
+  return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+}
+
+function InspectChainData({ entry }: { entry: DisplayEntry }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="fb-audit-inspect">
+      <button className="fb-link-toggle" type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className={"fb-link-toggle-caret" + (open ? " is-open" : "")}>▸</span>
+        Inspect full chain data
+      </button>
+      {open && (
+        <dl>
+          <div><dt>{entry.referenceLabel}</dt><dd><code>{entry.reference || "Not recorded"}</code></dd></div>
+          <div><dt>Previous entry hash</dt><dd><code>{entry.previousHash || "Genesis entry — no previous hash"}</code></dd></div>
+          <div><dt>Entry hash</dt><dd><code>{entry.entryHash}</code></dd></div>
+          {entry.payload && Object.keys(entry.payload).length > 0 && (
+            <div><dt>Workflow payload</dt><dd><code>{JSON.stringify(entry.payload, null, 2)}</code></dd></div>
+          )}
+        </dl>
+      )}
+    </div>
+  );
+}
+
 export default function Audit() {
   const { t } = useI18n();
   const { askRole } = useAppState();
@@ -71,6 +104,7 @@ export default function Audit() {
   const [disclosureChainValid, setDisclosureChainValid] = useState<boolean | null>(null);
   const [workflowChainValid, setWorkflowChainValid] = useState<boolean | null>(null);
   const [filter, setFilter] = useState<AuditFilter>("all");
+  const [actorSearch, setActorSearch] = useState("");
   const [loadError, setLoadError] = useState("");
 
   const load = async () => {
@@ -156,8 +190,28 @@ export default function Audit() {
     }));
     return [...disclosureRows, ...workflowRows]
       .filter((entry) => filter === "all" || entry.stream === filter)
+      .filter((entry) => !actorSearch.trim() || entry.actor.toLowerCase().includes(actorSearch.trim().toLowerCase()))
       .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-  }, [filter, liveEntries, workflowEntries]);
+  }, [filter, actorSearch, liveEntries, workflowEntries]);
+
+  const PAGE_SIZE = 10;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filter, actorSearch]);
+
+  const visibleEntries = useMemo(() => entries.slice(0, visibleCount), [entries, visibleCount]);
+  const remaining = entries.length - visibleEntries.length;
+
+  const groupedEntries = useMemo(() => {
+    const groups: { label: string; rows: DisplayEntry[] }[] = [];
+    for (const entry of visibleEntries) {
+      const label = dayLabel(entry.time);
+      const last = groups[groups.length - 1];
+      if (last && last.label === label) last.rows.push(entry);
+      else groups.push({ label, rows: [entry] });
+    }
+    return groups;
+  }, [visibleEntries]);
 
   const verifyChain = async () => {
     setVerifying(true);
@@ -192,8 +246,9 @@ export default function Audit() {
   };
 
   return (
-    <div className="fb-root">
-      <AppNav current="audit" />
+    <div className="fb-root fb-shell">
+      <Sidebar current="audit" />
+      <AppTopBar current="audit" />
 
       <header className="fb-app-header">
         <div className="fb-audit-title-row">
@@ -261,55 +316,61 @@ export default function Audit() {
             </div>
           </div>
 
+          <div className="fb-table-search" style={{ margin: "0 0 1.2rem" }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+            <input type="text" placeholder="Search by actor…" value={actorSearch} onChange={(event) => setActorSearch(event.target.value)} />
+          </div>
+
           <div className="fb-audit-list">
             {entries.length === 0 && (
-              <div className="fb-audit-empty">No audit events are available for this stream.</div>
+              <div className="fb-audit-empty">{actorSearch.trim() ? "No events match that actor." : "No audit events are available for this stream."}</div>
             )}
-            {entries.map((entry) => (
-              <article className="fb-audit-entry" key={entry.key}>
-                <div className="fb-audit-entry-main">
-                  <div className="fb-audit-entry-title">
-                    <span className={`fb-audit-stream is-${entry.stream}`}>
-                      {entry.stream === "disclosure" ? "Disclosure" : "Workflow"}
-                    </span>
-                    <div>
-                      <h3>{entry.title}</h3>
-                      <p>{entry.actor} · {entry.resource}</p>
+            {groupedEntries.map((group) => (
+              <div key={group.label}>
+                <div className="fb-audit-day-header">{group.label}</div>
+                {group.rows.map((entry) => (
+                  <article className="fb-audit-entry" key={entry.key}>
+                    <div className="fb-audit-entry-main">
+                      <div className="fb-audit-entry-title">
+                        <span className={`fb-audit-stream is-${entry.stream}`}>
+                          {entry.stream === "disclosure" ? "Disclosure" : "Workflow"}
+                        </span>
+                        <div>
+                          <h3>{entry.title}</h3>
+                          <p>{entry.actor} · {entry.resource}</p>
+                        </div>
+                      </div>
+                      <div className="fb-audit-entry-state">
+                        <span className={`fb-status-pill ${entry.needsReview ? "is-review" : "is-active"}`}>
+                          <span className="fb-status-dot" />{entry.status}
+                        </span>
+                        <time dateTime={entry.time}>{new Date(entry.time).toLocaleString()}</time>
+                      </div>
                     </div>
-                  </div>
-                  <div className="fb-audit-entry-state">
-                    <span className={`fb-status-pill ${entry.needsReview ? "is-review" : "is-active"}`}>
-                      <span className="fb-status-dot" />{entry.status}
-                    </span>
-                    <time dateTime={entry.time}>{new Date(entry.time).toLocaleString()}</time>
-                  </div>
-                </div>
 
-                <div className="fb-audit-identifiers">
-                  <div>
-                    <span>{entry.referenceLabel}</span>
-                    <code title={entry.reference}>{shortHash(entry.reference)}</code>
-                  </div>
-                  <div>
-                    <span>Entry hash</span>
-                    <code title={entry.entryHash}>{shortHash(entry.entryHash)}</code>
-                  </div>
-                </div>
+                    <div className="fb-audit-identifiers">
+                      <div>
+                        <span>{entry.referenceLabel}</span>
+                        <code title={entry.reference}>{shortHash(entry.reference)}</code>
+                      </div>
+                      <div>
+                        <span>Entry hash</span>
+                        <code title={entry.entryHash}>{shortHash(entry.entryHash)}</code>
+                      </div>
+                    </div>
 
-                <details className="fb-audit-details">
-                  <summary>Inspect full chain data</summary>
-                  <dl>
-                    <div><dt>{entry.referenceLabel}</dt><dd><code>{entry.reference || "Not recorded"}</code></dd></div>
-                    <div><dt>Previous entry hash</dt><dd><code>{entry.previousHash || "Genesis entry — no previous hash"}</code></dd></div>
-                    <div><dt>Entry hash</dt><dd><code>{entry.entryHash}</code></dd></div>
-                    {entry.payload && Object.keys(entry.payload).length > 0 && (
-                      <div><dt>Workflow payload</dt><dd><code>{JSON.stringify(entry.payload, null, 2)}</code></dd></div>
-                    )}
-                  </dl>
-                </details>
-              </article>
+                    <InspectChainData entry={entry} />
+                  </article>
+                ))}
+              </div>
             ))}
           </div>
+
+          {remaining > 0 && (
+            <button className="fb-audit-load-more" type="button" onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}>
+              Show {Math.min(remaining, PAGE_SIZE)} more <span>({remaining} remaining)</span>
+            </button>
+          )}
         </section>
       </main>
     </div>

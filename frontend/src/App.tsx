@@ -3,6 +3,9 @@ import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { AppStateProvider, useAppState } from "./lib/appState";
 import { I18nProvider } from "./lib/i18n";
 import { ThemeProvider, ThemeToggleButton } from "./lib/theme";
+import { UiChromeProvider } from "./lib/uiChrome";
+import { AskDrawer } from "./components/AskDrawer";
+import { QuickActionsPalette } from "./components/QuickActionsPalette";
 
 import Landing from "./screens/Landing";
 import Login from "./screens/Login";
@@ -59,7 +62,13 @@ export default function App() {
     <ThemeProvider>
       <I18nProvider>
         <AppStateProvider>
-          <AuthProvider><Screens /></AuthProvider>
+          <AuthProvider>
+            <UiChromeProvider>
+              <Screens />
+              <AskDrawer />
+              <QuickActionsPalette />
+            </UiChromeProvider>
+          </AuthProvider>
           <ThemeToggleButton />
         </AppStateProvider>
       </I18nProvider>

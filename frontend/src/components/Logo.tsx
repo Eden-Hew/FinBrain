@@ -21,14 +21,14 @@ export function Wordmark({
     return (
       <div className="fb-wordmark" style={{ pointerEvents: "none", ...style }}>
         <LogoMark large={large} />
-        FINBRAIN OS
+        <span className="fb-wordmark-text">FINBRAIN OS</span>
       </div>
     );
   }
   return (
     <button className="fb-wordmark" style={style} onClick={onClick}>
       <LogoMark large={large} />
-      FINBRAIN OS
+      <span className="fb-wordmark-text">FINBRAIN OS</span>
     </button>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
-import { AppNav } from "../components/Nav";
+import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { PERSONAS } from "../lib/personas";
 import {
@@ -10,6 +10,61 @@ import {
   fetchRecommendations,
   type ProcessRecommendation,
 } from "../api/client";
+
+type CardType = "invoice" | "sop" | "action" | "recommendation";
+
+const TYPE_ICON: Record<CardType, React.ReactNode> = {
+  invoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
+  sop: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
+  action: <path d="M13 2 3 14h7l-1 8 10-12h-7z" />,
+  recommendation: <path d="M9 18h6M10 22h4M12 2a6 6 0 0 0-3.6 10.8c.5.4.6 1 .6 1.6V16h6v-1.6c0-.6.1-1.2.6-1.6A6 6 0 0 0 12 2z" />,
+};
+
+const TYPE_LABEL: Record<CardType, string> = {
+  invoice: "Invoice approval",
+  sop: "SOP",
+  action: "Agent action",
+  recommendation: "AI recommendation",
+};
+
+const TYPE_SUMMARY_LABEL: Record<CardType, [string, string]> = {
+  invoice: ["invoice", "invoices"],
+  sop: ["SOP", "SOPs"],
+  action: ["agent action", "agent actions"],
+  recommendation: ["AI recommendation", "AI recommendations"],
+};
+
+function TypeBadge({ type }: { type: CardType }) {
+  return (
+    <div className={"fb-rec-type-badge is-type-" + type}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{TYPE_ICON[type]}</svg>
+      {TYPE_LABEL[type]}
+    </div>
+  );
+}
+
+function ConfirmApproveButton({ label, disabled, disabledReason, onConfirm }: { label: string; disabled?: boolean; disabledReason?: string; onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  if (confirming) {
+    return (
+      <>
+        <button className="fb-btn fb-btn-solid" type="button" onClick={() => { onConfirm(); setConfirming(false); }}>Yes, {label.toLowerCase()}</button>
+        <button className="fb-btn fb-btn-outline" type="button" onClick={() => setConfirming(false)}>Cancel</button>
+      </>
+    );
+  }
+  return (
+    <>
+      <button className="fb-btn fb-btn-solid" type="button" disabled={disabled} onClick={() => setConfirming(true)}>{label}</button>
+      {disabled && disabledReason && (
+        <span className="fb-disabled-hint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+          {disabledReason}
+        </span>
+      )}
+    </>
+  );
+}
 
 export default function Approvals() {
   const { t } = useI18n();
@@ -94,9 +149,17 @@ export default function Approvals() {
     && activeActions.length === 0
     && openRecommendations.length === 0;
 
+  const summary: { type: CardType; tone: string; count: number }[] = [
+    { type: "invoice" as const, tone: "is-blue", count: pendingInvoices.length },
+    { type: "sop" as const, tone: "is-purple", count: draftSops.length },
+    { type: "action" as const, tone: "is-orange", count: activeActions.length },
+    { type: "recommendation" as const, tone: "is-green", count: openRecommendations.length },
+  ].filter((item) => item.count > 0);
+
   return (
-    <div className="fb-root">
-      <AppNav current="approvals" />
+    <div className="fb-root fb-shell">
+      <Sidebar current="approvals" />
+      <AppTopBar current="approvals" />
 
       <header className="fb-app-header">
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
@@ -116,6 +179,16 @@ export default function Approvals() {
         </div>
       </header>
 
+      {summary.length > 0 && (
+        <div className="fb-approvals-summary">
+          {summary.map((item) => (
+            <span className={"fb-count-chip " + item.tone} key={item.type}>
+              {item.count} {item.count === 1 ? TYPE_SUMMARY_LABEL[item.type][0] : TYPE_SUMMARY_LABEL[item.type][1]}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="fb-page-body">
         <PersonaSelector />
         {!capabilities.viewRecommendations && (
@@ -128,10 +201,11 @@ export default function Approvals() {
           {openRecommendations.map((item) => (
             <article
               id={`recommendation-${item.id}`}
-              className={`fb-rec-card${focusedRecommendationId === item.id ? " is-focused" : ""}`}
+              className={`fb-rec-card is-type-recommendation${focusedRecommendationId === item.id ? " is-focused" : ""}`}
               key={`process-${item.id}`}
               tabIndex={-1}
             >
+              <TypeBadge type="recommendation" />
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>
                 {item.origin_type === "query_brief" ? "Customer intelligence" : item.origin_type === "verification_gap" ? "Verification action" : "Process optimization"}
                 {" · "}{item.priority} priority · {Math.round(item.confidence * 100)}% confidence
@@ -156,11 +230,17 @@ export default function Approvals() {
                   ))}
                 </div>
               </details>
-              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", marginTop: ".8rem" }}>
+              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
                 {item.status === "proposed" ? (
                   <>
-                    <button className="fb-btn fb-btn-solid" type="button" disabled={!capabilities.decideRecommendations} title="Owner / director persona required" onClick={() => decide(item.id, "approve")}>Approve recommendation</button>
-                    <button className="fb-btn fb-btn-outline" type="button" disabled={!capabilities.decideRecommendations} title="Owner / director persona required" onClick={() => decide(item.id, "reject")}>Reject</button>
+                    <button className="fb-btn fb-btn-solid" type="button" disabled={!capabilities.decideRecommendations} onClick={() => decide(item.id, "approve")}>Approve recommendation</button>
+                    <button className="fb-btn fb-btn-outline" type="button" disabled={!capabilities.decideRecommendations} onClick={() => decide(item.id, "reject")}>Reject</button>
+                    {!capabilities.decideRecommendations && (
+                      <span className="fb-disabled-hint">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                        Owner / director role required
+                      </span>
+                    )}
                   </>
                 ) : (
                   <button className="fb-btn fb-btn-solid" type="button" disabled={!capabilities.decideRecommendations} title="Owner / director persona required" onClick={() => decide(item.id, "mark-implemented")}>Mark implemented</button>
@@ -170,20 +250,20 @@ export default function Approvals() {
           ))}
 
           {pendingInvoices.map((inv) => (
-            <div className="fb-rec-card is-financial" key={inv.id}>
-              <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>Invoice · Invoicing Agent</div>
+            <div className="fb-rec-card is-type-invoice" key={inv.id}>
+              <TypeBadge type="invoice" />
               <h3>{inv.supplier} — {inv.amount}</h3>
               <div className="fb-rec-evidence">{inv.description}</div>
-              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", marginTop: ".8rem" }}>
-                <button className="fb-btn fb-btn-solid" type="button" onClick={() => approveEinvoiceById(inv.id)}>Approve &amp; submit</button>
+              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
+                <ConfirmApproveButton label="Approve & submit" onConfirm={() => approveEinvoiceById(inv.id)} />
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => rejectEinvoiceById(inv.id)}>Send back</button>
               </div>
             </div>
           ))}
 
           {draftSops.map((sop) => (
-            <div className="fb-rec-card" key={sop.id}>
-              <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>SOP · drafted from a recommendation</div>
+            <div className="fb-rec-card is-type-sop" key={sop.id}>
+              <TypeBadge type="sop" />
               <h3>{sop.title}</h3>
               <div className="fb-rec-evidence">Owner: {sop.owner} · v{sop.version}</div>
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", marginTop: ".8rem" }}>
@@ -194,12 +274,13 @@ export default function Approvals() {
           ))}
 
           {activeActions.map((act) => (
-            <div className="fb-rec-card is-financial" key={act.id}>
+            <div className="fb-rec-card is-type-action" key={act.id}>
+              <TypeBadge type="action" />
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>{act.kind} · {act.agent}</div>
               <h3>{act.title}</h3>
               <div className="fb-rec-evidence">{act.detail}</div>
-              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", marginTop: ".8rem" }}>
-                <button className="fb-btn fb-btn-solid" type="button" onClick={() => approveAction(act.id)}>{act.approveLabel}</button>
+              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
+                <ConfirmApproveButton label={act.approveLabel} onConfirm={() => approveAction(act.id)} />
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => rejectAction(act.id)}>Discard</button>
               </div>
             </div>

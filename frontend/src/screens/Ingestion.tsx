@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useI18n } from "../lib/i18n";
-import { AppNav } from "../components/Nav";
+import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
@@ -35,6 +35,41 @@ const RECORD_OPTIONS = [
   { value: "transaction", label: "Transaction" },
   { value: "document_note", label: "Document note" },
 ];
+
+function wordDiff(raw: string, protectedText: string) {
+  const a = raw.split(/(\s+)/);
+  const b = protectedText.split(/(\s+)/);
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const rawTokens: { text: string; changed: boolean }[] = [];
+  const protectedTokens: { text: string; changed: boolean }[] = [];
+  let i = 0, j = 0;
+  while (i < m && j < n) {
+    if (a[i] === b[j]) { rawTokens.push({ text: a[i], changed: false }); protectedTokens.push({ text: b[j], changed: false }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { rawTokens.push({ text: a[i], changed: true }); i++; }
+    else { protectedTokens.push({ text: b[j], changed: true }); j++; }
+  }
+  while (i < m) { rawTokens.push({ text: a[i], changed: true }); i++; }
+  while (j < n) { protectedTokens.push({ text: b[j], changed: true }); j++; }
+  return { rawTokens, protectedTokens };
+}
+
+function DiffText({ tokens, mode }: { tokens: { text: string; changed: boolean }[]; mode: "removed" | "added" }) {
+  return (
+    <>
+      {tokens.map((token, i) => (
+        token.changed
+          ? <mark key={i} className={"fb-diff-mark is-" + mode}>{token.text}</mark>
+          : <span key={i}>{token.text}</span>
+      ))}
+    </>
+  );
+}
 
 function ProtectedFilePanel() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +184,7 @@ function EmailCapturePanel() {
   const [records, setRecords] = useState<ProtectedIngestionRecord[]>([]);
   const [error, setError] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const refresh = async () => {
     const [nextStatus, nextRecords] = await Promise.all([
@@ -157,6 +193,7 @@ function EmailCapturePanel() {
     ]);
     setStatus(nextStatus);
     setRecords(nextRecords);
+    setLastSync(new Date());
   };
 
   useEffect(() => {
@@ -170,6 +207,7 @@ function EmailCapturePanel() {
         if (!active) return;
         setStatus(nextStatus);
         setRecords(nextRecords);
+        setLastSync(new Date());
         setError("");
       } catch {
         if (active) setError("Email integration status is temporarily unavailable.");
@@ -214,6 +252,10 @@ function EmailCapturePanel() {
             <div className="fb-fine" style={{ marginTop: ".5rem" }}>
               {status?.folder_name ?? "INBOX"} · UID {status?.last_uid ?? 0}
             </div>
+            <div className="fb-live-indicator">
+              <span className="fb-live-dot" aria-hidden="true" />
+              Polling every 5s · synced {lastSync ? lastSync.toLocaleTimeString() : "—"}
+            </div>
             <button
               type="button"
               className="fb-btn fb-btn-outline"
@@ -255,6 +297,7 @@ function TelegramCapturePanel() {
   const [status, setStatus] = useState<TelegramIntegrationStatus | null>(null);
   const [records, setRecords] = useState<ProtectedIngestionRecord[]>([]);
   const [error, setError] = useState("");
+  const [lastSync, setLastSync] = useState<Date | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -267,6 +310,7 @@ function TelegramCapturePanel() {
         if (!active) return;
         setStatus(nextStatus);
         setRecords(nextRecords);
+        setLastSync(new Date());
         setError("");
       } catch {
         if (active) setError("Telegram integration status is temporarily unavailable.");
@@ -298,6 +342,10 @@ function TelegramCapturePanel() {
             </span>
             <div className="fb-fine" style={{ marginTop: ".5rem" }}>
               {status?.mode ?? "polling"} · detector {status?.detector_ready ? "ready" : "not ready"}
+            </div>
+            <div className="fb-live-indicator">
+              <span className="fb-live-dot" aria-hidden="true" />
+              Polling every 3s · synced {lastSync ? lastSync.toLocaleTimeString() : "—"}
             </div>
           </div>
         </div>
@@ -349,6 +397,7 @@ export default function Ingestion() {
   const [result, setResult] = useState<IngestionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [manualOpen, setManualOpen] = useState(false);
 
   const reset = () => {
     setSourceRecordId(newRecordId());
@@ -390,8 +439,9 @@ export default function Ingestion() {
   };
 
   return (
-    <div className="fb-root">
-      <AppNav current="ingestion" />
+    <div className="fb-root fb-shell">
+      <Sidebar current="ingestion" />
+      <AppTopBar current="ingestion" />
 
       <header className="fb-app-header">
         <h1>{t("ingestion.title")}</h1>
@@ -410,7 +460,13 @@ export default function Ingestion() {
 
         <ProtectedFilePanel />
 
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px" }}>
+        <button className="fb-link-toggle" type="button" onClick={() => setManualOpen((v) => !v)} aria-expanded={manualOpen} style={{ marginBottom: manualOpen ? "1rem" : "2rem" }}>
+          <span className={"fb-link-toggle-caret" + (manualOpen ? " is-open" : "")}>▸</span>
+          Add a record manually (power-user / testing)
+        </button>
+
+        {manualOpen && (
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px", marginBottom: "2rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
             <label className="fb-field-label">Source
               <select className="fb-field-mock" value={sourceSystem} onChange={(e) => setSourceSystem(e.target.value)}>
@@ -467,6 +523,7 @@ export default function Ingestion() {
             </div>
           </div>
         </form>
+        )}
 
         {error && (
           <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)", marginTop: "1.2rem" }} role="alert">
@@ -487,14 +544,23 @@ export default function Ingestion() {
             </div>
 
             <div className="fb-detail-body" style={{ padding: 0, margin: "0 0 1rem" }}>
-              <div className="fb-detail-col">
-                <h2>User submitted</h2>
-                <div className="fb-rec-evidence" style={{ margin: 0 }}>{submittedText}</div>
-              </div>
-              <div className="fb-detail-col">
-                <h2>AI services and Supabase receive</h2>
-                <div className="fb-rec-evidence" style={{ margin: 0, fontFamily: "'Courier New', monospace", color: "var(--accent)" }}>{result.content_text}</div>
-              </div>
+              {(() => {
+                const diff = wordDiff(submittedText, result.content_text);
+                return (
+                  <>
+                    <div className="fb-detail-col">
+                      <h2>User submitted</h2>
+                      <div className="fb-rec-evidence fb-diff-text" style={{ margin: 0 }}><DiffText tokens={diff.rawTokens} mode="removed" /></div>
+                      <p className="fb-fine" style={{ margin: ".5rem 0 0" }}><mark className="fb-diff-mark is-removed">Highlighted</mark> text never reaches AI services or Supabase.</p>
+                    </div>
+                    <div className="fb-detail-col">
+                      <h2>AI services and Supabase receive</h2>
+                      <div className="fb-rec-evidence fb-diff-text" style={{ margin: 0, fontFamily: "'Courier New', monospace" }}><DiffText tokens={diff.protectedTokens} mode="added" /></div>
+                      <p className="fb-fine" style={{ margin: ".5rem 0 0" }}><mark className="fb-diff-mark is-added">Highlighted</mark> text was substituted by protection.</p>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="fb-answer-card">

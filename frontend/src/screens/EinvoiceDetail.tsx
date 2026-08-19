@@ -1,5 +1,5 @@
 import { useAppState, submitterName } from "../lib/appState";
-import { AppNav } from "../components/Nav";
+import { Sidebar, AppTopBar } from "../components/Nav";
 import { FB_EINVOICE_STATUS_LABEL } from "../data/sampleData";
 
 export default function EinvoiceDetail() {
@@ -12,8 +12,9 @@ export default function EinvoiceDetail() {
   const showUinPanel = inv.status === "submitted" || inv.status === "validated";
 
   return (
-    <div className="fb-root">
-      <AppNav backTo={() => show("einvoice")} backLabel="← e-Invoicing" />
+    <div className="fb-root fb-shell">
+      <Sidebar backTo={() => show("einvoice")} backLabel="e-Invoicing" />
+      <AppTopBar current="einvoice-detail" />
 
       <div className="fb-detail-header">
         <div className="fb-detail-header-top">
