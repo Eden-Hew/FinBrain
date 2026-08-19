@@ -7,6 +7,9 @@ interface UiChromeValue {
   paletteOpen: boolean;
   openPalette: () => void;
   closePalette: () => void;
+  sidebarOpen: boolean;
+  openSidebar: () => void;
+  closeSidebar: () => void;
 }
 
 const UiChromeContext = createContext<UiChromeValue | null>(null);
@@ -14,11 +17,14 @@ const UiChromeContext = createContext<UiChromeValue | null>(null);
 export function UiChromeProvider({ children }: { children: ReactNode }) {
   const [askOpen, setAskOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const openAsk = useCallback(() => { setAskOpen(true); setPaletteOpen(false); }, []);
   const closeAsk = useCallback(() => setAskOpen(false), []);
   const openPalette = useCallback(() => { setPaletteOpen(true); setAskOpen(false); }, []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -30,6 +36,7 @@ export function UiChromeProvider({ children }: { children: ReactNode }) {
       if (event.key === "Escape") {
         setAskOpen(false);
         setPaletteOpen(false);
+        setSidebarOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -37,7 +44,7 @@ export function UiChromeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <UiChromeContext.Provider value={{ askOpen, openAsk, closeAsk, paletteOpen, openPalette, closePalette }}>
+    <UiChromeContext.Provider value={{ askOpen, openAsk, closeAsk, paletteOpen, openPalette, closePalette, sidebarOpen, openSidebar, closeSidebar }}>
       {children}
     </UiChromeContext.Provider>
   );

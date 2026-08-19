@@ -125,44 +125,68 @@ const NAV_GROUPS: { label: string | null; items: { screen: Screen; key: string }
 export function Sidebar({ current, backTo, backLabel }: { current?: Screen; backTo?: () => void; backLabel?: string }) {
   const { show, approvalsCount } = useAppState();
   const { t } = useI18n();
+  const { sidebarOpen, openSidebar, closeSidebar } = useUiChrome();
+
+  const navigate = (screen: Screen) => {
+    closeSidebar();
+    show(screen);
+  };
 
   return (
-    <aside className="fb-sidebar">
-      <div className="fb-sidebar-top">
-        <Wordmark onClick={() => show("landing")} />
-      </div>
-
-      {backTo ? (
-        <button className="fb-sidebar-back" type="button" onClick={backTo}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-          {backLabel}
+    <>
+      {!sidebarOpen && (
+        <button
+          className="fb-sidebar-toggle"
+          type="button"
+          onClick={openSidebar}
+          aria-label="Open navigation"
+          aria-expanded={sidebarOpen}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
-      ) : (
-        <nav className="fb-sidebar-nav">
-          {NAV_GROUPS.map((group) => (
-            <div className="fb-sidebar-group" key={group.label ?? "primary"}>
-              {group.label && <div className="fb-sidebar-group-label">{group.label}</div>}
-              {group.items.map((link) => (
-                <button
-                  key={link.screen}
-                  className={"fb-sidebar-link" + (current === link.screen ? " is-current" : "")}
-                  type="button"
-                  onClick={() => show(link.screen)}
-                >
-                  <span className="fb-sidebar-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{NAV_ICONS[link.screen]}</svg>
-                  </span>
-                  <span className="fb-sidebar-label">{t(link.key)}</span>
-                  {link.screen === "approvals" && approvalsCount > 0 && (
-                    <span className="fb-nav-badge">{approvalsCount}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
       )}
-    </aside>
+      {sidebarOpen && <div className="fb-sidebar-backdrop" onClick={closeSidebar} />}
+
+      <aside className={"fb-sidebar" + (sidebarOpen ? " is-open" : "")}>
+        <div className="fb-sidebar-top">
+          <Wordmark onClick={() => navigate("landing")} />
+          <button className="fb-sidebar-close" type="button" onClick={closeSidebar} aria-label="Close navigation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {backTo ? (
+          <button className="fb-sidebar-back" type="button" onClick={backTo}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            {backLabel}
+          </button>
+        ) : (
+          <nav className="fb-sidebar-nav">
+            {NAV_GROUPS.map((group) => (
+              <div className="fb-sidebar-group" key={group.label ?? "primary"}>
+                {group.label && <div className="fb-sidebar-group-label">{group.label}</div>}
+                {group.items.map((link) => (
+                  <button
+                    key={link.screen}
+                    className={"fb-sidebar-link" + (current === link.screen ? " is-current" : "")}
+                    type="button"
+                    onClick={() => navigate(link.screen)}
+                  >
+                    <span className="fb-sidebar-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{NAV_ICONS[link.screen]}</svg>
+                    </span>
+                    <span className="fb-sidebar-label">{t(link.key)}</span>
+                    {link.screen === "approvals" && approvalsCount > 0 && (
+                      <span className="fb-nav-badge">{approvalsCount}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+        )}
+      </aside>
+    </>
   );
 }
 
@@ -208,7 +232,7 @@ export function AppTopBar({ current }: { current: Screen }) {
         </button>
         <button className="fb-topbar-ask" type="button" onClick={openAsk}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></svg>
-          Ask FinBrain
+          <span>Ask FinBrain</span>
         </button>
 
         <div

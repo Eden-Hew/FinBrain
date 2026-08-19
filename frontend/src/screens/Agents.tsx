@@ -41,9 +41,30 @@ interface Message {
 }
 
 interface ContextChip {
-  kind: "file" | "context";
   label: string;
 }
+
+interface SpeechRecognitionResultLike {
+  0: { transcript: string };
+}
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+}
+
+const VOICE_LANG: Record<string, string> = { en: "en-US", ms: "ms-MY", zh: "zh-CN" };
 
 type UploadState = "idle" | "previewing" | "protected" | "committing" | "complete" | "failed";
 
@@ -73,9 +94,8 @@ export default function Agents() {
   ]);
   const [input, setInput] = useState("");
   const [chips, setChips] = useState<ContextChip[]>([]);
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
-  const [webSearchOn, setWebSearchOn] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadPreview, setUploadPreview] = useState<UploadPreviewResponse | null>(null);
@@ -85,7 +105,11 @@ export default function Agents() {
   const [protectedTurnCount, setProtectedTurnCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const voiceIndexRef = useRef(0);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceTranscriptRef = useRef("");
+  const voiceSupported = typeof window !== "undefined"
+    && Boolean((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
+      || (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition);
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -99,7 +123,7 @@ export default function Agents() {
 
     let attachedNote = "";
     if (chips.length) {
-      attachedNote = chips.map((c) => (c.kind === "file" ? "📄 " : "🔗 ") + c.label).join(" · ") + "\n";
+      attachedNote = chips.map((c) => "📄 " + c.label).join(" · ") + "\n";
       setChips([]);
     }
 
@@ -141,15 +165,12 @@ export default function Agents() {
         isFallback = true;
       }
 
-      const webNote = webSearchOn
-        ? "Web search is not connected in this prototype. The answer below uses FinBrain records only.\n\n"
-        : "";
       setMessages((messages) => messages.map((message) => (
         message.id === thinkingId
           ? {
               ...message,
               thinking: false,
-              text: webNote + finalText,
+              text: finalText,
               protectedText,
               citations,
               mode,
@@ -220,10 +241,7 @@ export default function Agents() {
       );
       setUploadResult(response);
       setUploadState("complete");
-      setChips((current) => [
-        ...current.filter((chip) => chip.kind !== "file"),
-        { kind: "file", label: `${response.ready_rows} protected source${response.ready_rows === 1 ? "" : "s"}` },
-      ]);
+      setChips([{ label: `${response.ready_rows} protected source${response.ready_rows === 1 ? "" : "s"}` }]);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (requestError) {
@@ -232,19 +250,41 @@ export default function Agents() {
     }
   };
 
-  const addContext = (label: string) => {
-    setChips((c) => [...c, { kind: "context", label }]);
-    setContextMenuOpen(false);
-  };
-
   const removeChip = (i: number) => setChips((c) => c.filter((_, idx) => idx !== i));
+
+  const startRecording = () => {
+    if (!voiceSupported || recording) return;
+    const Ctor = ((window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition
+      ?? (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition)!;
+    const recognition = new Ctor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = VOICE_LANG[lang] ?? "en-US";
+    voiceTranscriptRef.current = "";
+    setVoiceError("");
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+      voiceTranscriptRef.current = transcript;
+      setInput(transcript);
+    };
+    recognition.onerror = (event) => {
+      setVoiceError(event.error === "not-allowed" ? "Microphone access was blocked." : "Voice input failed — try again.");
+      setRecording(false);
+    };
+    recognition.onend = () => {
+      setRecording(false);
+      const transcript = voiceTranscriptRef.current.trim();
+      if (transcript) send(transcript);
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+    setRecording(true);
+  };
 
   const stopRecording = () => {
     if (!recording) return;
-    setRecording(false);
-    const phrase = SUGGESTIONS[voiceIndexRef.current % SUGGESTIONS.length];
-    voiceIndexRef.current += 1;
-    send(phrase);
+    recognitionRef.current?.stop();
   };
 
   const einvoicesPending = Object.values(einvoices).filter((inv) => inv.status === "pending").length;
@@ -447,12 +487,13 @@ export default function Agents() {
             <div className="fb-composer-chips">
               {chips.map((c, i) => (
                 <span className="fb-composer-chip" key={i}>
-                  {c.kind === "file" ? "📄" : "🔗"} {c.label}
+                  📄 {c.label}
                   <button type="button" onClick={() => removeChip(i)} aria-label={"Remove " + c.label}>✕</button>
                 </span>
               ))}
             </div>
           )}
+          {voiceError && <div className="fb-fine" role="alert" style={{ padding: "0 1.1rem", color: "var(--chart-attn)" }}>{voiceError}</div>}
 
           <div className="fb-composer2">
             <div className="fb-composer2-input-row">
@@ -474,13 +515,16 @@ export default function Agents() {
               <button
                 className={"fb-icon-btn" + (recording ? " is-recording" : "")}
                 type="button"
-                title="Hold to record"
-                aria-label="Hold, or press Enter/Space, to record"
-                onMouseDown={() => setRecording(true)}
+                disabled={!voiceSupported}
+                title={voiceSupported ? "Hold to speak — release to send" : "Voice input isn't supported in this browser"}
+                aria-label={voiceSupported ? "Hold, or press Enter/Space, to speak your question" : "Voice input isn't supported in this browser"}
+                onMouseDown={startRecording}
                 onMouseUp={stopRecording}
-                onMouseLeave={() => setRecording(false)}
-                onTouchStart={() => setRecording(true)}
+                onMouseLeave={stopRecording}
+                onTouchStart={startRecording}
                 onTouchEnd={stopRecording}
+                onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !recording) { e.preventDefault(); startRecording(); } }}
+                onKeyUp={(e) => { if (e.key === "Enter" || e.key === " ") stopRecording(); }}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 19v3" /></svg>
               </button>
@@ -496,22 +540,10 @@ export default function Agents() {
                 >
                   New chat
                 </button>
-                <div style={{ position: "relative" }}>
-                  <button className="fb-icon-btn" type="button" title="Add context" onClick={() => setContextMenuOpen((v) => !v)} aria-haspopup="true" aria-label="Add context">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                  </button>
-                  {contextMenuOpen && (
-                    <div className="fb-context-menu" role="menu">
-                      {["Q3 Financials", "SOP Library", "Recent Invoices", "Cash Flow Report"].map((label) => (
-                        <div className="fb-context-menu-item" key={label} tabIndex={0} role="menuitem" onClick={() => addContext(label)}>{label}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
                 <button className="fb-icon-btn" type="button" title="Upload a file" onClick={() => fileInputRef.current?.click()} aria-label="Upload from computer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
-                <button className={"fb-icon-btn" + (webSearchOn ? " is-active" : "")} type="button" title="Browse the internet" onClick={() => setWebSearchOn((v) => !v)} aria-label="Browse the internet" aria-pressed={webSearchOn}>
+                <button className="fb-icon-btn" type="button" disabled title="Web search isn't connected in this prototype" aria-label="Web search isn't connected in this prototype" aria-disabled="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" strokeLinecap="round" /><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" strokeLinecap="round" /></svg>
                 </button>
                 <span className="fb-fine">Context: {protectedTurnCount} protected turns</span>
