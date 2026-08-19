@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import TokenizedContent
+from app.models import DEFAULT_TENANT_ID, TokenizedContent
 from app.services.query_filters import QueryFilters
 
 
@@ -31,11 +31,14 @@ class QueryPlan:
         return self.filters.source_systems
 
 
-def source_inventory(db: Session) -> list[tuple[str, int]]:
+def source_inventory(db: Session, tenant_id: str = DEFAULT_TENANT_ID) -> list[tuple[str, int]]:
     return list(
         db.execute(
             select(TokenizedContent.source_system, func.count(TokenizedContent.id))
-            .where(TokenizedContent.processing_status == "ready")
+            .where(
+                TokenizedContent.processing_status == "ready",
+                TokenizedContent.tenant_id == tenant_id,
+            )
             .group_by(TokenizedContent.source_system)
             .order_by(TokenizedContent.source_system)
         ).all()
@@ -177,6 +180,7 @@ def plan_query(
     question: str,
     available_sources: list[str],
     *,
+    tenant_id: str = DEFAULT_TENANT_ID,
     now: datetime | None = None,
     timezone_name: str | None = None,
 ) -> QueryPlan:
@@ -202,6 +206,7 @@ def plan_query(
     )
     metadata_equals, metadata_missing = _metadata_filters(lowered)
     filters = QueryFilters(
+        tenant_id=tenant_id,
         source_systems=sources,
         record_types=_record_types(lowered),
         occurred_from=occurred_from,

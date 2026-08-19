@@ -44,13 +44,14 @@ def _actor_ref(role: UserRole) -> str:
 
 
 def _candidate_rows(
-    db: Session, request: ProcessAnalysisRequest, window_start: datetime
+    db: Session, request: ProcessAnalysisRequest, window_start: datetime, tenant_id: str
 ) -> list[TokenizedContent]:
     return list(
         db.scalars(
             select(TokenizedContent)
             .where(
                 TokenizedContent.processing_status == "ready",
+                TokenizedContent.tenant_id == tenant_id,
                 TokenizedContent.created_at >= window_start,
                 TokenizedContent.source_system.in_(request.source_systems),
                 TokenizedContent.structured_summary.is_not(None),
@@ -196,6 +197,7 @@ def analyze_processes(
     request: ProcessAnalysisRequest,
     *,
     role: UserRole,
+    tenant_id: str,
     actor_ref: str | None = None,
     created_by_user_id: str | None = None,
 ) -> RecommendationResponse:
@@ -204,7 +206,7 @@ def analyze_processes(
     window_end = datetime.now(UTC)
     window_start = window_end - timedelta(days=request.window_days)
     category, candidate_rows = _select_pattern(
-        _candidate_rows(db, request, window_start), request.minimum_evidence
+        _candidate_rows(db, request, window_start, tenant_id), request.minimum_evidence
     )
     context, evidence_ids = _evidence_context(candidate_rows)
     draft, mode = _generate_draft(
@@ -217,11 +219,15 @@ def analyze_processes(
     ]
     fingerprint = _fingerprint(category, selected)
     existing = db.scalar(
-        select(ProcessRecommendation).where(ProcessRecommendation.fingerprint == fingerprint)
+        select(ProcessRecommendation).where(
+            ProcessRecommendation.fingerprint == fingerprint,
+            ProcessRecommendation.tenant_id == tenant_id,
+        )
     )
     if existing:
         return recommendation_response(db, existing)
     row = ProcessRecommendation(
+        tenant_id=tenant_id,
         fingerprint=fingerprint,
         title=draft.title,
         problem_statement=draft.problem_statement,
@@ -248,6 +254,7 @@ def analyze_processes(
             continue
         db.add(
             RecommendationEvidence(
+                tenant_id=tenant_id,
                 recommendation_id=row.id,
                 tokenized_content_id=item.id,
                 evidence_excerpt=(item.summary or item.content_text)[:1_000],
@@ -261,6 +268,7 @@ def analyze_processes(
         actor_ref=actor_ref or _actor_ref(role),
         resource_type="process_recommendation",
         resource_id=str(row.id),
+        tenant_id=tenant_id,
         event_payload={
             "category": row.category,
             "evidence_count": row.record_count,
@@ -318,9 +326,11 @@ def recommendation_response(
     )
 
 
-def list_recommendations(db: Session) -> list[RecommendationResponse]:
+def list_recommendations(db: Session, tenant_id: str) -> list[RecommendationResponse]:
     rows = db.scalars(
-        select(ProcessRecommendation).order_by(ProcessRecommendation.created_at.desc())
+        select(ProcessRecommendation)
+        .where(ProcessRecommendation.tenant_id == tenant_id)
+        .order_by(ProcessRecommendation.created_at.desc())
     ).all()
     return [recommendation_response(db, row) for row in rows]
 
@@ -330,6 +340,7 @@ def create_recommendation_from_turn(
     turn_id: int,
     *,
     role: UserRole,
+    tenant_id: str,
     action_id: str,
     suggested_owner: str | None = None,
     actor_ref: str | None = None,
@@ -338,13 +349,15 @@ def create_recommendation_from_turn(
     if role not in {UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR}:
         raise PermissionError("Finance or owner/director role required")
     turn = db.get(ConversationTurn, turn_id)
-    if turn is None:
+    if turn is None or turn.tenant_id != tenant_id:
         raise LookupError("Query turn not found")
     conversation = db.get(Conversation, turn.conversation_id)
-    if (
+    stale_owner = (
         created_by_user_id is not None
-        and (conversation is None or conversation.created_by_user_id != created_by_user_id)
-    ):
+        and conversation is not None
+        and conversation.created_by_user_id != created_by_user_id
+    )
+    if conversation is None or conversation.tenant_id != tenant_id or stale_owner:
         raise LookupError("Query turn not found")
     if turn.protected_brief is None:
         raise ValueError("The query turn has no persisted intelligence brief")
@@ -399,12 +412,16 @@ def create_recommendation_from_turn(
     category = "verification_gap" if verification_claim else "query_followup"
     fingerprint = _fingerprint(f"{category}:{turn.id}:{action_id}", rows)
     existing = db.scalar(
-        select(ProcessRecommendation).where(ProcessRecommendation.fingerprint == fingerprint)
+        select(ProcessRecommendation).where(
+            ProcessRecommendation.fingerprint == fingerprint,
+            ProcessRecommendation.tenant_id == tenant_id,
+        )
     )
     if existing:
         return recommendation_response(db, existing)
     now = datetime.now(UTC)
     recommendation = ProcessRecommendation(
+        tenant_id=tenant_id,
         fingerprint=fingerprint,
         title=action_title,
         problem_statement=brief.executive_summary[:2_000],
@@ -433,6 +450,7 @@ def create_recommendation_from_turn(
     for row in rows:
         db.add(
             RecommendationEvidence(
+                tenant_id=tenant_id,
                 recommendation_id=recommendation.id,
                 tokenized_content_id=row.id,
                 evidence_excerpt=(row.summary or row.content_text)[:1_000],
@@ -446,6 +464,7 @@ def create_recommendation_from_turn(
         actor_ref=actor_ref or _actor_ref(role),
         resource_type="process_recommendation",
         resource_id=str(recommendation.id),
+        tenant_id=tenant_id,
         event_payload={
             "turn_id": turn.id,
             "origin_type": recommendation.origin_type,
@@ -465,13 +484,14 @@ def decide_recommendation(
     *,
     decision: str,
     role: UserRole,
+    tenant_id: str,
     comment: str,
     actor_ref: str | None = None,
 ) -> RecommendationResponse:
     if role is not UserRole.OWNER_DIRECTOR:
         raise PermissionError("Owner/director role required")
     row = db.get(ProcessRecommendation, recommendation_id)
-    if row is None:
+    if row is None or row.tenant_id != tenant_id:
         raise LookupError("Recommendation not found")
     transitions = {
         ("proposed", "approved"),
@@ -484,7 +504,7 @@ def decide_recommendation(
     if comment.strip():
         source_id = f"decision:{uuid.uuid4()}"
         protected_comment, entries = tokenize_record(
-            comment.strip(), detect_spans(comment.strip()), source_id, db=db
+            comment.strip(), detect_spans(comment.strip()), source_id, tenant_id, db=db
         )
         if contains_known_pii(protected_comment):
             raise ValueError("Decision comment contains unsupported sensitive data")
@@ -493,6 +513,7 @@ def decide_recommendation(
     resolved_actor_ref = actor_ref or _actor_ref(role)
     db.add(
         RecommendationDecision(
+            tenant_id=tenant_id,
             recommendation_id=row.id,
             decision=decision,
             actor_role=role.value,
@@ -507,6 +528,7 @@ def decide_recommendation(
         actor_ref=resolved_actor_ref,
         resource_type="process_recommendation",
         resource_id=str(row.id),
+        tenant_id=tenant_id,
         event_payload={"status": decision, "has_comment": bool(protected_comment)},
     )
     db.commit()

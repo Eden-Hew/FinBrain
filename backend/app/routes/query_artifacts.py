@@ -22,12 +22,12 @@ from app.services.retrieval import RetrievalHit
 router = APIRouter(prefix="/query-turns", tags=["query-artifacts"])
 
 
-def _turn(db: Session, turn_id: int, user_id: str) -> ConversationTurn:
+def _turn(db: Session, turn_id: int, tenant_id: str, user_id: str) -> ConversationTurn:
     turn = db.get(ConversationTurn, turn_id)
-    if turn is None:
+    if turn is None or turn.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="query_turn_not_found")
     try:
-        get_active_conversation(db, turn.conversation_id, user_id)
+        get_active_conversation(db, turn.conversation_id, tenant_id, user_id)
     except ValueError as error:
         code = str(error)
         raise HTTPException(
@@ -71,7 +71,7 @@ def citation_detail(
     principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> CitationDetailResponse:
-    turn = _turn(db, turn_id, str(principal.user_id))
+    turn = _turn(db, turn_id, str(principal.tenant_id), str(principal.user_id))
     _mapping, content = _citation(db, turn.id, citation_id)
     hit = RetrievalHit(
         content_id=content.id,
@@ -131,7 +131,7 @@ def compare_roles(
 ) -> RoleComparisonResponse:
     if principal.role is not UserRole.COMPLIANCE:
         raise HTTPException(status_code=403, detail="Compliance role required")
-    turn = _turn(db, turn_id, str(principal.user_id))
+    turn = _turn(db, turn_id, str(principal.tenant_id), str(principal.user_id))
     roles = list(dict.fromkeys(payload.comparison_roles))
     query_hash_value = hash_query(turn.protected_question)
     results: list[RoleComparisonResult] = []

@@ -73,6 +73,7 @@ def main() -> None:
             user_id="00000000-0000-0000-0000-000000000001",
             user_role="general_employee",
             actor_ref="security-check:application",
+            tenant_id="00000000-0000-0000-0000-000000000001",
         )
         write_audit_entry(
             app_db,
@@ -80,6 +81,7 @@ def main() -> None:
             "SECURITY_CHECK_0000000000",
             False,
             "security-check",
+            tenant_id="00000000-0000-0000-0000-000000000001",
             actor_ref="security-check:application",
         )
         write_workflow_event(
@@ -89,6 +91,7 @@ def main() -> None:
             actor_ref="security-check:application",
             resource_type="vault",
             resource_id="rollback",
+            tenant_id="00000000-0000-0000-0000-000000000001",
             event_payload={},
         )
         app_db.rollback()

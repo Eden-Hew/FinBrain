@@ -32,7 +32,7 @@ def _http_error(error: ValueError) -> HTTPException:
 
 @router.post("", response_model=ConversationCreateResponse)
 def create(principal: CurrentUser, db: Session = Depends(get_db)) -> ConversationCreateResponse:
-    conversation = create_conversation(db, str(principal.user_id))
+    conversation = create_conversation(db, str(principal.tenant_id), str(principal.user_id))
     return ConversationCreateResponse(
         conversation_id=conversation.id,
         status=conversation.status,
@@ -47,10 +47,12 @@ def get(
     db: Session = Depends(get_db),
 ) -> ConversationResponse:
     try:
-        conversation = get_active_conversation(db, conversation_id, str(principal.user_id))
+        conversation = get_active_conversation(
+            db, conversation_id, str(principal.tenant_id), str(principal.user_id)
+        )
     except ValueError as error:
         raise _http_error(error) from error
-    turns = load_recent_turns(db, conversation.id)
+    turns = load_recent_turns(db, conversation.id, str(principal.tenant_id))
     responses: list[ConversationTurnResponse] = []
     for turn in turns:
         source_ids = list(
@@ -95,7 +97,7 @@ def remove(
     db: Session = Depends(get_db),
 ) -> ConversationDeleteResponse:
     try:
-        delete_conversation(db, conversation_id, str(principal.user_id))
+        delete_conversation(db, conversation_id, str(principal.tenant_id), str(principal.user_id))
     except ValueError as error:
         raise _http_error(error) from error
     return ConversationDeleteResponse(conversation_id=conversation_id, status="deleted")

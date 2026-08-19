@@ -50,10 +50,10 @@ async def _bounded_pdf_body(request: Request) -> bytes:
 
 @router.get("/einvoice-records", response_model=list[EInvoiceRecordResponse])
 def einvoice_records(
-    _principal: CurrentUser,
+    principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> list[EInvoiceRecordResponse]:
-    return list_records(db)
+    return list_records(db, str(principal.tenant_id))
 
 
 @router.post("/einvoice-records", response_model=EInvoiceRecordResponse)
@@ -62,7 +62,13 @@ def einvoice_record_create(
     principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),
     db: Session = Depends(get_db),
 ) -> EInvoiceRecordResponse:
-    return create_record(db, payload, role=principal.role, actor_ref=principal.actor_ref)
+    return create_record(
+        db,
+        payload,
+        role=principal.role,
+        actor_ref=principal.actor_ref,
+        tenant_id=str(principal.tenant_id),
+    )
 
 
 @router.post("/einvoice-records/extract", response_model=InvoiceExtraction)
@@ -95,7 +101,12 @@ async def einvoice_record_upload_document(
     data = await _bounded_pdf_body(request)
     try:
         return upload_record_document(
-            db, record_id, data, role=principal.role, actor_ref=principal.actor_ref
+            db,
+            record_id,
+            data,
+            role=principal.role,
+            actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
         )
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -104,11 +115,11 @@ async def einvoice_record_upload_document(
 @router.get("/einvoice-records/{record_id}", response_model=EInvoiceRecordResponse)
 def einvoice_record(
     record_id: int,
-    _principal: CurrentUser,
+    principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> EInvoiceRecordResponse:
     try:
-        return get_record(db, record_id)
+        return get_record(db, record_id, str(principal.tenant_id))
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -120,7 +131,13 @@ def einvoice_record_approve(
     db: Session = Depends(get_db),
 ) -> EInvoiceRecordResponse:
     try:
-        return approve_record(db, record_id, role=principal.role, actor_ref=principal.actor_ref)
+        return approve_record(
+            db,
+            record_id,
+            role=principal.role,
+            actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
+        )
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
     except LookupError as error:
@@ -134,7 +151,9 @@ def readiness(
     principal: AuthPrincipal = Depends(require_roles(*_READINESS_ROLES)),
     db: Session = Depends(get_db),
 ) -> EinvoiceReadinessResponse:
-    return compute_readiness(db, role=principal.role, actor_ref=principal.actor_ref)
+    return compute_readiness(
+        db, role=principal.role, actor_ref=principal.actor_ref, tenant_id=str(principal.tenant_id)
+    )
 
 
 @router.post(
@@ -154,6 +173,7 @@ def request_fix(
             channel=payload.channel,
             role=principal.role,
             actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
             created_by_user_id=str(principal.user_id),
         )
     except LookupError as error:
@@ -166,21 +186,21 @@ def request_fix(
 )
 def readiness_document(
     record_id: int,
-    _principal: AuthPrincipal = Depends(require_roles(*_READINESS_ROLES)),
+    principal: AuthPrincipal = Depends(require_roles(*_READINESS_ROLES)),
     db: Session = Depends(get_db),
 ) -> EinvoiceDocumentUrlResponse:
     try:
-        return get_document_url(db, record_id)
+        return get_document_url(db, record_id, str(principal.tenant_id))
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.get("/einvoice-outreach-drafts", response_model=list[EinvoiceOutreachDraftResponse])
 def outreach_drafts(
-    _principal: AuthPrincipal = Depends(require_roles(*_READINESS_ROLES)),
+    principal: AuthPrincipal = Depends(require_roles(*_READINESS_ROLES)),
     db: Session = Depends(get_db),
 ) -> list[EinvoiceOutreachDraftResponse]:
-    return list_outreach_drafts(db)
+    return list_outreach_drafts(db, str(principal.tenant_id))
 
 
 def _decide(
@@ -196,6 +216,7 @@ def _decide(
             decision=decision,
             role=principal.role,
             actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
         )
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error

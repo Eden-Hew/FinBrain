@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models import DEFAULT_TENANT_ID
+
 
 class UserRole(StrEnum):
     GENERAL_EMPLOYEE = "general_employee"
@@ -40,6 +42,10 @@ class CanonicalIngestionRecord(BaseModel):
     text: str = Field(min_length=1, max_length=200_000)
     occurred_at: datetime | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
+    # Defaults to the single shared tenant until every connector has real per-tenant
+    # identity (Telegram/email still authenticate as one global bot/inbox — see
+    # Phase 2b of the multi-tenancy retrofit).
+    tenant_id: str = DEFAULT_TENANT_ID
 
     @field_validator("metadata")
     @classmethod

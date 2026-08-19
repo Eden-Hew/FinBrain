@@ -59,11 +59,11 @@ def record_response(
     )
 
 
-def list_records(db: Session) -> list[EInvoiceRecordResponse]:
+def list_records(db: Session, tenant_id: str) -> list[EInvoiceRecordResponse]:
     rows = db.scalars(
-        select(EInvoiceRecord).order_by(
-            EInvoiceRecord.issue_date.desc(), EInvoiceRecord.created_at.desc()
-        )
+        select(EInvoiceRecord)
+        .where(EInvoiceRecord.tenant_id == tenant_id)
+        .order_by(EInvoiceRecord.issue_date.desc(), EInvoiceRecord.created_at.desc())
     ).all()
     return [record_response(r) for r in rows]
 
@@ -100,6 +100,7 @@ def sync_einvoice_tokenized_content(db: Session, record: EInvoiceRecord) -> None
         record_type="einvoice",
         text=_canonical_einvoice_text(record),
         occurred_at=occurred_at,
+        tenant_id=record.tenant_id,
         metadata={
             "status": record.status,
             "has_tin": str(bool(record.supplier_tin)).lower(),
@@ -112,9 +113,10 @@ def sync_einvoice_tokenized_content(db: Session, record: EInvoiceRecord) -> None
 
 
 def create_record(
-    db: Session, payload: EInvoiceCreatePayload, *, role: UserRole, actor_ref: str
+    db: Session, payload: EInvoiceCreatePayload, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:
     record = EInvoiceRecord(
+        tenant_id=tenant_id,
         supplier_name=payload.supplier_name,
         supplier_tin=payload.supplier_tin,
         buyer_name=payload.buyer_name,
@@ -136,6 +138,7 @@ def create_record(
         actor_ref=actor_ref,
         resource_type="einvoice_record",
         resource_id=str(record.id),
+        tenant_id=tenant_id,
         event_payload={
             "supplier_name": record.supplier_name,
             "total_amount": str(record.total_amount),
@@ -146,18 +149,18 @@ def create_record(
     return record_response(record)
 
 
-def get_record(db: Session, record_id: int) -> EInvoiceRecordResponse:
+def get_record(db: Session, record_id: int, tenant_id: str) -> EInvoiceRecordResponse:
     record = db.get(EInvoiceRecord, record_id)
-    if record is None:
+    if record is None or record.tenant_id != tenant_id:
         raise LookupError(f"e-invoice record {record_id} not found")
     return record_response(record)
 
 
 def upload_record_document(
-    db: Session, record_id: int, data: bytes, *, role: UserRole, actor_ref: str
+    db: Session, record_id: int, data: bytes, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:
     record = db.get(EInvoiceRecord, record_id)
-    if record is None:
+    if record is None or record.tenant_id != tenant_id:
         raise LookupError(f"e-invoice record {record_id} not found")
 
     bucket = get_settings().einvoice_document_bucket
@@ -174,6 +177,7 @@ def upload_record_document(
         actor_ref=actor_ref,
         resource_type="einvoice_record",
         resource_id=str(record.id),
+        tenant_id=tenant_id,
         event_payload={"bytes": len(data)},
     )
     db.commit()
@@ -186,13 +190,13 @@ def _generate_uin() -> str:
 
 
 def approve_record(
-    db: Session, record_id: int, *, role: UserRole, actor_ref: str
+    db: Session, record_id: int, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:
     if role is not UserRole.OWNER_DIRECTOR:
         raise PermissionError("Owner/director role required")
 
     record = db.get(EInvoiceRecord, record_id)
-    if record is None:
+    if record is None or record.tenant_id != tenant_id:
         raise LookupError(f"e-invoice record {record_id} not found")
     if record.status != "pending":
         raise ValueError(f"cannot approve an invoice in status '{record.status}'")
@@ -209,6 +213,7 @@ def approve_record(
         actor_ref=actor_ref,
         resource_type="einvoice_record",
         resource_id=str(record.id),
+        tenant_id=tenant_id,
         event_payload={"uin": record.uin, "previous_status": previous_status},
     )
     db.commit()
@@ -255,8 +260,13 @@ def compute_readiness(
     *,
     role: UserRole,
     actor_ref: str,
+    tenant_id: str,
 ) -> EinvoiceReadinessResponse:
-    rows = db.scalars(select(EInvoiceRecord).order_by(EInvoiceRecord.created_at.desc())).all()
+    rows = db.scalars(
+        select(EInvoiceRecord)
+        .where(EInvoiceRecord.tenant_id == tenant_id)
+        .order_by(EInvoiceRecord.created_at.desc())
+    ).all()
 
     name_groups: dict[str, set[str]] = defaultdict(set)
     for row in rows:
@@ -290,6 +300,7 @@ def compute_readiness(
         actor_ref=actor_ref,
         resource_type="einvoice_readiness",
         resource_id="workspace",
+        tenant_id=tenant_id,
         event_payload={
             "score": score,
             "total_records": total,
@@ -329,13 +340,15 @@ def create_outreach_draft(
     channel: str,
     role: UserRole,
     actor_ref: str,
+    tenant_id: str,
     created_by_user_id: str | None,
 ) -> EinvoiceOutreachDraftResponse:
     record = db.get(EInvoiceRecord, record_id)
-    if record is None:
+    if record is None or record.tenant_id != tenant_id:
         raise LookupError(f"e-invoice record {record_id} not found")
 
     draft = EinvoiceOutreachDraft(
+        tenant_id=tenant_id,
         einvoice_record_id=record.id,
         channel=channel,
         draft_text=_build_draft_text(record),
@@ -352,6 +365,7 @@ def create_outreach_draft(
         actor_ref=actor_ref,
         resource_type="einvoice_outreach_draft",
         resource_id=str(draft.id),
+        tenant_id=tenant_id,
         event_payload={
             "einvoice_record_id": record.id,
             "channel": channel,
@@ -361,9 +375,9 @@ def create_outreach_draft(
     return _draft_response(draft)
 
 
-def get_document_url(db: Session, record_id: int) -> EinvoiceDocumentUrlResponse:
+def get_document_url(db: Session, record_id: int, tenant_id: str) -> EinvoiceDocumentUrlResponse:
     record = db.get(EInvoiceRecord, record_id)
-    if record is None:
+    if record is None or record.tenant_id != tenant_id:
         raise LookupError(f"e-invoice record {record_id} not found")
     if not record.document_storage_path:
         raise LookupError(f"e-invoice record {record_id} has no document on file")
@@ -374,10 +388,13 @@ def get_document_url(db: Session, record_id: int) -> EinvoiceDocumentUrlResponse
     return EinvoiceDocumentUrlResponse(url=url, expires_in=expires_in)
 
 
-def list_outreach_drafts(db: Session) -> list[EinvoiceOutreachDraftResponse]:
+def list_outreach_drafts(db: Session, tenant_id: str) -> list[EinvoiceOutreachDraftResponse]:
     rows = db.scalars(
         select(EinvoiceOutreachDraft)
-        .where(EinvoiceOutreachDraft.status == "draft")
+        .where(
+            EinvoiceOutreachDraft.status == "draft",
+            EinvoiceOutreachDraft.tenant_id == tenant_id,
+        )
         .order_by(EinvoiceOutreachDraft.created_at.desc())
     ).all()
     return [_draft_response(row) for row in rows]
@@ -390,12 +407,13 @@ def decide_outreach(
     decision: str,
     role: UserRole,
     actor_ref: str,
+    tenant_id: str,
 ) -> EinvoiceOutreachDraftResponse:
     if role is not UserRole.OWNER_DIRECTOR:
         raise PermissionError("Owner/director role required")
 
     draft = db.get(EinvoiceOutreachDraft, draft_id)
-    if draft is None:
+    if draft is None or draft.tenant_id != tenant_id:
         raise LookupError(f"outreach draft {draft_id} not found")
 
     required_status = _DECISION_TRANSITIONS.get(decision)
@@ -413,6 +431,7 @@ def decide_outreach(
         actor_ref=actor_ref,
         resource_type="einvoice_outreach_draft",
         resource_id=str(draft.id),
+        tenant_id=tenant_id,
         event_payload={
             "einvoice_record_id": draft.einvoice_record_id,
             "channel": draft.channel,

@@ -28,13 +28,17 @@ def get_current_user(
     try:
         claims = verify_access_token(credentials.credentials)
         user_id = UUID(str(claims["sub"]))
+        tenant_id = UUID(str(claims["tenant_id"]))
     except (AccessTokenError, KeyError, TypeError, ValueError) as error:
+        # A missing/invalid tenant_id claim also lands here — most commonly a JWT
+        # minted before the tenant auth hook was deployed. The fix is a fresh login,
+        # same remedy as any other invalid-token case, so it shares this detail.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid_access_token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from error
-    assignment = db.get(AuthUserRole, str(user_id))
+    assignment = db.get(AuthUserRole, (str(user_id), str(tenant_id)))
     if assignment is None or not assignment.active:
         raise HTTPException(status_code=403, detail="user_not_provisioned")
     try:
@@ -44,12 +48,15 @@ def get_current_user(
     token_role = claims.get("user_role")
     if token_role is not None and token_role != role.value:
         raise HTTPException(status_code=403, detail="stale_user_role_claim")
-    principal = AuthPrincipal(user_id=user_id, email=claims.get("email"), role=role)
+    principal = AuthPrincipal(
+        user_id=user_id, email=claims.get("email"), role=role, tenant_id=tenant_id
+    )
     set_rls_context(
         db,
         user_id=str(principal.user_id),
         user_role=principal.role.value,
         actor_ref=principal.actor_ref,
+        tenant_id=str(principal.tenant_id),
     )
     return principal
 

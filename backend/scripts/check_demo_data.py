@@ -6,6 +6,7 @@ from sqlalchemy import func, select, text
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import (
+    DEFAULT_TENANT_ID,
     ProtectedTokenRegistry,
     TokenizedContent,
     TokenVaultEntry,
@@ -55,8 +56,8 @@ def main() -> None:
             if len(active_key_versions) == 1
             else None
         )
-        disclosure_chain_valid = verify_audit_chain(db)
-        workflow_chain_valid = verify_workflow_chain(db)
+        disclosure_chain_valid = verify_audit_chain(db, DEFAULT_TENANT_ID)
+        workflow_chain_valid = verify_workflow_chain(db, DEFAULT_TENANT_ID)
         valid_decrypted_amounts = 0
         for entry in amount_entries:
             value = decrypt_vault_entry(db, entry)

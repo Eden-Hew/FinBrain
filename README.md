@@ -288,6 +288,30 @@ page.
 
 See [infra/supabase/README.md](./infra/supabase/README.md) for connection and security details.
 
+### Staging environment
+
+Local development and production currently run against different databases (local SQLite by
+default, or your own Postgres instance), but there is no dedicated staging project yet — anyone
+testing against a real Supabase/Postgres instance today is testing against the same project the
+deployed app uses. To set up a proper staging tier:
+
+1. Create a second Supabase project (same steps as above), named e.g. `finbrain-staging`.
+2. Push the same migrations to it (`npx.cmd supabase link --project-ref STAGING_PROJECT_REF && npx.cmd supabase db push`).
+3. Point a separate `backend/.env.staging` (or CI secrets) at its connection string — never reuse
+   the production `DATABASE_URL` for anything other than the deployed Railway service.
+4. Seed it independently (`python -m seed.seed_data`) — staging data should never be copied from
+   production.
+
+This staging project is what CI, pre-release manual testing, and any invasive schema work (like a
+multi-tenancy retrofit) should run against first, before touching the production database.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push and pull request: backend lint (`ruff check`) and the
+full test suite (`pytest`, against SQLite — no secrets required), plus frontend typecheck
+(`tsc -b`), lint (`eslint`), and a production build. It gates merges only — Railway's own git
+integration still handles deployment on push to `main`.
+
 ## 4. Run FinBrain
 
 ### One-command demonstration

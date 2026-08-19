@@ -43,11 +43,15 @@ def query(
     principal: CurrentUser,
     db: Session = Depends(get_db),
 ) -> QueryResponse:
-    inventory = source_inventory(db)
-    plan = plan_query(payload.question, [source for source, _count in inventory])
+    inventory = source_inventory(db, str(principal.tenant_id))
+    plan = plan_query(
+        payload.question,
+        [source for source, _count in inventory],
+        tenant_id=str(principal.tenant_id),
+    )
     try:
         conversation = get_or_create_conversation(
-            db, payload.conversation_id, str(principal.user_id)
+            db, payload.conversation_id, str(principal.tenant_id), str(principal.user_id)
         )
     except ValueError as error:
         code = str(error)
@@ -55,10 +59,10 @@ def query(
             status_code=410 if code == "conversation_expired" else 404,
             detail=code,
         ) from error
-    history = protected_history(db, conversation.id)
+    history = protected_history(db, conversation.id, str(principal.tenant_id))
     query_id = f"query-{uuid.uuid4()}"
     sanitized_question, query_entries = tokenize_record(
-        payload.question, detect_spans(payload.question), query_id, db=db
+        payload.question, detect_spans(payload.question), query_id, str(principal.tenant_id), db=db
     )
     if contains_known_pii(sanitized_question):
         raise HTTPException(
@@ -73,6 +77,7 @@ def query(
             db,
             conversation.id,
             payload.question,
+            str(principal.tenant_id),
         )
         if referential
         else None

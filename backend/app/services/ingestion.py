@@ -18,8 +18,8 @@ def preview_canonical_record(record: CanonicalIngestionRecord) -> str:
     """Return protected text without persistence or external model calls."""
     if contains_known_pii(record.source_record_id):
         raise ValueError("source_record_id must be an opaque identifier without recognizable PII")
-    protected_text, _entries = _protect_text(record.text, record.source_record_id)
-    _protect_metadata(record.metadata, record.source_record_id)
+    protected_text, _entries = _protect_text(record.text, record.source_record_id, record.tenant_id)
+    _protect_metadata(record.metadata, record.source_record_id, record.tenant_id)
     return protected_text
 
 
@@ -45,21 +45,24 @@ def _content_fingerprint(record: CanonicalIngestionRecord) -> str:
 def _protect_text(
     text: str,
     source_record_id: str,
+    tenant_id: str,
     db: Session | None = None,
 ) -> tuple[str, list[TokenVaultEntry]]:
-    protected, entries = tokenize_record(text, detect_spans(text), source_record_id, db=db)
+    protected, entries = tokenize_record(
+        text, detect_spans(text), source_record_id, tenant_id, db=db
+    )
     if contains_known_pii(protected):
         raise ValueError(f"Safety-net PII detection failed for source {source_record_id}")
     return protected, entries
 
 
 def _protect_metadata(
-    metadata: dict[str, str], source_record_id: str, db: Session | None = None
+    metadata: dict[str, str], source_record_id: str, tenant_id: str, db: Session | None = None
 ) -> tuple[dict[str, str], list[TokenVaultEntry]]:
     protected_metadata: dict[str, str] = {}
     entries: dict[str, TokenVaultEntry] = {}
     for key, value in metadata.items():
-        protected_value, value_entries = _protect_text(value, source_record_id, db)
+        protected_value, value_entries = _protect_text(value, source_record_id, tenant_id, db)
         protected_metadata[key] = protected_value
         entries.update({entry.token: entry for entry in value_entries})
     return protected_metadata, list(entries.values())
@@ -126,9 +129,11 @@ def protect_canonical_record(
     ):
         return _result(existing, created=False, refreshed=False)
 
-    protected_text, content_entries = _protect_text(record.text, record.source_record_id, db)
+    protected_text, content_entries = _protect_text(
+        record.text, record.source_record_id, record.tenant_id, db
+    )
     protected_metadata, metadata_entries = _protect_metadata(
-        record.metadata, record.source_record_id, db
+        record.metadata, record.source_record_id, record.tenant_id, db
     )
     entries = {entry.token: entry for entry in content_entries + metadata_entries}
     persist_vault_entries(db, list(entries.values()))
@@ -136,6 +141,7 @@ def protect_canonical_record(
     created = existing is None
     row = existing or TokenizedContent(
         source_record_id=record.source_record_id,
+        tenant_id=record.tenant_id,
         content_text=protected_text,
     )
     row.content_text = protected_text

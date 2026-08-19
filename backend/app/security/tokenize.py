@@ -80,17 +80,22 @@ def _masked_value(label: str, text: str, token: str) -> str:
     }.get(label, f"[{label.lower()} — restricted]")
 
 
-def _token_for(span) -> str:
+def _token_for(span, tenant_id: str) -> str:
+    """Derive a token that is unique per (tenant, raw value), not just per raw value —
+    otherwise two tenants sharing the same name/phone/amount would collide on the same
+    token, and the second tenant's value would silently never be stored (see
+    persist_vault_entries' idempotent-by-token insert)."""
     label = LABEL_TOKEN_MAP.get(span.label, "MISC")
     if label == "AMOUNT":
-        canonical = _canonical_amount(span.text)
+        canonical = f"{tenant_id}:{_canonical_amount(span.text)}"
         digest = hmac.new(
             get_settings().token_identity_secret.encode(), canonical.encode(), hashlib.sha256
         ).hexdigest()[:10]
         return f"AMOUNT_BAND_{_band_index(_parse_amount(span.text))}_{digest}"
+    canonical = f"{tenant_id}:{span.text.strip().casefold()}"
     digest = hmac.new(
         get_settings().token_identity_secret.encode(),
-        span.text.strip().casefold().encode(),
+        canonical.encode(),
         hashlib.sha256,
     ).hexdigest()[:10]
     return f"{label}_{digest}"
@@ -100,12 +105,13 @@ def tokenize_record(
     text: str,
     spans: list,
     source_record_id: str,
+    tenant_id: str,
     db: Session | None = None,
 ) -> tuple[str, list[TokenVaultEntry]]:
     sanitized = text
     vault_entries: dict[str, TokenVaultEntry] = {}
     for span in sorted(spans, key=lambda item: item.start, reverse=True):
-        token = _token_for(span)
+        token = _token_for(span, tenant_id)
         sanitized = f"{sanitized[: span.start]}{token}{sanitized[span.end :]}"
         label = LABEL_TOKEN_MAP.get(span.label, "MISC")
         if token in vault_entries or db is None:
@@ -120,6 +126,7 @@ def tokenize_record(
         )
         vault_entries[token] = TokenVaultEntry(
             token=token,
+            tenant_id=tenant_id,
             entity_type=label,
             encrypted_value=ciphertext,
             nonce=nonce,
@@ -134,6 +141,7 @@ def tokenize_record(
             db.add(
                 ProtectedTokenRegistry(
                     token=token,
+                    tenant_id=tenant_id,
                     entity_type=label,
                     masked_value=_masked_value(label, span.text, token),
                 )

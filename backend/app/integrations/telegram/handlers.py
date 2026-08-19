@@ -219,7 +219,7 @@ async def content_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             caption=message.caption,
         )
         protected_preview, _ = tokenize_record(
-            record.text, detect_spans(record.text), record.source_record_id
+            record.text, detect_spans(record.text), record.source_record_id, record.tenant_id
         )
         nonce = draft_store.new_nonce()
         draft_store.put(

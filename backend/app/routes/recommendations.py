@@ -38,6 +38,7 @@ def create_from_query(
             db,
             turn_id,
             role=principal.role,
+            tenant_id=str(principal.tenant_id),
             action_id=payload.action_id,
             suggested_owner=payload.suggested_owner,
             actor_ref=principal.actor_ref,
@@ -62,6 +63,7 @@ def process_analysis(
             db,
             payload,
             role=principal.role,
+            tenant_id=str(principal.tenant_id),
             actor_ref=principal.actor_ref,
             created_by_user_id=str(principal.user_id),
         )
@@ -73,12 +75,12 @@ def process_analysis(
 
 @router.get("/recommendations", response_model=list[RecommendationResponse])
 def recommendations(
-    _principal: AuthPrincipal = Depends(
+    principal: AuthPrincipal = Depends(
         require_roles(UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR, UserRole.COMPLIANCE)
     ),
     db: Session = Depends(get_db),
 ) -> list[RecommendationResponse]:
-    return list_recommendations(db)
+    return list_recommendations(db, str(principal.tenant_id))
 
 
 def _decision(
@@ -94,6 +96,7 @@ def _decision(
             recommendation_id,
             decision=decision,
             role=principal.role,
+            tenant_id=str(principal.tenant_id),
             comment=payload.comment,
             actor_ref=principal.actor_ref,
         )

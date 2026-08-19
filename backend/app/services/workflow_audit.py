@@ -48,13 +48,26 @@ def write_workflow_event(
     resource_type: str,
     resource_id: str,
     event_payload: dict,
+    tenant_id: str | None = None,
 ) -> WorkflowAuditEntry:
+    """Append to a hash chain scoped to `tenant_id`. Pass tenant_id=None only for
+    genuinely system-level events (e.g. vault key rotation) that aren't owned by any
+    one tenant — everything tenant-owned (recommendations, einvoice, etc.) must pass
+    its real tenant_id so its chain is verifiable independently of other tenants'."""
+    lock_key = f"finbrain:workflow-audit:{tenant_id or 'system'}"
     if db.bind is not None and db.bind.dialect.name == "postgresql":
-        db.execute(text("select pg_advisory_xact_lock(hashtext('finbrain:workflow-audit'))"))
-    if db.bind is not None and db.bind.dialect.name == "postgresql":
-        previous_hash = db.scalar(text("select public.finbrain_audit_tail('workflow')"))
+        db.execute(text("select pg_advisory_xact_lock(hashtext(:key))"), {"key": lock_key})
+        previous_hash = db.scalar(
+            text("select public.finbrain_audit_tail('workflow', cast(:tenant_id as uuid))"),
+            {"tenant_id": tenant_id},
+        )
     else:
-        last = db.scalar(select(WorkflowAuditEntry).order_by(WorkflowAuditEntry.id.desc()).limit(1))
+        last = db.scalar(
+            select(WorkflowAuditEntry)
+            .where(WorkflowAuditEntry.tenant_id == tenant_id)
+            .order_by(WorkflowAuditEntry.id.desc())
+            .limit(1)
+        )
         previous_hash = last.event_hash if last else "genesis"
     timestamp = utcnow()
     payload = _payload(
@@ -67,6 +80,7 @@ def write_workflow_event(
         created_at=timestamp,
     )
     row = WorkflowAuditEntry(
+        tenant_id=tenant_id,
         prev_hash=previous_hash,
         event_hash=_hash(previous_hash, payload),
         event_type=event_type,
@@ -82,9 +96,15 @@ def write_workflow_event(
     return row
 
 
-def verify_workflow_chain(db: Session) -> bool:
+def verify_workflow_chain(db: Session, tenant_id: str | None = None) -> bool:
+    """Verify one chain: the given tenant's, or the system chain when tenant_id=None."""
     previous_hash = "genesis"
-    for row in db.scalars(select(WorkflowAuditEntry).order_by(WorkflowAuditEntry.id)).all():
+    rows = db.scalars(
+        select(WorkflowAuditEntry)
+        .where(WorkflowAuditEntry.tenant_id == tenant_id)
+        .order_by(WorkflowAuditEntry.id)
+    ).all()
+    for row in rows:
         payload = _payload(
             event_type=row.event_type,
             actor_role=row.actor_role,

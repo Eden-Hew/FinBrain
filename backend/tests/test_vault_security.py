@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Base, TokenVaultEntry, VaultKeyVersion, WorkflowAuditEntry
+from app.models import DEFAULT_TENANT_ID, Base, TokenVaultEntry, VaultKeyVersion, WorkflowAuditEntry
 from app.security.detect import detect_spans
 from app.security.detokenize import detokenize_response_with_trace
 from app.security.disclosure import new_disclosure_session
@@ -62,7 +62,9 @@ def test_vault_ciphertext_is_bound_to_row_context():
     engine, db = _database()
     try:
         raw = "IC 901231-14-5566"
-        _protected, entries = tokenize_record(raw, detect_spans(raw), "source-a", db=db)
+        _protected, entries = tokenize_record(
+            raw, detect_spans(raw), "source-a", DEFAULT_TENANT_ID, db=db
+        )
         db.add_all(entries)
         db.commit()
         entry = db.scalar(select(TokenVaultEntry))
@@ -80,7 +82,9 @@ def test_masked_role_never_receives_exact_value_and_trace_records_session():
     engine, db = _database()
     try:
         raw = "IC 901231-14-5566; payment RM 4,500."
-        protected, entries = tokenize_record(raw, detect_spans(raw), "masked", db=db)
+        protected, entries = tokenize_record(
+            raw, detect_spans(raw), "masked", DEFAULT_TENANT_ID, db=db
+        )
         db.add_all(entries)
         db.commit()
         employee = detokenize_response_with_trace(
@@ -121,6 +125,7 @@ def test_rotation_is_resumable_and_preserves_tokens(monkeypatch):
                 raw,
                 detect_spans(raw),
                 f"rotation-{index}",
+                DEFAULT_TENANT_ID,
                 db=db,
             )
             db.add_all(entries)
@@ -158,7 +163,9 @@ def test_rotation_is_resumable_and_preserves_tokens(monkeypatch):
 def test_automatic_rotation_resumes_an_unfinished_job(monkeypatch):
     engine, db = _database()
     try:
-        _protected, entries = tokenize_record("RM 4,500", detect_spans("RM 4,500"), "auto", db=db)
+        _protected, entries = tokenize_record(
+            "RM 4,500", detect_spans("RM 4,500"), "auto", DEFAULT_TENANT_ID, db=db
+        )
         db.add_all(entries)
         db.commit()
         monkeypatch.setattr(
@@ -183,7 +190,7 @@ def test_rotation_recovers_rows_stranded_by_a_premature_completion(monkeypatch):
     engine, db = _database()
     try:
         _protected, entries = tokenize_record(
-            "RM 4,500", detect_spans("RM 4,500"), "recovery", db=db
+            "RM 4,500", detect_spans("RM 4,500"), "recovery", DEFAULT_TENANT_ID, db=db
         )
         db.add_all(entries)
         db.commit()

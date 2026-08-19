@@ -5,7 +5,7 @@ import numpy as np
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.models import TokenizedContent
+from app.models import DEFAULT_TENANT_ID, TokenizedContent
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,12 +43,17 @@ def retrieve_hits(
     query_embedding: list[float],
     k: int = 5,
     *,
+    tenant_id: str = DEFAULT_TENANT_ID,
     source_systems: list[str] | None = None,
 ) -> list[RetrievalHit]:
     if db.bind is not None and db.bind.dialect.name == "postgresql":
         vector_literal = "[" + ",".join(str(value) for value in query_embedding) + "]"
         source_filter = ""
-        parameters: dict[str, object] = {"query_embedding": vector_literal, "limit": k}
+        parameters: dict[str, object] = {
+            "query_embedding": vector_literal,
+            "limit": k,
+            "tenant_id": tenant_id,
+        }
         if source_systems:
             source_filter = "and source_system = any(:source_systems) "
             parameters["source_systems"] = source_systems
@@ -57,7 +62,7 @@ def retrieve_hits(
                 "content_text, summary, "
                 "1 - (embedding <=> cast(:query_embedding as extensions.vector)) "
                 "as similarity from tokenized_content "
-                "where embedding is not null "
+                "where embedding is not null and tenant_id = cast(:tenant_id as uuid) "
                 + source_filter
                 + "order by embedding <=> cast(:query_embedding as extensions.vector) "
                 "limit :limit"
@@ -77,7 +82,9 @@ def retrieve_hits(
             for row in rows
         ]
 
-    statement = select(TokenizedContent).where(TokenizedContent.embedding.is_not(None))
+    statement = select(TokenizedContent).where(
+        TokenizedContent.embedding.is_not(None), TokenizedContent.tenant_id == tenant_id
+    )
     if source_systems:
         statement = statement.where(TokenizedContent.source_system.in_(source_systems))
     rows = db.scalars(statement).all()

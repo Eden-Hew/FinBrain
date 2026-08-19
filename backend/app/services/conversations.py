@@ -31,10 +31,13 @@ def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
-def create_conversation(db: Session, created_by_user_id: str | None = None) -> Conversation:
+def create_conversation(
+    db: Session, tenant_id: str, created_by_user_id: str | None = None
+) -> Conversation:
     now = _now()
     conversation = Conversation(
         id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
         created_by_user_id=created_by_user_id,
         status="active",
         expires_at=now + CONVERSATION_TTL,
@@ -45,14 +48,18 @@ def create_conversation(db: Session, created_by_user_id: str | None = None) -> C
 
 
 def get_active_conversation(
-    db: Session, conversation_id: str, created_by_user_id: str | None = None
+    db: Session, conversation_id: str, tenant_id: str, created_by_user_id: str | None = None
 ) -> Conversation:
     try:
         normalized_id = str(uuid.UUID(conversation_id))
     except (ValueError, AttributeError) as error:
         raise ValueError("invalid_conversation_id") from error
     conversation = db.get(Conversation, normalized_id)
-    if conversation is None or conversation.status == "deleted":
+    if (
+        conversation is None
+        or conversation.status == "deleted"
+        or conversation.tenant_id != tenant_id
+    ):
         raise ValueError("conversation_not_found")
     if (
         created_by_user_id is not None
@@ -67,27 +74,30 @@ def get_active_conversation(
 
 
 def get_or_create_conversation(
-    db: Session, conversation_id: str | None, created_by_user_id: str | None = None
+    db: Session, conversation_id: str | None, tenant_id: str, created_by_user_id: str | None = None
 ) -> Conversation:
     return (
-        get_active_conversation(db, conversation_id, created_by_user_id)
+        get_active_conversation(db, conversation_id, tenant_id, created_by_user_id)
         if conversation_id
-        else create_conversation(db, created_by_user_id)
+        else create_conversation(db, tenant_id, created_by_user_id)
     )
 
 
-def load_recent_turns(db: Session, conversation_id: str) -> list[ConversationTurn]:
+def load_recent_turns(db: Session, conversation_id: str, tenant_id: str) -> list[ConversationTurn]:
     rows = db.scalars(
         select(ConversationTurn)
-        .where(ConversationTurn.conversation_id == conversation_id)
+        .where(
+            ConversationTurn.conversation_id == conversation_id,
+            ConversationTurn.tenant_id == tenant_id,
+        )
         .order_by(ConversationTurn.sequence_number.desc())
         .limit(HISTORY_TURN_LIMIT)
     ).all()
     return list(reversed(rows))
 
 
-def protected_history(db: Session, conversation_id: str) -> str:
-    turns = load_recent_turns(db, conversation_id)
+def protected_history(db: Session, conversation_id: str, tenant_id: str) -> str:
+    turns = load_recent_turns(db, conversation_id, tenant_id)
     if not turns:
         return ""
     blocks = [
@@ -114,12 +124,16 @@ def prior_citation_hits(
     db: Session,
     conversation_id: str,
     question: str,
+    tenant_id: str,
     *,
     source_systems: tuple[str, ...] = (),
 ) -> list[RetrievalHit]:
     prior_turns = db.scalars(
         select(ConversationTurn)
-        .where(ConversationTurn.conversation_id == conversation_id)
+        .where(
+            ConversationTurn.conversation_id == conversation_id,
+            ConversationTurn.tenant_id == tenant_id,
+        )
         .order_by(ConversationTurn.sequence_number.desc())
         .limit(HISTORY_TURN_LIMIT)
     ).all()
@@ -182,6 +196,7 @@ def persist_turn(
         or 0
     ) + 1
     turn = ConversationTurn(
+        tenant_id=conversation.tenant_id,
         conversation_id=conversation.id,
         sequence_number=sequence,
         user_role=user_role,
@@ -201,6 +216,7 @@ def persist_turn(
     for ordinal, hit in zip(ordinals, cited_hits, strict=True):
         db.add(
             ConversationTurnCitation(
+                tenant_id=conversation.tenant_id,
                 turn_id=turn.id,
                 ordinal=ordinal,
                 tokenized_content_id=hit.content_id,
@@ -214,9 +230,9 @@ def persist_turn(
 
 
 def delete_conversation(
-    db: Session, conversation_id: str, created_by_user_id: str | None = None
+    db: Session, conversation_id: str, tenant_id: str, created_by_user_id: str | None = None
 ) -> None:
-    conversation = get_active_conversation(db, conversation_id, created_by_user_id)
+    conversation = get_active_conversation(db, conversation_id, tenant_id, created_by_user_id)
     turn_ids = select(ConversationTurn.id).where(
         ConversationTurn.conversation_id == conversation.id
     )

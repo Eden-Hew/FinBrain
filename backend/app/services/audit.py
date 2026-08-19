@@ -41,19 +41,29 @@ def write_audit_entry(
     authorized: bool,
     query_hash: str,
     *,
+    tenant_id: str,
     actor_ref: str = "legacy",
 ) -> None:
+    lock_key = f"finbrain:audit-log:{tenant_id}"
     if db.bind is not None and db.bind.dialect.name == "postgresql":
-        db.execute(text("select pg_advisory_xact_lock(hashtext('finbrain:audit-log'))"))
-    if db.bind is not None and db.bind.dialect.name == "postgresql":
-        previous_hash = db.scalar(text("select public.finbrain_audit_tail('disclosure')"))
+        db.execute(text("select pg_advisory_xact_lock(hashtext(:key))"), {"key": lock_key})
+        previous_hash = db.scalar(
+            text("select public.finbrain_audit_tail('disclosure', cast(:tenant_id as uuid))"),
+            {"tenant_id": tenant_id},
+        )
     else:
-        last = db.scalar(select(AuditLogEntry).order_by(AuditLogEntry.id.desc()).limit(1))
+        last = db.scalar(
+            select(AuditLogEntry)
+            .where(AuditLogEntry.tenant_id == tenant_id)
+            .order_by(AuditLogEntry.id.desc())
+            .limit(1)
+        )
         previous_hash = last.event_hash if last else "genesis"
     timestamp = utcnow()
     event = _event_payload(role, token, authorized, query_hash, timestamp, actor_ref)
     db.add(
         AuditLogEntry(
+            tenant_id=tenant_id,
             prev_hash=previous_hash,
             event_hash=_compute_hash(previous_hash, event),
             user_role=role,
@@ -69,9 +79,12 @@ def write_audit_entry(
     db.flush()
 
 
-def verify_audit_chain(db: Session) -> bool:
+def verify_audit_chain(db: Session, tenant_id: str | None = None) -> bool:
     previous_hash = "genesis"
-    for entry in db.scalars(select(AuditLogEntry).order_by(AuditLogEntry.id)).all():
+    rows = db.scalars(
+        select(AuditLogEntry).where(AuditLogEntry.tenant_id == tenant_id).order_by(AuditLogEntry.id)
+    ).all()
+    for entry in rows:
         event = _event_payload(
             entry.user_role,
             entry.token,

@@ -12,6 +12,7 @@ class AuthPrincipal:
     user_id: UUID
     email: str | None
     role: UserRole
+    tenant_id: UUID
 
     @property
     def actor_ref(self) -> str:

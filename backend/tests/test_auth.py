@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.auth import dependencies
 from app.auth import jwt as jwt_service
-from app.models import AuthUserRole, Base
+from app.models import DEFAULT_TENANT_ID, AuthUserRole, Base
 from app.schemas import UserRole
 from app.services.conversations import create_conversation, get_active_conversation
 
 USER_ID = UUID("50000000-0000-0000-0000-000000000005")
+TENANT_A = DEFAULT_TENANT_ID
+TENANT_B = "00000000-0000-0000-0000-000000000002"
 
 
 def _database() -> tuple:
@@ -34,6 +36,7 @@ def test_principal_uses_database_role_and_rejects_stale_claim(monkeypatch):
         db.add(
             AuthUserRole(
                 user_id=str(USER_ID),
+                tenant_id=TENANT_A,
                 user_role=UserRole.FINANCE_OPS.value,
                 active=True,
             )
@@ -47,11 +50,13 @@ def test_principal_uses_database_role_and_rejects_stale_claim(monkeypatch):
                 "email": "finance@finbrain.test",
                 "role": "authenticated",
                 "user_role": "finance_ops",
+                "tenant_id": TENANT_A,
             },
         )
         principal = dependencies.get_current_user(_credentials(), db)
         assert principal.user_id == USER_ID
         assert principal.role is UserRole.FINANCE_OPS
+        assert str(principal.tenant_id) == TENANT_A
         assert "finance@finbrain.test" not in principal.actor_ref
 
         monkeypatch.setattr(
@@ -61,6 +66,7 @@ def test_principal_uses_database_role_and_rejects_stale_claim(monkeypatch):
                 "sub": str(USER_ID),
                 "role": "authenticated",
                 "user_role": "owner_director",
+                "tenant_id": TENANT_A,
             },
         )
         with pytest.raises(HTTPException) as error:
@@ -82,7 +88,7 @@ def test_missing_token_and_unprovisioned_user_are_denied(monkeypatch):
         monkeypatch.setattr(
             dependencies,
             "verify_access_token",
-            lambda _token: {"sub": str(USER_ID), "role": "authenticated"},
+            lambda _token: {"sub": str(USER_ID), "role": "authenticated", "tenant_id": TENANT_A},
         )
         with pytest.raises(HTTPException) as unprovisioned:
             dependencies.get_current_user(_credentials(), db)
@@ -131,14 +137,32 @@ def test_jwt_verification_checks_signature_issuer_audience_and_role(monkeypatch)
 def test_conversation_owner_cannot_be_crossed():
     engine, db = _database()
     try:
-        conversation = create_conversation(db, str(USER_ID))
-        assert get_active_conversation(db, conversation.id, str(USER_ID)).id == conversation.id
+        conversation = create_conversation(db, TENANT_A, str(USER_ID))
+        assert (
+            get_active_conversation(db, conversation.id, TENANT_A, str(USER_ID)).id
+            == conversation.id
+        )
         with pytest.raises(ValueError, match="conversation_not_found"):
             get_active_conversation(
                 db,
                 conversation.id,
+                TENANT_A,
                 "60000000-0000-0000-0000-000000000006",
             )
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_conversation_tenant_cannot_be_crossed():
+    """A principal from tenant B must never be able to read tenant A's conversation,
+    even with the correct conversation id and no created_by_user_id mismatch."""
+    engine, db = _database()
+    try:
+        conversation = create_conversation(db, TENANT_A, str(USER_ID))
+        assert get_active_conversation(db, conversation.id, TENANT_A).id == conversation.id
+        with pytest.raises(ValueError, match="conversation_not_found"):
+            get_active_conversation(db, conversation.id, TENANT_B)
     finally:
         db.close()
         engine.dispose()

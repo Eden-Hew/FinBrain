@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    DEFAULT_TENANT_ID,
     Base,
     Conversation,
     ConversationTurn,
@@ -63,7 +64,7 @@ def test_conversation_stores_only_protected_turn_and_citation_references():
     engine, db = _database()
     row = _ready_record(db, "email:opaque-1", "email")
     try:
-        conversation = create_conversation(db)
+        conversation = create_conversation(db, DEFAULT_TENANT_ID)
         turn = persist_turn(
             db,
             conversation,
@@ -91,7 +92,7 @@ def test_conversation_stores_only_protected_turn_and_citation_references():
 def test_recent_history_is_bounded_to_six_turns():
     engine, db = _database()
     try:
-        conversation = create_conversation(db)
+        conversation = create_conversation(db, DEFAULT_TENANT_ID)
         for index in range(1, 8):
             persist_turn(
                 db,
@@ -105,8 +106,8 @@ def test_recent_history_is_bounded_to_six_turns():
                 insufficient_evidence=False,
                 cited_hits=[],
             )
-        turns = load_recent_turns(db, conversation.id)
-        history = protected_history(db, conversation.id)
+        turns = load_recent_turns(db, conversation.id, DEFAULT_TENANT_ID)
+        history = protected_history(db, conversation.id, DEFAULT_TENANT_ID)
         assert [turn.sequence_number for turn in turns] == [2, 3, 4, 5, 6, 7]
         assert "TURN-1" not in history
         assert "TURN-7" in history
@@ -120,7 +121,7 @@ def test_referential_follow_up_reuses_prior_citations_with_filters_and_ordinals(
     email = _ready_record(db, "email:1", "email")
     telegram = _ready_record(db, "telegram:1", "telegram")
     try:
-        conversation = create_conversation(db)
+        conversation = create_conversation(db, DEFAULT_TENANT_ID)
         persist_turn(
             db,
             conversation,
@@ -137,9 +138,15 @@ def test_referential_follow_up_reuses_prior_citations_with_filters_and_ordinals(
         assert is_referential_question("Which of those came from email?")
         assert is_referential_question("Yes, describe that")
         email_hits = prior_citation_hits(
-            db, conversation.id, "Which of those came from email?", source_systems=("email",)
+            db,
+            conversation.id,
+            "Which of those came from email?",
+            DEFAULT_TENANT_ID,
+            source_systems=("email",),
         )
-        second = prior_citation_hits(db, conversation.id, "Tell me about the second one")
+        second = prior_citation_hits(
+            db, conversation.id, "Tell me about the second one", DEFAULT_TENANT_ID
+        )
         assert [hit.source_record_id for hit in email_hits] == ["email:1"]
         assert [hit.source_record_id for hit in second] == ["telegram:1"]
     finally:
@@ -153,7 +160,7 @@ def test_ordinal_falls_back_to_nearest_turn_that_contains_requested_position():
     second = _ready_record(db, "email:2", "email")
     third = _ready_record(db, "email:3", "email")
     try:
-        conversation = create_conversation(db)
+        conversation = create_conversation(db, DEFAULT_TENANT_ID)
         persist_turn(
             db,
             conversation,
@@ -179,7 +186,9 @@ def test_ordinal_falls_back_to_nearest_turn_that_contains_requested_position():
             cited_hits=[_hit(second)],
         )
 
-        hits = prior_citation_hits(db, conversation.id, "Tell me about the third one")
+        hits = prior_citation_hits(
+            db, conversation.id, "Tell me about the third one", DEFAULT_TENANT_ID
+        )
 
         assert [hit.source_record_id for hit in hits] == ["email:3"]
     finally:
@@ -190,18 +199,18 @@ def test_ordinal_falls_back_to_nearest_turn_that_contains_requested_position():
 def test_expiry_and_delete_remove_replayable_turns():
     engine, db = _database()
     try:
-        expired = create_conversation(db)
+        expired = create_conversation(db, DEFAULT_TENANT_ID)
         expired.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
         assert expire_stale_conversations(db) == 1
         try:
-            get_active_conversation(db, expired.id)
+            get_active_conversation(db, expired.id, DEFAULT_TENANT_ID)
         except ValueError as error:
             assert str(error) == "conversation_expired"
         else:
             raise AssertionError("Expired conversation remained active")
 
-        active = create_conversation(db)
+        active = create_conversation(db, DEFAULT_TENANT_ID)
         persist_turn(
             db,
             active,
@@ -214,7 +223,7 @@ def test_expiry_and_delete_remove_replayable_turns():
             insufficient_evidence=True,
             cited_hits=[],
         )
-        delete_conversation(db, active.id)
+        delete_conversation(db, active.id, DEFAULT_TENANT_ID)
         assert db.get(Conversation, active.id).status == "deleted"
         assert db.scalar(
             select(ConversationTurn).where(ConversationTurn.conversation_id == active.id)
@@ -267,7 +276,7 @@ def test_query_route_creates_context_and_intersects_follow_up_sources(monkeypatc
         assert second.conversation_id == first.conversation_id
         assert second.turn_id != first.turn_id
         assert [citation.source_system for citation in second.citations] == ["email"]
-        turns = load_recent_turns(db, first.conversation_id)
+        turns = load_recent_turns(db, first.conversation_id, DEFAULT_TENANT_ID)
         assert len(turns) == 2
         assert turns[1].protected_question == "Which of those came from email?"
         assert "Protected conversation history" not in turns[1].protected_question

@@ -3,7 +3,13 @@ from datetime import UTC, datetime
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models import Base, ProcessRecommendation, TokenizedContent, WorkflowAuditEntry
+from app.models import (
+    DEFAULT_TENANT_ID,
+    Base,
+    ProcessRecommendation,
+    TokenizedContent,
+    WorkflowAuditEntry,
+)
 from app.schemas import ProcessAnalysisRequest, UserRole
 from app.services.recommendations import analyze_processes, decide_recommendation
 from app.services.workflow_audit import verify_workflow_chain
@@ -45,6 +51,7 @@ def test_analysis_persists_cross_source_evidence_and_audit(monkeypatch):
                 minimum_evidence=3,
             ),
             role=UserRole.OWNER_DIRECTOR,
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
         assert result.status == "proposed"
@@ -69,12 +76,14 @@ def test_recommendation_transition_is_persistent_and_protected(monkeypatch):
                 minimum_evidence=3,
             ),
             role=UserRole.OWNER_DIRECTOR,
+            tenant_id=DEFAULT_TENANT_ID,
         )
         approved = decide_recommendation(
             db,
             proposed.id,
             decision="approved",
             role=UserRole.OWNER_DIRECTOR,
+            tenant_id=DEFAULT_TENANT_ID,
             comment="Call 012-345 6789 before rollout.",
         )
 

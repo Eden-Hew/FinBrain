@@ -101,7 +101,7 @@ def test_ingestion_refresh_updates_existing_record(monkeypatch):
     monkeypatch.setattr(
         ingestion,
         "tokenize_record",
-        lambda raw_text, _spans, _source_id, db=None: (f"sanitized:{raw_text}", []),
+        lambda raw_text, _spans, _source_id, _tenant_id, db=None: (f"sanitized:{raw_text}", []),
     )
     monkeypatch.setattr(ingestion, "contains_known_pii", lambda _text: False)
     monkeypatch.setattr(ingestion, "embed_text", lambda text: ([float(len(text))], False))

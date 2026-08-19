@@ -84,12 +84,32 @@ class Base(DeclarativeBase):
     pass
 
 
+# Well-known id for the single tenant that exists while multi-tenancy is being
+# rolled out. Every pre-existing row (and every SQLite/local-dev row, since there
+# is no migration-driven backfill there) belongs to this tenant.
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), primary_key=True, default=DEFAULT_TENANT_ID
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AuthUserRole(Base):
-    """Backend-authoritative FinBrain role assigned to a Supabase Auth user."""
+    """Backend-authoritative FinBrain role assigned to a Supabase Auth user within one tenant."""
 
     __tablename__ = "user_roles"
 
     user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), primary_key=True, default=DEFAULT_TENANT_ID
+    )
     user_role: Mapped[str] = mapped_column(String, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -104,6 +124,9 @@ class TokenizedContent(Base):
     __tablename__ = "tokenized_content"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     source_record_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     content_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(EmbeddingType())
@@ -131,6 +154,9 @@ class TokenVaultEntry(Base):
     __tablename__ = "token_vault"
 
     token: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     encrypted_value: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
@@ -151,6 +177,9 @@ class ProtectedTokenRegistry(Base):
     __tablename__ = "protected_token_registry"
 
     token: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     masked_value: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -191,6 +220,7 @@ class AuditLogEntry(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), ForeignKey("tenants.id"))
     prev_hash: Mapped[str] = mapped_column(String, nullable=False)
     event_hash: Mapped[str] = mapped_column(String, nullable=False)
     user_role: Mapped[str] = mapped_column(String, nullable=False)
@@ -290,6 +320,9 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     status: Mapped[str] = mapped_column(String, default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -308,6 +341,9 @@ class ConversationTurn(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     conversation_id: Mapped[str] = mapped_column(
         String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
@@ -335,6 +371,9 @@ class ConversationTurnCitation(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     turn_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("conversation_turns.id", ondelete="CASCADE"), nullable=False
     )
@@ -348,6 +387,9 @@ class ProcessRecommendation(Base):
     __tablename__ = "process_recommendations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     fingerprint: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     problem_statement: Mapped[str] = mapped_column(Text, nullable=False)
@@ -390,6 +432,9 @@ class RecommendationEvidence(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     recommendation_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("process_recommendations.id", ondelete="CASCADE"), nullable=False
     )
@@ -405,6 +450,9 @@ class RecommendationDecision(Base):
     __tablename__ = "recommendation_decisions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     recommendation_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("process_recommendations.id", ondelete="CASCADE"), nullable=False
     )
@@ -419,6 +467,7 @@ class WorkflowAuditEntry(Base):
     __tablename__ = "workflow_audit_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False), ForeignKey("tenants.id"))
     prev_hash: Mapped[str] = mapped_column(String, nullable=False)
     event_hash: Mapped[str] = mapped_column(String, nullable=False)
     event_type: Mapped[str] = mapped_column(String, nullable=False)
@@ -434,6 +483,9 @@ class EInvoiceRecord(Base):
     __tablename__ = "einvoice_records"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     supplier_name: Mapped[str] = mapped_column(String, nullable=False)
     supplier_tin: Mapped[str | None] = mapped_column(String)
     buyer_name: Mapped[str | None] = mapped_column(String)
@@ -457,6 +509,9 @@ class EinvoiceOutreachDraft(Base):
     __tablename__ = "einvoice_outreach_drafts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     einvoice_record_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("einvoice_records.id", ondelete="CASCADE"), nullable=False
     )

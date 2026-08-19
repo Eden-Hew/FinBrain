@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.models import TokenizedContent
+from app.models import DEFAULT_TENANT_ID, TokenizedContent
 from app.services.retrieval import RetrievalHit
 
 ALLOWED_METADATA_KEYS = {
@@ -22,6 +22,7 @@ ALLOWED_METADATA_KEYS = {
 
 @dataclass(frozen=True, slots=True)
 class QueryFilters:
+    tenant_id: str = DEFAULT_TENANT_ID
     source_systems: tuple[str, ...] = ()
     record_types: tuple[str, ...] = ()
     occurred_from: datetime | None = None
@@ -38,7 +39,10 @@ class QueryFilters:
 
 
 def eligible_statement(filters: QueryFilters) -> Select[tuple[TokenizedContent]]:
-    statement = select(TokenizedContent).where(TokenizedContent.processing_status == "ready")
+    statement = select(TokenizedContent).where(
+        TokenizedContent.processing_status == "ready",
+        TokenizedContent.tenant_id == filters.tenant_id,
+    )
     if filters.source_systems:
         statement = statement.where(TokenizedContent.source_system.in_(filters.source_systems))
     if filters.record_types:

@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models import AuditLogEntry, Base, TokenVaultEntry
+from app.models import DEFAULT_TENANT_ID, AuditLogEntry, Base, TokenVaultEntry
 from app.security.detect import detect_spans
 from app.security.detokenize import detokenize_response
 from app.security.tokenize import tokenize_record
@@ -13,7 +13,9 @@ def test_tokenization_removes_structured_pii_and_bands_amounts():
     Base.metadata.create_all(engine)
     raw = "Call 012-345 6789 about RM4,850; IC 901231-14-5566."
     with Session(engine) as db:
-        sanitized, entries = tokenize_record(raw, detect_spans(raw), "test-1", db=db)
+        sanitized, entries = tokenize_record(
+            raw, detect_spans(raw), "test-1", DEFAULT_TENANT_ID, db=db
+        )
 
     assert "012-345 6789" not in sanitized
     assert "901231-14-5566" not in sanitized
@@ -29,7 +31,9 @@ def test_exact_amount_is_vaulted_and_role_gated():
     Base.metadata.create_all(engine)
     raw = "Invoice INV-1024 requires payment of RM 4,500."
     with Session(engine) as db:
-        sanitized, entries = tokenize_record(raw, detect_spans(raw), "amount-gate", db=db)
+        sanitized, entries = tokenize_record(
+            raw, detect_spans(raw), "amount-gate", DEFAULT_TENANT_ID, db=db
+        )
         token = next(entry.token for entry in entries if entry.entity_type == "AMOUNT")
         assert token.startswith("AMOUNT_BAND_3_")
         assert "4,500" not in sanitized
@@ -56,12 +60,12 @@ def test_equivalent_amount_formats_share_token_and_preserve_cents():
     with Session(engine) as db:
         for index, value in enumerate(variants):
             _protected, entries = tokenize_record(
-                value, detect_spans(value), f"amount-{index}", db=db
+                value, detect_spans(value), f"amount-{index}", DEFAULT_TENANT_ID, db=db
             )
             tokens.append(next(entry.token for entry in entries if entry.entity_type == "AMOUNT"))
         assert len(set(tokens)) == 1
         protected, entries = tokenize_record(
-            "RM 4,500.75", detect_spans("RM 4,500.75"), "cents", db=db
+            "RM 4,500.75", detect_spans("RM 4,500.75"), "cents", DEFAULT_TENANT_ID, db=db
         )
         db.add_all(entries)
         db.commit()
@@ -83,8 +87,8 @@ def test_missing_amount_vault_falls_back_to_safe_band():
 
 def test_deterministic_tokens_link_same_value():
     raw = "Contact lim.ck@example.com"
-    first, _ = tokenize_record(raw, detect_spans(raw), "one")
-    second, _ = tokenize_record(raw, detect_spans(raw), "two")
+    first, _ = tokenize_record(raw, detect_spans(raw), "one", DEFAULT_TENANT_ID)
+    second, _ = tokenize_record(raw, detect_spans(raw), "two", DEFAULT_TENANT_ID)
     assert first == second
 
 
@@ -93,7 +97,9 @@ def test_role_gate_and_audit_chain():
     Base.metadata.create_all(engine)
     raw = "IC 901231-14-5566"
     with Session(engine) as db:
-        sanitized, entries = tokenize_record(raw, detect_spans(raw), "gate-test", db=db)
+        sanitized, entries = tokenize_record(
+            raw, detect_spans(raw), "gate-test", DEFAULT_TENANT_ID, db=db
+        )
         db.add_all(entries)
         db.commit()
         token = db.scalar(select(TokenVaultEntry.token))
@@ -107,13 +113,25 @@ def test_role_gate_and_audit_chain():
         assert verify_audit_chain(db)
 
 
+def test_tokens_do_not_collide_across_tenants():
+    """The same raw value tokenized by two different tenants must produce two different
+    tokens — otherwise the second tenant's vault write silently no-ops (token already
+    exists) and that tenant's disclosure would decrypt to the FIRST tenant's value."""
+    raw = "Call 012-345 6789"
+    tenant_a_token, _ = tokenize_record(raw, detect_spans(raw), "one", DEFAULT_TENANT_ID)
+    tenant_b_token, _ = tokenize_record(
+        raw, detect_spans(raw), "two", "00000000-0000-0000-0000-000000000002"
+    )
+    assert tenant_a_token != tenant_b_token
+
+
 def test_multiple_disclosures_form_one_continuous_chain():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     raw = "Call 012-345 6789 or email lim.ck@example.com"
     with Session(engine, autoflush=False) as db:
         sanitized, entries = tokenize_record(
-            raw, detect_spans(raw), "multi-token-test", db=db
+            raw, detect_spans(raw), "multi-token-test", DEFAULT_TENANT_ID, db=db
         )
         db.add_all(entries)
         db.commit()

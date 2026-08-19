@@ -38,7 +38,8 @@ def _restore_rls_context(session: Session, _transaction, connection) -> None:
         text(
             "select set_config('app.user_id', :user_id, true), "
             "set_config('app.user_role', :user_role, true), "
-            "set_config('app.actor_ref', :actor_ref, true)"
+            "set_config('app.actor_ref', :actor_ref, true), "
+            "set_config('app.tenant_id', :tenant_id, true)"
         ),
         context,
     )
@@ -68,6 +69,7 @@ def set_rls_context(
     user_id: str,
     user_role: str,
     actor_ref: str,
+    tenant_id: str,
 ) -> None:
     """Apply verified request identity and enter the non-bypass application role."""
     if db.bind is None or db.bind.dialect.name != "postgresql":
@@ -76,15 +78,22 @@ def set_rls_context(
         "user_id": user_id,
         "user_role": user_role,
         "actor_ref": actor_ref,
+        "tenant_id": tenant_id,
         "database_role": "finbrain_app",
     }
     db.execute(
         text(
             "select set_config('app.user_id', :user_id, true), "
             "set_config('app.user_role', :user_role, true), "
-            "set_config('app.actor_ref', :actor_ref, true)"
+            "set_config('app.actor_ref', :actor_ref, true), "
+            "set_config('app.tenant_id', :tenant_id, true)"
         ),
-        {"user_id": user_id, "user_role": user_role, "actor_ref": actor_ref},
+        {
+            "user_id": user_id,
+            "user_role": user_role,
+            "actor_ref": actor_ref,
+            "tenant_id": tenant_id,
+        },
     )
     db.execute(text("set local role finbrain_app"))
 

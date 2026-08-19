@@ -115,6 +115,7 @@ def detokenize_response_with_trace(
                 token,
                 authorized,
                 query_hash,
+                tenant_id=registry.tenant_id,
                 actor_ref=actor_ref,
             )
         db.commit()

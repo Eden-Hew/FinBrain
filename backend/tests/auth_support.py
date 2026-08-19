@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from app.auth.principal import AuthPrincipal
+from app.models import DEFAULT_TENANT_ID
 from app.schemas import UserRole
 
 USER_IDS = {
@@ -10,10 +11,16 @@ USER_IDS = {
     UserRole.COMPLIANCE: UUID("40000000-0000-0000-0000-000000000004"),
 }
 
+TENANT_A = UUID(DEFAULT_TENANT_ID)
+TENANT_B = UUID("00000000-0000-0000-0000-000000000002")
 
-def principal(role: UserRole = UserRole.GENERAL_EMPLOYEE) -> AuthPrincipal:
+
+def principal(
+    role: UserRole = UserRole.GENERAL_EMPLOYEE, tenant_id: UUID = TENANT_A
+) -> AuthPrincipal:
     return AuthPrincipal(
         user_id=USER_IDS[role],
         email=f"{role.value}@finbrain.test",
         role=role,
+        tenant_id=tenant_id,
     )
