@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   FB_ROLE_IDENTITY,
   initialAuditRows,
@@ -91,6 +91,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const show = useCallback((s: Screen) => {
     setScreen(s);
     window.scrollTo(0, 0);
+    const path = s === "landing" ? "/" : `/${s}`;
+    window.history.pushState({ screen: s }, "", path);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      const stateScreen = (e.state as { screen?: Screen })?.screen;
+      if (stateScreen) {
+        setScreen(stateScreen);
+      } else {
+        const pathname = window.location.pathname.replace(/^\//, "");
+        const matchedScreen: Screen = pathname && [
+          "landing", "login", "signup", "onboarding", "security", "legal",
+          "agents", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
+        ].includes(pathname) ? (pathname as Screen) : "landing";
+        setScreen(matchedScreen);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
   const openApprovalRecommendation = useCallback((id: number) => {
     setFocusedRecommendationId(id);
