@@ -186,6 +186,90 @@ const AGING_LABELS: Record<ARAgingBucket["label"], string> = {
   "90+": "90+ days overdue",
 };
 
+// Illustrative fallback only -- shown with a visible "Demo data" banner whenever the
+// real /finance/summary call fails (e.g. the backend serving this deployment hasn't
+// picked up the endpoint yet), never silently presented as real. This is the opposite
+// of how this screen used to work: every number here used to be a hardcoded literal
+// with no indication it wasn't real. That was the whole problem; this fallback exists
+// so demos don't dead-end on a bare error screen, not so numbers can be faked again.
+// 24 months so "previous year" (and several "previous quarter" clicks) still land on
+// a real computed figure instead of clamping to a single stray data point.
+const MOCK_MONTHLY_REVENUE = [
+  98000, 102500, 108900, 105200, 112800, 118500, 115200, 121900, 126400, 119800, 124600, 130200,
+  128000, 134500, 141200, 139800, 152300, 158900, 149500, 163200, 171800, 168400, 176900, 184300,
+];
+
+// How far back the demo dataset stays coherent for each period granularity --
+// beyond this, prior-period math clamps to a single stray month and produces
+// nonsensical comparisons. Real backend data has no such limit.
+const MOCK_MIN_OFFSET: Record<FinancePeriod, number> = { month: -11, quarter: -3, year: -1 };
+
+const MOCK_TOP_CUSTOMERS: TopCustomer[] = [
+  { customer_id: 1, name: "Tenaga Nasional Berhad", total_amount: "246000.00", invoice_count: 9 },
+  { customer_id: 2, name: "Grab Malaysia Sdn Bhd", total_amount: "182400.00", invoice_count: 14 },
+  { customer_id: 3, name: "AirAsia Group Berhad", total_amount: "156800.00", invoice_count: 6 },
+  { customer_id: 4, name: "Petronas Dagangan Berhad", total_amount: "119500.00", invoice_count: 5 },
+  { customer_id: 5, name: "Maybank Islamic Berhad", total_amount: "94200.00", invoice_count: 8 },
+];
+
+function mockMonthLabels(): string[] {
+  const now = new Date();
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  });
+}
+
+function buildMockFinanceSummary(period: FinancePeriod, offset: number): FinanceSummaryResponse {
+  const monthsInPeriod = period === "month" ? 1 : period === "quarter" ? 3 : 12;
+  const lastIndex = MOCK_MONTHLY_REVENUE.length - 1;
+  const clamp = (i: number) => Math.max(0, Math.min(lastIndex, i));
+  const sum = (from: number, to: number) =>
+    MOCK_MONTHLY_REVENUE.slice(clamp(from), clamp(to) + 1).reduce((a, b) => a + b, 0);
+
+  const endIndex = lastIndex + offset * monthsInPeriod;
+  const startIndex = endIndex - monthsInPeriod + 1;
+  const totalRevenue = sum(startIndex, endIndex);
+  const priorRevenue = sum(startIndex - monthsInPeriod, endIndex - monthsInPeriod);
+
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth() + offset * monthsInPeriod - (monthsInPeriod - 1), 1);
+  const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + monthsInPeriod, 1);
+  const toIso = (d: Date) => d.toISOString().slice(0, 10);
+
+  return {
+    period,
+    period_start: toIso(periodStart),
+    period_end: toIso(periodEnd),
+    total_revenue: totalRevenue.toFixed(2),
+    prior_period_revenue: priorRevenue.toFixed(2),
+    revenue_change_pct: priorRevenue > 0 ? ((totalRevenue - priorRevenue) / priorRevenue) * 100 : null,
+    outstanding_ar: "94320.00",
+    ar_aging: [
+      { label: "current", count: 14, total_amount: "45200.00" },
+      { label: "1-30", count: 8, total_amount: "28100.00" },
+      { label: "31-60", count: 3, total_amount: "12400.00" },
+      { label: "61-90", count: 2, total_amount: "5800.00" },
+      { label: "90+", count: 1, total_amount: "2820.00" },
+    ],
+    revenue_trend: mockMonthLabels().map((label, i) => ({
+      period_label: label,
+      period_start: toIso(new Date(now.getFullYear(), now.getMonth() - (11 - i), 1)),
+      // Trend is always the trailing 12 months from today, independent of the
+      // selected period/offset -- matches revenue_summary()'s real backend behavior.
+      total_amount: MOCK_MONTHLY_REVENUE[MOCK_MONTHLY_REVENUE.length - 12 + i].toFixed(2),
+    })),
+    top_customers: MOCK_TOP_CUSTOMERS,
+    status_breakdown: [
+      { label: "pending", count: 6, total_amount: "18400.00" },
+      { label: "outstanding", count: 28, total_amount: "94320.00" },
+      { label: "paid", count: 112, total_amount: "612400.00" },
+    ],
+    validated_invoice_count: 140,
+    avg_days_to_pay: 22.4,
+  };
+}
+
 export default function Finance() {
   const { t } = useI18n();
   const { show } = useAppState();
@@ -194,6 +278,7 @@ export default function Finance() {
   const [data, setData] = useState<FinanceSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isDemoData, setIsDemoData] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -206,16 +291,23 @@ export default function Finance() {
       .then((response) => {
         if (!active) return;
         setData(response);
+        setIsDemoData(false);
         setLoading(false);
       })
       .catch((err) => {
         if (!active) return;
         const message = err instanceof Error ? err.message : "Failed to load finance summary.";
-        setError(
-          message === "insufficient_role"
-            ? "Your role doesn't have access to financial figures. Ask an owner/director, finance, or compliance user."
-            : message,
-        );
+        if (message === "insufficient_role") {
+          // A real permission denial must never be papered over with demo numbers --
+          // that would misrepresent what this role can actually see.
+          setError("Your role doesn't have access to financial figures. Ask an owner/director, finance, or compliance user.");
+          setData(null);
+          setIsDemoData(false);
+        } else {
+          setData(buildMockFinanceSummary(period, offset));
+          setIsDemoData(true);
+          setError("");
+        }
         setLoading(false);
       });
     return () => { active = false; };
@@ -230,6 +322,7 @@ export default function Finance() {
     if (!data) return;
     const rows: (string | number)[][] = [
       ["Financial Dashboard export", periodLabel(data)],
+      ...(isDemoData ? [["NOTE", "Demo data -- live backend unreachable, figures are illustrative"]] : []),
       [],
       ["Metric", "Value"],
       ["Total revenue", data.total_revenue],
@@ -284,6 +377,7 @@ export default function Finance() {
             className="fb-btn fb-btn-outline"
             style={{ padding: ".3rem .6rem" }}
             onClick={() => setOffset((o) => o - 1)}
+            disabled={isDemoData && offset <= MOCK_MIN_OFFSET[period]}
             aria-label="Previous period"
           >‹</button>
           <strong style={{ minWidth: "10ch", textAlign: "center" }}>{data ? periodLabel(data) : "—"}</strong>
@@ -301,6 +395,11 @@ export default function Finance() {
       {loading && <div className="fb-callout">Loading finance summary…</div>}
       {!loading && error && (
         <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>{error}</div>
+      )}
+      {!loading && !error && isDemoData && (
+        <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--ink)" }}>
+          <strong>Demo data.</strong> The live backend for this dashboard isn't reachable right now, so every figure below is illustrative, not real.
+        </div>
       )}
 
       {!loading && !error && data && (
