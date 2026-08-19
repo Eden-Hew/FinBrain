@@ -1,9 +1,18 @@
+import { useId } from "react";
+
 export function LogoMark({ large }: { large?: boolean }) {
+  const gradientId = useId();
   return (
     <svg className={large ? "fb-logo-mark-lg" : "fb-logo-mark"} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <path d="M16 3 L27 7.5 V15.5 C27 22.5 22.5 27.5 16 29.5 C9.5 27.5 5 22.5 5 15.5 V7.5 Z" stroke="var(--accent)" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
-      <line x1="16" y1="12" x2="16" y2="17" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" />
-      <circle cx="16" cy="20.5" r="1.8" fill="var(--accent)" />
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#1F8FE0" />
+          <stop offset="1" stopColor="#17B892" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="9" fill={`url(#${gradientId})`} />
+      <circle cx="16" cy="16" r="9.5" stroke="#fff" strokeWidth="2" />
+      <path d="M12 16.3 L15 19.3 L20.5 12.8" stroke="#fff" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
