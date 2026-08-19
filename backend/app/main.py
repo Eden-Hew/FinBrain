@@ -14,6 +14,7 @@ from app.routes import (
     auth,
     conversations,
     einvoice,
+    finance,
     health,
     ingestion,
     integrations,
@@ -59,6 +60,7 @@ app.include_router(ingestion.router)
 app.include_router(integrations.router)
 app.include_router(recommendations.router)
 app.include_router(einvoice.router)
+app.include_router(finance.router)
 app.include_router(uploads.router)
 app.include_router(conversations.router)
 app.include_router(privacy.router)

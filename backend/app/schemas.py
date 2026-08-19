@@ -505,11 +505,13 @@ class EInvoiceRecordResponse(BaseModel):
     buyer_customer_id: int | None = None
     invoice_no: str | None
     issue_date: date | None
+    due_date: date | None = None
     currency: str | None
     tax_type: str | None
     tax_rate: str | None
     total_amount: Decimal
     status: str
+    paid_at: date | None = None
     created_at: datetime
     document_available: bool = False
     readiness_reason: str = ""
@@ -539,10 +541,15 @@ class EInvoiceCreatePayload(BaseModel):
     buyer_name: str | None = Field(default=None, max_length=255)
     invoice_no: str | None = Field(default=None, max_length=64)
     issue_date: date | None = None
+    due_date: date | None = None
     currency: str | None = Field(default="MYR", max_length=8)
     tax_type: str | None = Field(default=None, max_length=32)
     tax_rate: str | None = Field(default=None, max_length=16)
     total_amount: Decimal = Field(gt=0)
+
+
+class MarkPaidPayload(BaseModel):
+    paid_at: date | None = None
 
 
 class EinvoiceReadinessCategory(BaseModel):
@@ -572,3 +579,44 @@ class EinvoiceOutreachDraftResponse(BaseModel):
     status: str
     created_at: datetime
     decided_at: datetime | None
+
+
+class RevenuePeriodPoint(BaseModel):
+    period_label: str
+    period_start: date
+    total_amount: Decimal
+
+
+class ARAgingBucket(BaseModel):
+    label: Literal["current", "1-30", "31-60", "61-90", "90+"]
+    count: int
+    total_amount: Decimal
+
+
+class TopCustomer(BaseModel):
+    customer_id: int
+    name: str
+    total_amount: Decimal
+    invoice_count: int
+
+
+class InvoiceStatusBreakdown(BaseModel):
+    label: Literal["pending", "outstanding", "paid"]
+    count: int
+    total_amount: Decimal
+
+
+class FinanceSummaryResponse(BaseModel):
+    period: Literal["month", "quarter", "year"]
+    period_start: date
+    period_end: date
+    total_revenue: Decimal
+    prior_period_revenue: Decimal
+    revenue_change_pct: float | None
+    outstanding_ar: Decimal
+    ar_aging: list[ARAgingBucket]
+    revenue_trend: list[RevenuePeriodPoint]
+    top_customers: list[TopCustomer]
+    status_breakdown: list[InvoiceStatusBreakdown]
+    validated_invoice_count: int
+    avg_days_to_pay: float | None

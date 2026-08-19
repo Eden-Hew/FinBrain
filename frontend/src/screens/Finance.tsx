@@ -1,7 +1,14 @@
-import { useState, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
+import {
+  fetchFinanceSummary,
+  type ARAgingBucket,
+  type FinancePeriod,
+  type FinanceSummaryResponse,
+  type TopCustomer,
+} from "../api/client";
 
 function downloadCsv(filename: string, rows: (string | number)[][]) {
   const csv = rows
@@ -21,49 +28,69 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const REVENUE = [130, 134, 140, 147, 153, 159, 163, 168, 175, 178, 171, 172];
-const PROFIT = [38, 39, 40, 41, 42, 44, 45, 46, 48, 49, 47, 57];
+function formatCurrency(value: string | number): string {
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (Number.isNaN(num)) return "RM 0";
+  const sign = num < 0 ? "-" : "";
+  const abs = Math.abs(num);
+  if (abs >= 1_000_000) return `${sign}RM ${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}RM ${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}RM ${abs.toFixed(2)}`;
+}
+
+function periodLabel(data: FinanceSummaryResponse): string {
+  const start = new Date(`${data.period_start}T00:00:00`);
+  if (data.period === "month") {
+    return start.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
+  if (data.period === "quarter") {
+    return `Q${Math.floor(start.getMonth() / 3) + 1} ${start.getFullYear()}`;
+  }
+  return String(start.getFullYear());
+}
 
 const CHART_W = 640;
 const CHART_H = 250;
-const PAD_LEFT = 40;
-const PAD_RIGHT = 50;
+const PAD_LEFT = 56;
+const PAD_RIGHT = 20;
 const PAD_TOP = 20;
-const PAD_BOTTOM = 20;
-const MAX_VALUE = 200;
+const PAD_BOTTOM = 24;
 
-function xPos(i: number) {
-  return PAD_LEFT + (i / (MONTHS.length - 1)) * (CHART_W - PAD_LEFT - PAD_RIGHT);
-}
-function yPos(value: number) {
-  return PAD_TOP + (CHART_H - PAD_TOP - PAD_BOTTOM) * (1 - value / MAX_VALUE);
-}
-
-function RevenueProfitChart() {
+function RevenueTrendChart({ data }: { data: FinanceSummaryResponse }) {
   const [hover, setHover] = useState<number | null>(null);
-  const revenuePoints = REVENUE.map((v, i) => `${xPos(i)},${yPos(v)}`).join(" ");
-  const profitPoints = PROFIT.map((v, i) => `${xPos(i)},${yPos(v)}`).join(" ");
-  const gridValues = [0, 50, 100, 150, 200];
+  const points = data.revenue_trend;
+  const values = points.map((p) => parseFloat(p.total_amount));
+  const maxValue = Math.max(1, ...values);
+
+  const xPos = (i: number) =>
+    PAD_LEFT + (points.length <= 1 ? 0 : (i / (points.length - 1)) * (CHART_W - PAD_LEFT - PAD_RIGHT));
+  const yPos = (v: number) => PAD_TOP + (CHART_H - PAD_TOP - PAD_BOTTOM) * (1 - v / maxValue);
 
   const handleMove = (event: MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const relX = ((event.clientX - rect.left) / rect.width) * CHART_W;
     let closest = 0;
     let closestDist = Infinity;
-    MONTHS.forEach((_, i) => {
+    points.forEach((_, i) => {
       const dist = Math.abs(xPos(i) - relX);
       if (dist < closestDist) { closestDist = dist; closest = i; }
     });
     setHover(closest);
   };
 
+  if (points.length === 0) {
+    return <div className="fb-callout">No validated revenue yet in this window.</div>;
+  }
+
+  const gridValues = [0, 0.25, 0.5, 0.75, 1].map((f) => maxValue * f);
+  const labelStep = Math.max(1, Math.ceil(points.length / 12));
+
   return (
     <div className="fb-chart-hover-wrap">
       <svg
         viewBox={`0 0 ${CHART_W} ${CHART_H}`}
         role="img"
-        aria-label="Line chart comparing monthly revenue and profit over 12 months, both trending gently upward, revenue consistently above profit"
+        aria-label={`Line chart of monthly validated revenue, ${points.length} months`}
         onMouseMove={handleMove}
         onMouseLeave={() => setHover(null)}
       >
@@ -72,73 +99,78 @@ function RevenueProfitChart() {
         {gridValues.map((v) => (
           <g key={v}>
             <line x1={PAD_LEFT} y1={yPos(v)} x2={CHART_W - PAD_RIGHT} y2={yPos(v)} stroke="var(--line)" strokeWidth="1" />
-            <text x={PAD_LEFT - 6} y={yPos(v) + 3} textAnchor="end" fontSize="9" fill="var(--ink-soft)">{v}</text>
+            <text x={PAD_LEFT - 6} y={yPos(v) + 3} textAnchor="end" fontSize="9" fill="var(--ink-soft)">{formatCurrency(v)}</text>
           </g>
         ))}
-        {MONTHS.map((m, i) => (
-          <text key={m} x={xPos(i)} y={CHART_H - 6} textAnchor="middle" fontSize="9" fill="var(--ink-soft)">{m}</text>
+        {points.map((p, i) => (
+          i % labelStep === 0 ? (
+            <text key={p.period_label} x={xPos(i)} y={CHART_H - 6} textAnchor="middle" fontSize="9" fill="var(--ink-soft)">{p.period_label}</text>
+          ) : null
         ))}
-
-        <polyline points={revenuePoints} fill="none" stroke="var(--viz-1)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={xPos(11)} cy={yPos(REVENUE[11])} r="4" fill="var(--viz-1)" stroke="var(--card)" strokeWidth="2" />
-        <text x={xPos(11) + 8} y={yPos(REVENUE[11]) + 3} fontSize="10" fontWeight="700" fill="var(--ink)">RM{REVENUE[11]}K</text>
-
-        <polyline points={profitPoints} fill="none" stroke="var(--viz-2)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={xPos(11)} cy={yPos(PROFIT[11])} r="4" fill="var(--viz-2)" stroke="var(--card)" strokeWidth="2" />
-        <text x={xPos(11) + 8} y={yPos(PROFIT[11]) + 3} fontSize="10" fontWeight="700" fill="var(--ink)">RM{PROFIT[11]}K</text>
-
+        <polyline
+          points={values.map((v, i) => `${xPos(i)},${yPos(v)}`).join(" ")}
+          fill="none"
+          stroke="var(--viz-1)"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
         {hover !== null && (
           <>
             <line x1={xPos(hover)} y1={PAD_TOP} x2={xPos(hover)} y2={CHART_H - PAD_BOTTOM} stroke="var(--ink-soft)" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx={xPos(hover)} cy={yPos(REVENUE[hover])} r="5" fill="var(--viz-1)" stroke="var(--card)" strokeWidth="2" />
-            <circle cx={xPos(hover)} cy={yPos(PROFIT[hover])} r="5" fill="var(--viz-2)" stroke="var(--card)" strokeWidth="2" />
+            <circle cx={xPos(hover)} cy={yPos(values[hover])} r="5" fill="var(--viz-1)" stroke="var(--card)" strokeWidth="2" />
           </>
         )}
       </svg>
       {hover !== null && (
         <div className="fb-chart-tooltip" style={{ left: `${(xPos(hover) / CHART_W) * 100}%` }}>
-          <strong>{MONTHS[hover]}</strong>
-          <div><span className="fb-legend-dot" style={{ background: "var(--viz-1)" }} />Revenue RM{REVENUE[hover]}K</div>
-          <div><span className="fb-legend-dot" style={{ background: "var(--viz-2)" }} />Profit RM{PROFIT[hover]}K</div>
+          <strong>{points[hover].period_label}</strong>
+          <div><span className="fb-legend-dot" style={{ background: "var(--viz-1)" }} />{formatCurrency(points[hover].total_amount)}</div>
         </div>
       )}
     </div>
   );
 }
 
-const BUSINESS_UNITS = [
-  { label: "SaaS Subscriptions", value: 620 },
-  { label: "Transaction Fees", value: 480 },
-  { label: "Advisory", value: 340 },
-  { label: "Compliance Ops", value: 260 },
-  { label: "Other", value: 140 },
-];
-
-function BusinessUnitChart() {
+function TopCustomersChart({ customers }: { customers: TopCustomer[] }) {
   const [hover, setHover] = useState<number | null>(null);
-  const barW = 640, barMax = 620, barLeft = 144, barRight = 526.2;
-  const scale = (v: number) => barLeft + (v / barMax) * (barRight - barLeft);
+  if (customers.length === 0) {
+    return <div className="fb-callout">No validated invoices linked to a customer yet.</div>;
+  }
+  const values = customers.map((c) => parseFloat(c.total_amount));
+  const maxValue = Math.max(1, ...values);
+  const barW = 640;
+  const barLeft = 160;
+  const barRight = 526;
+  const rowHeight = 40;
+  const height = 10 + customers.length * rowHeight;
+  const scale = (v: number) => barLeft + (v / maxValue) * (barRight - barLeft);
 
   return (
-    <svg width="100%" viewBox={`0 0 ${barW} 210`} role="img" aria-label="Horizontal bar chart of revenue by business unit: SaaS Subscriptions RM620K, Transaction Fees RM480K, Advisory RM340K, Compliance Ops RM260K, Other RM140K">
-      {BUSINESS_UNITS.map((unit, i) => {
-        const top = 10 + i * 40;
-        const right = scale(unit.value);
+    <svg
+      width="100%"
+      viewBox={`0 0 ${barW} ${height}`}
+      role="img"
+      aria-label={`Horizontal bar chart of top ${customers.length} customers by revenue`}
+    >
+      {customers.map((customer, i) => {
+        const top = 10 + i * rowHeight;
+        const right = scale(values[i]);
         return (
           <g
-            key={unit.label}
+            key={customer.customer_id}
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => setHover(null)}
             style={{ cursor: "default" }}
           >
-            <text x={barLeft - 8} y={top + 14} textAnchor="end" fontSize="10.5" fill="var(--ink)">{unit.label}</text>
+            <text x={barLeft - 8} y={top + 14} textAnchor="end" fontSize="10.5" fill="var(--ink)">{customer.name}</text>
             <path
               d={`M${barLeft},${top} L${right - 4},${top} Q${right},${top} ${right},${top + 4} L${right},${top + 16} Q${right},${top + 20} ${right - 4},${top + 20} L${barLeft},${top + 20} Z`}
               fill="var(--viz-1)"
               opacity={hover === null || hover === i ? 1 : 0.45}
               style={{ transition: "opacity .15s ease" }}
             />
-            <text x={right + 10} y={top + 14} fontSize="10" fontWeight="700" fill="var(--ink)" style={{ fontVariantNumeric: "tabular-nums" }}>RM{unit.value}K</text>
+            <text x={right + 10} y={top + 14} fontSize="10" fontWeight="700" fill="var(--ink)" style={{ fontVariantNumeric: "tabular-nums" }}>{formatCurrency(customer.total_amount)}</text>
           </g>
         );
       })}
@@ -146,17 +178,77 @@ function BusinessUnitChart() {
   );
 }
 
+const AGING_LABELS: Record<ARAgingBucket["label"], string> = {
+  current: "Current",
+  "1-30": "1–30 days overdue",
+  "31-60": "31–60 days overdue",
+  "61-90": "61–90 days overdue",
+  "90+": "90+ days overdue",
+};
+
 export default function Finance() {
   const { t } = useI18n();
   const { show } = useAppState();
+  const [period, setPeriod] = useState<FinancePeriod>("month");
+  const [offset, setOffset] = useState(0);
+  const [data, setData] = useState<FinanceSummaryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const exportCsv = () => downloadCsv("finbrain-finance-dashboard.csv", [
-    ["Metric", "Value", "Change vs last quarter"],
-    ["Total revenue", "RM 1,840,000", "+12.4%"],
-    ["Total profit", "RM 612,000", "+8.1%"],
-    ["Profit margin", "33.3%", "+1.2 pts"],
-    ["Outstanding AR", "RM 94,000", "+4.2% — needs review"],
-  ]);
+  useEffect(() => {
+    let active = true;
+    // Genuinely syncs to period/offset changing over time (re-fetching a new summary),
+    // not state derivable once at mount, so it can't move out of the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    setError("");
+    fetchFinanceSummary(period, offset)
+      .then((response) => {
+        if (!active) return;
+        setData(response);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        const message = err instanceof Error ? err.message : "Failed to load finance summary.";
+        setError(
+          message === "insufficient_role"
+            ? "Your role doesn't have access to financial figures. Ask an owner/director, finance, or compliance user."
+            : message,
+        );
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [period, offset]);
+
+  const changePeriod = (next: FinancePeriod) => {
+    setPeriod(next);
+    setOffset(0);
+  };
+
+  const exportCsv = () => {
+    if (!data) return;
+    const rows: (string | number)[][] = [
+      ["Financial Dashboard export", periodLabel(data)],
+      [],
+      ["Metric", "Value"],
+      ["Total revenue", data.total_revenue],
+      ["Prior period revenue", data.prior_period_revenue],
+      ["Outstanding AR", data.outstanding_ar],
+      ["Validated invoices", data.validated_invoice_count],
+      ["Avg days to pay", data.avg_days_to_pay ?? ""],
+      [],
+      ["Revenue trend", "Amount"],
+      ...data.revenue_trend.map((p) => [p.period_label, p.total_amount]),
+      [],
+      ["AR aging bucket", "Count", "Amount"],
+      ...data.ar_aging.map((b) => [AGING_LABELS[b.label], b.count, b.total_amount]),
+      [],
+      ["Top customer", "Amount", "Invoices"],
+      ...data.top_customers.map((c) => [c.name, c.total_amount, c.invoice_count]),
+    ];
+    downloadCsv("finbrain-finance-dashboard.csv", rows);
+  };
 
   return (
     <div className="fb-root fb-shell">
@@ -169,69 +261,144 @@ export default function Finance() {
             <h1>{t("finance.title")}</h1>
             <p>{t("finance.desc")}</p>
           </div>
-          <button className="fb-btn fb-btn-outline" type="button" onClick={exportCsv}><span>{t("export.csv")}</span></button>
+          <button className="fb-btn fb-btn-outline" type="button" onClick={exportCsv} disabled={!data}>
+            <span>{t("export.csv")}</span>
+          </button>
+        </div>
+        <div className="fb-audit-filters" aria-label="Select reporting period" style={{ marginTop: "1rem" }}>
+          {(["month", "quarter", "year"] as FinancePeriod[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={period === value ? "is-current" : ""}
+              aria-pressed={period === value}
+              onClick={() => changePeriod(value)}
+            >
+              {value === "month" ? "Month" : value === "quarter" ? "Quarter" : "Year"}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: ".6rem", marginTop: ".6rem" }}>
+          <button
+            type="button"
+            className="fb-btn fb-btn-outline"
+            style={{ padding: ".3rem .6rem" }}
+            onClick={() => setOffset((o) => o - 1)}
+            aria-label="Previous period"
+          >‹</button>
+          <strong style={{ minWidth: "10ch", textAlign: "center" }}>{data ? periodLabel(data) : "—"}</strong>
+          <button
+            type="button"
+            className="fb-btn fb-btn-outline"
+            style={{ padding: ".3rem .6rem" }}
+            onClick={() => setOffset((o) => Math.min(0, o + 1))}
+            disabled={offset >= 0}
+            aria-label="Next period"
+          >›</button>
         </div>
       </header>
 
-      <div className="fb-kpi-row">
-        <div className="fb-kpi-tile">
-          <div className="fb-kpi-label">Total revenue</div>
-          <div className="fb-kpi-value">RM 1.84M</div>
-          <div className="fb-kpi-delta is-good">▲ 12.4% vs last quarter</div>
-          <svg width="96" height="28" viewBox="0 0 96 28" role="img" aria-label="Revenue trending up over the last 8 periods">
-            <polyline points="2,15 15.1,14 28.3,16 41.4,13 54.6,11 67.7,10 80.9,8 94,6" fill="none" stroke="var(--ink-soft)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            <circle cx="94" cy="6" r="3" fill="var(--chart-good)" />
-          </svg>
-        </div>
-        <div className="fb-kpi-tile">
-          <div className="fb-kpi-label">Total profit</div>
-          <div className="fb-kpi-value">RM 612K</div>
-          <div className="fb-kpi-delta is-good">▲ 8.1% vs last quarter</div>
-          <svg width="96" height="28" viewBox="0 0 96 28" role="img" aria-label="Profit trending up over the last 8 periods">
-            <polyline points="2,16 15.1,15.6 28.3,14 41.4,13.6 54.6,12 67.7,10.4 80.9,9.6 94,8.4" fill="none" stroke="var(--ink-soft)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            <circle cx="94" cy="8.4" r="3" fill="var(--chart-good)" />
-          </svg>
-        </div>
-        <div className="fb-kpi-tile">
-          <div className="fb-kpi-label">Profit margin</div>
-          <div className="fb-kpi-value">33.3%</div>
-          <div className="fb-kpi-delta is-good">▲ 1.2 pts vs last quarter</div>
-          <svg width="96" height="28" viewBox="0 0 96 28" role="img" aria-label="Profit margin roughly flat with a slight improvement">
-            <polyline points="2,14 15.1,14.4 28.3,13.6 41.4,14 54.6,13.2 67.7,12.8 80.9,12 94,11.2" fill="none" stroke="var(--ink-soft)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            <circle cx="94" cy="11.2" r="3" fill="var(--chart-good)" />
-          </svg>
-        </div>
-        <button className="fb-kpi-tile fb-kpi-tile-link" type="button" onClick={() => show("einvoice")} title="See the invoices behind this number">
-          <div className="fb-kpi-label">Outstanding AR</div>
-          <div className="fb-kpi-value">RM 94K</div>
-          <div className="fb-kpi-delta is-attn">⚠ 4.2% vs last quarter — review</div>
-          <svg width="96" height="28" viewBox="0 0 96 28" role="img" aria-label="Outstanding receivables trending up, needs attention">
-            <polyline points="2,17.6 15.1,15.6 28.3,14 41.4,12.4 54.6,11 67.7,9.6 80.9,8 94,7" fill="none" stroke="var(--ink-soft)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-            <circle cx="94" cy="7" r="3" fill="var(--chart-attn)" />
-          </svg>
-          <span className="fb-kpi-tile-cta">View invoices →</span>
-        </button>
-      </div>
+      {loading && <div className="fb-callout">Loading finance summary…</div>}
+      {!loading && error && (
+        <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>{error}</div>
+      )}
 
-      <div className="fb-chart-section">
-        <h2>Revenue vs. profit</h2>
-        <p className="fb-chart-caption">Monthly, in RM thousands. Hover the chart for exact figures.</p>
-        <div className="fb-chart-card">
-          <div className="fb-chart-legend">
-            <span><span className="fb-legend-dot" style={{ background: "var(--viz-1)" }}></span>Revenue</span>
-            <span><span className="fb-legend-dot" style={{ background: "var(--viz-2)" }}></span>Profit</span>
+      {!loading && !error && data && (
+        <>
+          <div className="fb-kpi-row">
+            <div className="fb-kpi-tile">
+              <div className="fb-kpi-label">Total revenue</div>
+              <div className="fb-kpi-value">{formatCurrency(data.total_revenue)}</div>
+              <div className={"fb-kpi-delta " + (data.revenue_change_pct === null ? "" : data.revenue_change_pct >= 0 ? "is-good" : "is-attn")}>
+                {data.revenue_change_pct === null
+                  ? "No prior-period data"
+                  : `${data.revenue_change_pct >= 0 ? "▲" : "▼"} ${Math.abs(data.revenue_change_pct).toFixed(1)}% vs prior ${data.period}`}
+              </div>
+            </div>
+            <button className="fb-kpi-tile fb-kpi-tile-link" type="button" onClick={() => show("einvoice")} title="See the invoices behind this number">
+              <div className="fb-kpi-label">Outstanding AR</div>
+              <div className="fb-kpi-value">{formatCurrency(data.outstanding_ar)}</div>
+              <div className="fb-kpi-delta">Validated, unpaid invoices</div>
+              <span className="fb-kpi-tile-cta">View invoices →</span>
+            </button>
+            <div className="fb-kpi-tile">
+              <div className="fb-kpi-label">Invoices validated</div>
+              <div className="fb-kpi-value">{data.validated_invoice_count}</div>
+              <div className="fb-kpi-delta">All-time, this tenant</div>
+            </div>
+            <div className="fb-kpi-tile">
+              <div className="fb-kpi-label">Avg days to pay</div>
+              <div className="fb-kpi-value">{data.avg_days_to_pay === null ? "—" : data.avg_days_to_pay.toFixed(1)}</div>
+              <div className="fb-kpi-delta">{data.avg_days_to_pay === null ? "No paid invoices yet" : "Issue date to payment date"}</div>
+            </div>
           </div>
-          <RevenueProfitChart />
-        </div>
-      </div>
 
-      <div className="fb-chart-section">
-        <h2>Revenue by business unit</h2>
-        <p className="fb-chart-caption">Trailing 12 months, in RM thousands.</p>
-        <div className="fb-chart-card">
-          <BusinessUnitChart />
-        </div>
-      </div>
+          <div className="fb-chart-section">
+            <h2>Revenue trend</h2>
+            <p className="fb-chart-caption">Trailing 12 months of validated invoice revenue. Hover for exact figures.</p>
+            <div className="fb-chart-card">
+              <div className="fb-chart-legend">
+                <span><span className="fb-legend-dot" style={{ background: "var(--viz-1)" }}></span>Revenue</span>
+              </div>
+              <RevenueTrendChart data={data} />
+            </div>
+          </div>
+
+          <div className="fb-chart-section">
+            <h2>Top customers by revenue</h2>
+            <p className="fb-chart-caption">Validated invoices, all time, ranked by total billed.</p>
+            <div className="fb-chart-card">
+              <TopCustomersChart customers={data.top_customers} />
+            </div>
+          </div>
+
+          <div className="fb-chart-section">
+            <h2>Accounts receivable aging</h2>
+            <p className="fb-chart-caption">Validated, unpaid invoices grouped by days past due date.</p>
+            <div className="fb-table-wrap">
+              <table className="fb-table">
+                <thead>
+                  <tr><th>Bucket</th><th style={{ textAlign: "right" }}>Invoices</th><th style={{ textAlign: "right" }}>Amount</th></tr>
+                </thead>
+                <tbody>
+                  {data.ar_aging.every((bucket) => bucket.count === 0) ? (
+                    <tr><td colSpan={3} style={{ color: "var(--ink-soft)" }}>No outstanding invoices.</td></tr>
+                  ) : (
+                    data.ar_aging.map((bucket) => (
+                      <tr key={bucket.label}>
+                        <td>{AGING_LABELS[bucket.label]}</td>
+                        <td className="fb-num">{bucket.count}</td>
+                        <td className="fb-num">{formatCurrency(bucket.total_amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="fb-chart-section">
+            <h2>Invoice status</h2>
+            <p className="fb-chart-caption">Every e-invoice record for this tenant, by document and payment status.</p>
+            <div className="fb-table-wrap">
+              <table className="fb-table">
+                <thead>
+                  <tr><th>Status</th><th style={{ textAlign: "right" }}>Invoices</th><th style={{ textAlign: "right" }}>Amount</th></tr>
+                </thead>
+                <tbody>
+                  {data.status_breakdown.map((row) => (
+                    <tr key={row.label}>
+                      <td style={{ textTransform: "capitalize" }}>{row.label}</td>
+                      <td className="fb-num">{row.count}</td>
+                      <td className="fb-num">{formatCurrency(row.total_amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

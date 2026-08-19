@@ -12,6 +12,7 @@ from app.schemas import (
     EinvoiceReadinessResponse,
     EInvoiceRecordResponse,
     InvoiceExtraction,
+    MarkPaidPayload,
     RequestFixPayload,
     UserRole,
 )
@@ -27,6 +28,7 @@ from app.services.einvoice_readiness import (
     get_record,
     list_outreach_drafts,
     list_records,
+    mark_invoice_paid,
     upload_record_document,
 )
 
@@ -165,6 +167,28 @@ def einvoice_record_approve(
         )
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/einvoice-records/{record_id}/mark-paid", response_model=EInvoiceRecordResponse)
+def einvoice_record_mark_paid(
+    record_id: int,
+    payload: MarkPaidPayload,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),
+    db: Session = Depends(get_db),
+) -> EInvoiceRecordResponse:
+    try:
+        return mark_invoice_paid(
+            db,
+            record_id,
+            role=principal.role,
+            actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
+            paid_at=payload.paid_at,
+        )
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:

@@ -1,6 +1,6 @@
 import secrets
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,11 +40,13 @@ def record_response(
         buyer_customer_id=row.buyer_customer_id,
         invoice_no=row.invoice_no,
         issue_date=row.issue_date,
+        due_date=row.due_date,
         currency=row.currency,
         tax_type=row.tax_type,
         tax_rate=row.tax_rate,
         total_amount=row.total_amount,
         status=row.status,
+        paid_at=row.paid_at,
         created_at=row.created_at,
         document_available=True,
         readiness_reason=reason,
@@ -111,6 +113,10 @@ def create_record(
     buyer_customer = (
         resolve_customer(db, tenant_id, payload.buyer_name) if payload.buyer_name else None
     )
+    due_date = payload.due_date
+    if due_date is None and payload.issue_date is not None:
+        terms = get_settings().default_payment_terms_days
+        due_date = payload.issue_date + timedelta(days=terms)
     record = EInvoiceRecord(
         tenant_id=tenant_id,
         supplier_name=payload.supplier_name,
@@ -119,6 +125,7 @@ def create_record(
         buyer_customer_id=buyer_customer.id if buyer_customer else None,
         invoice_no=payload.invoice_no,
         issue_date=payload.issue_date,
+        due_date=due_date,
         currency=payload.currency,
         tax_type=payload.tax_type,
         tax_rate=payload.tax_rate,
@@ -215,6 +222,43 @@ def approve_record(
     )
     db.commit()
     sync_einvoice_tokenized_content(db, record)
+    return record_response(record)
+
+
+def mark_invoice_paid(
+    db: Session,
+    record_id: int,
+    *,
+    role: UserRole,
+    actor_ref: str,
+    tenant_id: str,
+    paid_at: date | None = None,
+) -> EInvoiceRecordResponse:
+    """Record payment against a validated invoice, orthogonal to `status` (document
+    status). Required for outstanding AR to mean anything at all -- previously
+    nothing distinguished a paid invoice from an unpaid one."""
+    record = db.get(EInvoiceRecord, record_id)
+    if record is None or record.tenant_id != tenant_id:
+        raise LookupError(f"e-invoice record {record_id} not found")
+    if record.status != "validated":
+        raise ValueError(f"cannot mark an invoice paid in status '{record.status}'")
+    if record.paid_at is not None:
+        raise ValueError("invoice is already marked paid")
+
+    record.paid_at = paid_at or datetime.now(UTC).date()
+    db.flush()
+
+    write_workflow_event(
+        db,
+        event_type="einvoice_payment_recorded",
+        actor_role=role.value,
+        actor_ref=actor_ref,
+        resource_type="einvoice_record",
+        resource_id=str(record.id),
+        tenant_id=tenant_id,
+        event_payload={"paid_at": record.paid_at.isoformat()},
+    )
+    db.commit()
     return record_response(record)
 
 

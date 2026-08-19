@@ -516,11 +516,16 @@ class EInvoiceRecord(Base):
     )
     invoice_no: Mapped[str | None] = mapped_column(String)
     issue_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
     currency: Mapped[str | None] = mapped_column(String)
     tax_type: Mapped[str | None] = mapped_column(String)
     tax_rate: Mapped[str | None] = mapped_column(String)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
+    # Orthogonal to `status`: document status (pending/validated) vs. payment status.
+    # Set only via mark_invoice_paid(); an invoice is outstanding AR when
+    # status == "validated" and paid_at is None.
+    paid_at: Mapped[date | None] = mapped_column(Date)
     source_record_id: Mapped[str | None] = mapped_column(String)
     document_storage_path: Mapped[str | None] = mapped_column(String)
     uin: Mapped[str | None] = mapped_column(String)

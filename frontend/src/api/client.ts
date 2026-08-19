@@ -489,11 +489,13 @@ export interface EInvoiceApiRecord {
   buyer_customer_id: number | null;
   invoice_no: string | null;
   issue_date: string | null;
+  due_date: string | null;
   currency: string | null;
   tax_type: string | null;
   tax_rate: string | null;
   total_amount: string;
   status: "review" | "pending" | "submitted" | "validated";
+  paid_at: string | null;
   created_at: string;
   document_available: boolean;
   readiness_reason: string;
@@ -630,6 +632,19 @@ export async function approveEinvoiceRecord(recordId: number): Promise<EInvoiceA
   );
 }
 
+export async function markEinvoicePaid(
+  recordId: number,
+  paidAt?: string,
+): Promise<EInvoiceApiRecord> {
+  return parse<EInvoiceApiRecord>(
+    await authenticatedFetch(`/einvoice-records/${recordId}/mark-paid`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paid_at: paidAt ?? null }),
+    }),
+  );
+}
+
 export async function fetchEinvoiceOutreachDrafts(): Promise<EinvoiceOutreachDraft[]> {
   return parse<EinvoiceOutreachDraft[]>(await authenticatedFetch("/einvoice-outreach-drafts"));
 }
@@ -640,6 +655,58 @@ export async function decideEinvoiceOutreach(
 ): Promise<EinvoiceOutreachDraft> {
   return parse<EinvoiceOutreachDraft>(
     await authenticatedFetch(`/einvoice-outreach-drafts/${id}/${decision}`, { method: "POST" }),
+  );
+}
+
+export type FinancePeriod = "month" | "quarter" | "year";
+
+export interface RevenuePeriodPoint {
+  period_label: string;
+  period_start: string;
+  total_amount: string;
+}
+
+export interface ARAgingBucket {
+  label: "current" | "1-30" | "31-60" | "61-90" | "90+";
+  count: number;
+  total_amount: string;
+}
+
+export interface TopCustomer {
+  customer_id: number;
+  name: string;
+  total_amount: string;
+  invoice_count: number;
+}
+
+export interface InvoiceStatusBreakdown {
+  label: "pending" | "outstanding" | "paid";
+  count: number;
+  total_amount: string;
+}
+
+export interface FinanceSummaryResponse {
+  period: FinancePeriod;
+  period_start: string;
+  period_end: string;
+  total_revenue: string;
+  prior_period_revenue: string;
+  revenue_change_pct: number | null;
+  outstanding_ar: string;
+  ar_aging: ARAgingBucket[];
+  revenue_trend: RevenuePeriodPoint[];
+  top_customers: TopCustomer[];
+  status_breakdown: InvoiceStatusBreakdown[];
+  validated_invoice_count: number;
+  avg_days_to_pay: number | null;
+}
+
+export async function fetchFinanceSummary(
+  period: FinancePeriod,
+  offset: number,
+): Promise<FinanceSummaryResponse> {
+  return parse<FinanceSummaryResponse>(
+    await authenticatedFetch(`/finance/summary?period=${period}&offset=${offset}`),
   );
 }
 
