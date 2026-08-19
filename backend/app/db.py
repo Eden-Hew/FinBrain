@@ -25,7 +25,14 @@ elif ":6543/" in database_url:
 else:
     connect_args = {}
 
-engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+engine = create_engine(
+    database_url,
+    connect_args=connect_args,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=30,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

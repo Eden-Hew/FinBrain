@@ -1,4 +1,5 @@
 import argparse
+import secrets
 from datetime import date, datetime
 
 from sqlalchemy import text
@@ -136,14 +137,39 @@ EINVOICE_SEED_RECORDS = [
 ]
 
 
+def _generate_seed_uin() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "MY29A" + "".join(secrets.choice(alphabet) for _ in range(6))
+
+
 def seed_einvoice_records(db) -> None:
     """Seed EInvoiceRecord rows directly — no ingestion/LLM pipeline needed."""
     from sqlalchemy import select
 
+    from app.services import storage
+    from app.services.einvoice_pdf import render_einvoice_pdf
+
     if db.scalar(select(EInvoiceRecord.id).limit(1)) is not None:
         return
+    bucket = get_settings().einvoice_document_bucket
+    try:
+        storage.ensure_bucket(bucket)
+    except Exception:
+        pass
     for fields in EINVOICE_SEED_RECORDS:
-        db.add(EInvoiceRecord(**fields))
+        record_data = dict(fields)
+        if record_data.get("status") == "validated" and not record_data.get("uin"):
+            record_data["uin"] = _generate_seed_uin()
+        record = EInvoiceRecord(**record_data)
+        db.add(record)
+        db.flush()
+        try:
+            pdf_bytes = render_einvoice_pdf(record)
+            path = f"{record.id}.pdf"
+            storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
+            record.document_storage_path = path
+        except Exception:
+            pass
     db.commit()
     print(f"seeded {len(EINVOICE_SEED_RECORDS)} einvoice_records")
 

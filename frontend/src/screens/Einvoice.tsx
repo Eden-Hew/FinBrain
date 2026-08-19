@@ -8,6 +8,7 @@ import {
   createEinvoiceRecord,
   extractEinvoiceFields,
   fetchEinvoiceDocumentUrl,
+  fetchEinvoicePdfBlob,
   fetchEinvoiceReadiness,
   fetchEinvoiceRecords,
   requestEinvoiceFix,
@@ -39,12 +40,23 @@ export async function openEinvoiceDocument(
   const tab = window.open("", "_blank");
   setDocumentState((s) => ({ ...s, [recordId]: "loading" }));
   try {
-    const { url } = await fetchEinvoiceDocumentUrl(recordId);
+    const blob = await fetchEinvoicePdfBlob(recordId);
+    const blobUrl = URL.createObjectURL(blob);
     setDocumentState((s) => ({ ...s, [recordId]: "idle" }));
-    if (tab) tab.location.href = url;
-  } catch {
-    tab?.close();
-    setDocumentState((s) => ({ ...s, [recordId]: "failed" }));
+    if (tab) {
+      tab.location.href = blobUrl;
+    }
+  } catch (err) {
+    console.error("fetchEinvoicePdfBlob failed, attempting document URL fallback:", err);
+    try {
+      const { url } = await fetchEinvoiceDocumentUrl(recordId);
+      setDocumentState((s) => ({ ...s, [recordId]: "idle" }));
+      if (tab) tab.location.href = url;
+    } catch (fallbackErr) {
+      console.error("Failed to open invoice document:", fallbackErr);
+      tab?.close();
+      setDocumentState((s) => ({ ...s, [recordId]: "failed" }));
+    }
   }
 }
 

@@ -48,5 +48,11 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"] # FastAPI uses Depends/Query calls as its documented declaration syntax.
 
+[tool.ruff.lint.per-file-ignores]
+# Declarative PDF layout markup: many long ReportLab Paragraph() strings with embedded
+# HTML-like tags. Hand-wrapping each one risks a typo in a legal/compliance document
+# template that isn't easily caught by review; not worth it for a pure style rule.
+"app/services/einvoice_pdf.py" = ["E501"]
+
 [tool.setuptools.packages.find]
 include = ["app*", "scripts*", "seed*"]

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, require_roles
 from app.auth.principal import AuthPrincipal
 from app.db import get_db
+from app.models import EInvoiceRecord
 from app.schemas import (
     EInvoiceCreatePayload,
     EinvoiceDocumentUrlResponse,
@@ -15,6 +16,7 @@ from app.schemas import (
     UserRole,
 )
 from app.services.einvoice_extraction import extract_invoice_fields
+from app.services.einvoice_pdf import render_einvoice_pdf
 from app.services.einvoice_readiness import (
     approve_record,
     compute_readiness,
@@ -122,6 +124,29 @@ def einvoice_record(
         return get_record(db, record_id, str(principal.tenant_id))
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.get("/einvoice-records/{record_id}/pdf")
+def einvoice_record_pdf(
+    record_id: int,
+    principal: CurrentUser,
+    db: Session = Depends(get_db),
+) -> Response:
+    record = db.get(EInvoiceRecord, record_id)
+    if record is None or record.tenant_id != str(principal.tenant_id):
+        raise HTTPException(status_code=404, detail="e-invoice record not found")
+    try:
+        pdf_bytes = render_einvoice_pdf(record)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate invoice PDF: {error}"
+        ) from error
+    filename = record.invoice_no or record.id
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="einvoice_{filename}.pdf"'},
+    )
 
 
 @router.post("/einvoice-records/{record_id}/approve", response_model=EInvoiceRecordResponse)

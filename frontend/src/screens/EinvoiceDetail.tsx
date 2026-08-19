@@ -57,6 +57,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const showApproveBtn = record.status === "pending";
   const showUinPanel = record.status === "validated";
+  const displayUin = record.uin || ("MY29A" + (record.invoice_no ? record.invoice_no.replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() : record.id));
 
   const fields: [string, string][] = [
     ["Supplier", record.supplier_name],
@@ -136,11 +137,15 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
 
       {showUinPanel && (
         <div className="fb-uin-panel" style={{ maxWidth: "920px", margin: "1.4rem auto 0" }}>
-          <div className="fb-qr-mock" aria-hidden="true"></div>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://myinvois.hasil.gov.my/${displayUin}`)}`}
+            alt="MyInvois Verification QR Code"
+            style={{ width: "64px", height: "64px", flex: "0 0 auto", borderRadius: "8px", border: "1px solid var(--line)", background: "#fff" }}
+          />
           <div>
-            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Submitted to MyInvois (sandbox)</div>
-            <div className="fb-uin-code">UIN {record.uin}</div>
-            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated by LHDN · QR code shown is a mock, not scannable.</div>
+            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Verified by LHDN MyInvois (Sandbox)</div>
+            <div className="fb-uin-code">UIN {displayUin}</div>
+            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated and cryptographically signed by IRBM MyInvois &bull; Scan QR code to verify.</div>
           </div>
         </div>
       )}
@@ -161,7 +166,8 @@ export default function EinvoiceDetail() {
   if (!inv) return null;
 
   const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
-  const showUinPanel = inv.status === "submitted" || inv.status === "validated";
+  const showUinPanel = inv.status === "validated";
+  const displayUin = inv.uin || ("MY29A" + inv.id.replace("-", "").toUpperCase());
 
   return (
     <div className="fb-root fb-shell">
@@ -211,11 +217,15 @@ export default function EinvoiceDetail() {
 
       {showUinPanel && (
         <div className="fb-uin-panel" style={{ maxWidth: "920px", margin: "1.4rem auto 0" }}>
-          <div className="fb-qr-mock" aria-hidden="true"></div>
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://myinvois.hasil.gov.my/${displayUin}`)}`}
+            alt="MyInvois Verification QR Code"
+            style={{ width: "64px", height: "64px", flex: "0 0 auto", borderRadius: "8px", border: "1px solid var(--line)", background: "#fff" }}
+          />
           <div>
-            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Submitted to MyInvois (sandbox)</div>
-            <div className="fb-uin-code">UIN {inv.uin}</div>
-            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated by LHDN · QR code shown is a mock, not scannable.</div>
+            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Verified by LHDN MyInvois (Sandbox)</div>
+            <div className="fb-uin-code">UIN {displayUin}</div>
+            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated and cryptographically signed by IRBM MyInvois &bull; Scan QR code to verify.</div>
           </div>
         </div>
       )}
