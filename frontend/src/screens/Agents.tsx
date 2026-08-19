@@ -288,48 +288,56 @@ export default function Agents() {
   };
 
   const einvoicesPending = Object.values(einvoices).filter((inv) => inv.status === "pending").length;
+  const hasConversation = messages.length > 1;
 
   return (
-    <div className="fb-root fb-shell">
+    <div className="fb-root fb-shell fb-chat-shell">
       <Sidebar current="agents" />
       <AppTopBar current="agents" />
 
-      {sampleBanner && (
-        <div className="fb-callout fb-sample-banner">
-          <span>You're exploring FINBRAIN with sample data from a demo workspace — connect your own sources anytime.</span>
-          <button className="fb-icon-btn" type="button" onClick={dismissSampleBanner} aria-label="Dismiss">✕</button>
-        </div>
-      )}
+      <div className="fb-chat-page">
+        {sampleBanner && (
+          <div className="fb-callout fb-sample-banner">
+            <span>You're exploring FINBRAIN with sample data from a demo workspace — connect your own sources anytime.</span>
+            <button className="fb-icon-btn" type="button" onClick={dismissSampleBanner} aria-label="Dismiss">✕</button>
+          </div>
+        )}
 
-      <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
-        <h1>{t("nav.aiAgents")}</h1>
-        <p>{t("agents.desc")}</p>
-      </header>
+        {!hasConversation && (
+          <div className="fb-chat-welcome">
+            <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
+              <h1>{t("nav.aiAgents")}</h1>
+              <p>{t("agents.desc")}</p>
+            </header>
 
-      <div className="fb-agents-overview">
-        <button className="fb-overview-stat" type="button" onClick={() => show("approvals")}>
-          <span className="fb-overview-value">{approvalsCount}</span>
-          <span className="fb-overview-label">Pending approvals</span>
-        </button>
-        <button className="fb-overview-stat" type="button" onClick={() => show("einvoice")}>
-          <span className="fb-overview-value">{einvoicesPending}</span>
-          <span className="fb-overview-label">e-Invoices to review</span>
-        </button>
-        <button className="fb-overview-stat" type="button" onClick={() => show("finance")}>
-          <span className="fb-overview-value">RM 94K</span>
-          <span className="fb-overview-label">Outstanding AR</span>
-        </button>
-      </div>
+            <div className="fb-agents-overview">
+              <button className="fb-overview-stat" type="button" onClick={() => show("approvals")}>
+                <span className="fb-overview-value">{approvalsCount}</span>
+                <span className="fb-overview-label">Pending approvals</span>
+              </button>
+              <button className="fb-overview-stat" type="button" onClick={() => show("einvoice")}>
+                <span className="fb-overview-value">{einvoicesPending}</span>
+                <span className="fb-overview-label">e-Invoices to review</span>
+              </button>
+              <button className="fb-overview-stat" type="button" onClick={() => show("finance")}>
+                <span className="fb-overview-value">RM 94K</span>
+                <span className="fb-overview-label">Outstanding AR</span>
+              </button>
+            </div>
+          </div>
+        )}
 
-      <div className="fb-unified-wrap">
-        <div className="fb-suggest-row">
-          <span className="fb-eyebrow fb-suggest-label">Try asking</span>
-          {SUGGESTIONS.map((s) => (
-            <button key={s} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s)}>{s}</button>
-          ))}
-        </div>
+        <div className={"fb-chat-transcript-wrap" + (hasConversation ? " is-active" : "")}>
+          {!hasConversation && (
+            <div className="fb-suggest-row">
+              <span className="fb-eyebrow fb-suggest-label">Try asking</span>
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s)}>{s}</button>
+              ))}
+            </div>
+          )}
 
-        <div className="fb-unified-chat-panel">
+          <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
             {messages.map((msg) => (
               <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}>
@@ -555,6 +563,7 @@ export default function Agents() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
