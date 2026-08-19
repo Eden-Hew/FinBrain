@@ -179,5 +179,7 @@ class _settings:
         self.telegram_heartbeat_seconds = 30
         self.email_sync_interval_seconds = 60
         self.vault_rotation_check_seconds = 60
+        self.recommendations_auto_analysis_enabled = False
+        self.recommendations_analysis_interval_seconds = 3_600
         self.database_backend = "sqlite"
         self.effective_service_instance_id = "local"

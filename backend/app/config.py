@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = None
     sentry_environment: str = "development"
     sentry_traces_sample_rate: float = 0.0
+    recommendations_auto_analysis_enabled: bool = False
+    recommendations_analysis_interval_seconds: int = 3_600
 
     @field_validator(
         "telegram_draft_ttl_seconds",
@@ -102,6 +104,7 @@ class Settings(BaseSettings):
         "vault_rotation_interval_days",
         "vault_rotation_check_seconds",
         "vault_rotation_batch_size",
+        "recommendations_analysis_interval_seconds",
     )
     @classmethod
     def positive_connector_limits(cls, value: int) -> int:

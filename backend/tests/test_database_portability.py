@@ -3,7 +3,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
-from app.db import _sqlalchemy_url
+from app.db import _sqlalchemy_url, set_worker_context
 from app.models import Base, TokenizedContent, TokenVaultEntry
 from app.services import ingestion
 from app.services.retrieval import retrieve_top_k
@@ -28,6 +28,28 @@ def test_role_list_compiles_to_postgres_jsonb():
     column_type = TokenVaultEntry.__table__.c.allowed_roles.type
     postgres_type = column_type.load_dialect_impl(postgresql.dialect())
     assert isinstance(postgres_type, JSONB)
+
+
+def test_worker_context_carries_every_key_the_after_begin_listener_needs(monkeypatch):
+    """Regression test: set_worker_context() used to omit "tenant_id" from
+    session.info entirely, which raised a missing-bind-parameter error the moment
+    a worker session opened a second transaction (e.g. after any db.commit())
+    against real Postgres, since _restore_rls_context's query always references
+    :tenant_id. SQLite can't run set_config(), so the dialect check is spoofed and
+    execute() is captured rather than actually run against the database.
+    """
+    engine = create_engine("sqlite:///:memory:")
+    db = Session(engine)
+    monkeypatch.setattr(engine.dialect, "name", "postgresql")
+    monkeypatch.setattr(db, "execute", lambda *args, **kwargs: None)
+
+    set_worker_context(db, actor_ref="test-scheduler", tenant_id="tenant-x")
+
+    context = db.info["finbrain_rls_context"]
+    assert context["actor_ref"] == "test-scheduler"
+    assert context["tenant_id"] == "tenant-x"
+    assert context["database_role"] == "finbrain_worker"
+    assert {"user_id", "user_role", "actor_ref", "tenant_id"} <= set(context)
 
 
 def test_optional_object_values_are_stored_as_sql_null():

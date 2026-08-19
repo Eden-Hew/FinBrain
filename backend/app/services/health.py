@@ -67,7 +67,7 @@ def _tz(dt: datetime | None) -> datetime | None:
 
 
 def heartbeat_rows(db: Session, instance_id: str) -> dict[str, IntegrationStatus]:
-    service_keys = ("telegram", "email", "vault-rotation")
+    service_keys = ("telegram", "email", "vault-rotation", "recommendations-scheduler")
     return {
         service_key: row
         for service_key in service_keys

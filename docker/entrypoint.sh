@@ -32,6 +32,10 @@ if [ "${VAULT_AUTO_ROTATION_ENABLED:-}" = "true" ]; then
   start_worker "vault-rotation" python -m app.security.rotation_runner
 fi
 
+if [ "${RECOMMENDATIONS_AUTO_ANALYSIS_ENABLED:-}" = "true" ]; then
+  start_worker "recommendations-scheduler" python -m app.services.recommendations_scheduler
+fi
+
 cleanup() {
   trap - TERM INT
   jobs -p | xargs -r kill 2>/dev/null || true

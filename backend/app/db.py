@@ -98,20 +98,38 @@ def set_rls_context(
     db.execute(text("set local role finbrain_app"))
 
 
-def set_worker_context(db: Session) -> None:
+def set_worker_context(
+    db: Session,
+    *,
+    actor_ref: str = "vault-rotation-worker",
+    tenant_id: str | None = None,
+) -> None:
+    """Enter the RLS-bypass-free worker role, optionally scoped to one tenant.
+
+    tenant_id is None for genuinely global work (vault rotation); a real tenant_id
+    for a worker iterating tenants one at a time (e.g. the recommendations
+    scheduler). Either way the context dict must carry all four keys the
+    after_begin listener's query references -- omitting tenant_id here previously
+    left it out of session.info, which raised a missing-bind-parameter error the
+    moment a worker's session opened a second transaction (any db.commit()
+    followed by another write) against real Postgres.
+    """
     if db.bind is None or db.bind.dialect.name != "postgresql":
         return
-    db.info["finbrain_rls_context"] = {
+    context = {
         "user_id": "",
         "user_role": "system_worker",
-        "actor_ref": "vault-rotation-worker",
-        "database_role": "finbrain_worker",
+        "actor_ref": actor_ref,
+        "tenant_id": tenant_id or "",
     }
+    db.info["finbrain_rls_context"] = {**context, "database_role": "finbrain_worker"}
     db.execute(
         text(
-            "select set_config('app.user_id', '', true), "
-            "set_config('app.user_role', 'system_worker', true), "
-            "set_config('app.actor_ref', 'vault-rotation-worker', true)"
-        )
+            "select set_config('app.user_id', :user_id, true), "
+            "set_config('app.user_role', :user_role, true), "
+            "set_config('app.actor_ref', :actor_ref, true), "
+            "set_config('app.tenant_id', :tenant_id, true)"
+        ),
+        context,
     )
     db.execute(text("set local role finbrain_worker"))

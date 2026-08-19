@@ -431,19 +431,24 @@ docker run --rm -p 8000:8000 --env-file backend\.env finbrain-backend
 The entrypoint (`docker/entrypoint.sh`) runs the same backend services as the local `run_demo.ps1`
 launcher, minus the frontend (which Vercel hosts). It starts the API on `0.0.0.0:$PORT` (default
 8000) as the main process, plus the Telegram long-polling worker when `TELEGRAM_BOT_TOKEN` is set,
-the email worker when `EMAIL_CONNECTOR_ENABLED=true`, and the resumable vault worker when
-`VAULT_AUTO_ROTATION_ENABLED=true`. Each worker runs in an auto-restart loop, so a transient worker
-crash is logged and retried without taking the API down. `/health` is the container healthcheck,
-and `/status` renders a service status page that reports each service's status, uptime,
-started-at, and last-heartbeat times for that Railway service only.
+the email worker when `EMAIL_CONNECTOR_ENABLED=true`, the resumable vault worker when
+`VAULT_AUTO_ROTATION_ENABLED=true`, and the recommendations scheduler when
+`RECOMMENDATIONS_AUTO_ANALYSIS_ENABLED=true` (re-runs process-recommendation analysis for every
+tenant on an interval — `RECOMMENDATIONS_ANALYSIS_INTERVAL_SECONDS`, default 3600 — instead of only
+on a manual "Analyze Processes" click; covers whatever source systems each tenant actually has ready
+content in). Each worker runs in an auto-restart loop, so a transient worker crash is logged and
+retried without taking the API down. `/health` is the container healthcheck, and `/status` renders a
+service status page that reports each service's status, uptime, started-at, and last-heartbeat times
+for that Railway service only.
 
 On Railway, create a service from this repository. `railway.json` selects the Dockerfile builder and
 configures the `/health` healthcheck (300s timeout so the first boot can download the GLiNER model).
 Provide the same `backend/.env` values as Railway environment variables, including `DATABASE_URL`,
 the distinct `TOKEN_ROOT_SECRET`, `TOKEN_HASH_SECRET`, and `VAULT_MASTER_KEY` values,
 `SUPABASE_URL`/`SUPABASE_JWT_*`, `GEMINI_API_KEY`, and `MORPHEUS_API_KEY`. Optional worker settings
-include `TELEGRAM_BOT_TOKEN`, `EMAIL_*`, and `VAULT_AUTO_ROTATION_ENABLED` with its interval,
-check-frequency, and batch-size values.
+include `TELEGRAM_BOT_TOKEN`, `EMAIL_*`, `VAULT_AUTO_ROTATION_ENABLED` with its interval,
+check-frequency, and batch-size values, and `RECOMMENDATIONS_AUTO_ANALYSIS_ENABLED` with its
+interval.
 
 Run only one long-polling worker for a given Telegram bot token. When testing Telegram locally,
 disable the Railway Telegram worker or remove its `TELEGRAM_BOT_TOKEN`; when demonstrating the

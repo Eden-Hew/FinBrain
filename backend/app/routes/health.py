@@ -77,6 +77,9 @@ def _row_service(db: Session) -> list[dict]:
         build("vault-rotation", "Vault rotation worker",
               settings.vault_auto_rotation_enabled, "scheduled",
               max(settings.vault_rotation_check_seconds * 3, 90)),
+        build("recommendations-scheduler", "Recommendations scheduler",
+              settings.recommendations_auto_analysis_enabled, "scheduled",
+              max(settings.recommendations_analysis_interval_seconds * 3, 90)),
     ]
 
 
