@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { AppStateProvider, useAppState } from "./lib/appState";
 import { I18nProvider } from "./lib/i18n";
@@ -6,20 +6,24 @@ import { ThemeProvider, ThemeToggleButton } from "./lib/theme";
 import { UiChromeProvider } from "./lib/uiChrome";
 import { AskDrawer } from "./components/AskDrawer";
 import { QuickActionsPalette } from "./components/QuickActionsPalette";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
-import Landing from "./screens/Landing";
-import Login from "./screens/Login";
-import Signup from "./screens/Signup";
-import Onboarding from "./screens/Onboarding";
-import Security from "./screens/Security";
-import Legal from "./screens/Legal";
-import Agents from "./screens/Agents";
-import Einvoice from "./screens/Einvoice";
-import EinvoiceDetail from "./screens/EinvoiceDetail";
-import Finance from "./screens/Finance";
-import Audit from "./screens/Audit";
-import Approvals from "./screens/Approvals";
-import Ingestion from "./screens/Ingestion";
+// Route-level code splitting: a visitor to the marketing landing page
+// shouldn't have to download the chat interface, invoice forms, and
+// finance charts before the page they actually asked for can render.
+const Landing = lazy(() => import("./screens/Landing"));
+const Login = lazy(() => import("./screens/Login"));
+const Signup = lazy(() => import("./screens/Signup"));
+const Onboarding = lazy(() => import("./screens/Onboarding"));
+const Security = lazy(() => import("./screens/Security"));
+const Legal = lazy(() => import("./screens/Legal"));
+const Agents = lazy(() => import("./screens/Agents"));
+const Einvoice = lazy(() => import("./screens/Einvoice"));
+const EinvoiceDetail = lazy(() => import("./screens/EinvoiceDetail"));
+const Finance = lazy(() => import("./screens/Finance"));
+const Audit = lazy(() => import("./screens/Audit"));
+const Approvals = lazy(() => import("./screens/Approvals"));
+const Ingestion = lazy(() => import("./screens/Ingestion"));
 
 function GlobalThemeToggle() {
   // The landing page has its own inline toggle in the marketing nav, so the
@@ -66,21 +70,27 @@ function Screens() {
   }
 }
 
+const RouteFallback = <div className="fb-root"><div className="fb-callout">Loading…</div></div>;
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <I18nProvider>
-        <AppStateProvider>
-          <AuthProvider>
-            <UiChromeProvider>
-              <Screens />
-              <AskDrawer />
-              <QuickActionsPalette />
-            </UiChromeProvider>
-          </AuthProvider>
-          <GlobalThemeToggle />
-        </AppStateProvider>
-      </I18nProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <I18nProvider>
+          <AppStateProvider>
+            <AuthProvider>
+              <UiChromeProvider>
+                <Suspense fallback={RouteFallback}>
+                  <Screens />
+                </Suspense>
+                <AskDrawer />
+                <QuickActionsPalette />
+              </UiChromeProvider>
+            </AuthProvider>
+            <GlobalThemeToggle />
+          </AppStateProvider>
+        </I18nProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
