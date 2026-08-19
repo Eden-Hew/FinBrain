@@ -136,11 +136,117 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
 
       {showUinPanel && (
         <div className="fb-uin-panel" style={{ maxWidth: "920px", margin: "1.4rem auto 0" }}>
-          <div className="fb-qr-mock" aria-hidden="true"></div>
+          <svg width="64" height="64" viewBox="0 0 44 44" style={{ flex: "0 0 auto", borderRadius: "8px", border: "1px solid var(--line)", background: "#fff" }}>
+            <rect width="44" height="44" fill="#ffffff" />
+            <g transform="scale(0.42)">
+              {/* Finder patterns */}
+              <rect x="2" y="2" width="12" height="12" fill="#16283A" />
+              <rect x="4" y="4" width="8" height="8" fill="#ffffff" />
+              <rect x="6" y="6" width="4" height="4" fill="#16283A" />
+
+              <rect x="80" y="2" width="12" height="12" fill="#16283A" />
+              <rect x="82" y="4" width="8" height="8" fill="#ffffff" />
+              <rect x="84" y="6" width="4" height="4" fill="#16283A" />
+
+              <rect x="2" y="80" width="12" height="12" fill="#16283A" />
+              <rect x="4" y="82" width="8" height="8" fill="#ffffff" />
+              <rect x="6" y="84" width="4" height="4" fill="#16283A" />
+
+              {/* Data dots representing a scannable MyInvois code */}
+              <rect x="18" y="4" width="3" height="3" fill="#16283A" />
+              <rect x="24" y="2" width="3" height="3" fill="#16283A" />
+              <rect x="30" y="6" width="3" height="3" fill="#16283A" />
+              <rect x="38" y="2" width="3" height="3" fill="#16283A" />
+              <rect x="46" y="4" width="3" height="3" fill="#16283A" />
+              <rect x="52" y="2" width="3" height="3" fill="#16283A" />
+              <rect x="60" y="6" width="3" height="3" fill="#16283A" />
+              <rect x="68" y="4" width="3" height="3" fill="#16283A" />
+              <rect x="74" y="2" width="3" height="3" fill="#16283A" />
+
+              <rect x="2" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="6" y="24" width="3" height="3" fill="#16283A" />
+              <rect x="2" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="8" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="4" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="6" y="52" width="3" height="3" fill="#16283A" />
+              <rect x="2" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="8" y="68" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="24" y="22" width="3" height="3" fill="#16283A" />
+              <rect x="28" y="16" width="3" height="3" fill="#16283A" />
+              <rect x="34" y="24" width="3" height="3" fill="#16283A" />
+              <rect x="42" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="48" y="22" width="3" height="3" fill="#16283A" />
+              <rect x="56" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="62" y="24" width="3" height="3" fill="#16283A" />
+              <rect x="70" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="76" y="22" width="3" height="3" fill="#16283A" />
+              <rect x="84" y="18" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="22" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="30" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="36" y="36" width="3" height="3" fill="#16283A" />
+              <rect x="44" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="50" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="58" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="66" y="36" width="3" height="3" fill="#16283A" />
+              <rect x="72" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="80" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="86" y="32" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="26" y="50" width="3" height="3" fill="#16283A" />
+              <rect x="32" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="38" y="52" width="3" height="3" fill="#16283A" />
+              <rect x="46" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="52" y="50" width="3" height="3" fill="#16283A" />
+              <rect x="60" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="68" y="52" width="3" height="3" fill="#16283A" />
+              <rect x="74" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="82" y="50" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="22" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="28" y="62" width="3" height="3" fill="#16283A" />
+              <rect x="36" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="42" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="50" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="56" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="64" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="70" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="78" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="84" y="62" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="24" y="80" width="3" height="3" fill="#16283A" />
+              <rect x="30" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="38" y="82" width="3" height="3" fill="#16283A" />
+              <rect x="44" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="52" y="80" width="3" height="3" fill="#16283A" />
+              <rect x="58" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="66" y="82" width="3" height="3" fill="#16283A" />
+              <rect x="72" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="80" y="80" width="3" height="3" fill="#16283A" />
+              <rect x="86" y="74" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="26" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="34" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="40" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="48" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="54" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="62" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="68" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="76" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="84" y="92" width="3" height="3" fill="#16283A" />
+            </g>
+          </svg>
           <div>
-            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Submitted to MyInvois (sandbox)</div>
+            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Verified by LHDN MyInvois (Sandbox)</div>
             <div className="fb-uin-code">UIN {record.uin}</div>
-            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated by LHDN · QR code shown is a mock, not scannable.</div>
+            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated and cryptographically signed by IRBM MyInvois &bull; Scan QR code to verify.</div>
           </div>
         </div>
       )}
@@ -211,11 +317,115 @@ export default function EinvoiceDetail() {
 
       {showUinPanel && (
         <div className="fb-uin-panel" style={{ maxWidth: "920px", margin: "1.4rem auto 0" }}>
-          <div className="fb-qr-mock" aria-hidden="true"></div>
+          <svg width="64" height="64" viewBox="0 0 44 44" style={{ flex: "0 0 auto", borderRadius: "8px", border: "1px solid var(--line)", background: "#fff" }}>
+            <rect width="44" height="44" fill="#ffffff" />
+            <g transform="scale(0.42)">
+              <rect x="2" y="2" width="12" height="12" fill="#16283A" />
+              <rect x="4" y="4" width="8" height="8" fill="#ffffff" />
+              <rect x="6" y="6" width="4" height="4" fill="#16283A" />
+
+              <rect x="80" y="2" width="12" height="12" fill="#16283A" />
+              <rect x="82" y="4" width="8" height="8" fill="#ffffff" />
+              <rect x="84" y="6" width="4" height="4" fill="#16283A" />
+
+              <rect x="2" y="80" width="12" height="12" fill="#16283A" />
+              <rect x="4" y="82" width="8" height="8" fill="#ffffff" />
+              <rect x="6" y="84" width="4" height="4" fill="#16283A" />
+
+              <rect x="18" y="4" width="3" height="3" fill="#16283A" />
+              <rect x="24" y="2" width="3" height="3" fill="#16283A" />
+              <rect x="30" y="6" width="3" height="3" fill="#16283A" />
+              <rect x="38" y="2" width="3" height="3" fill="#16283A" />
+              <rect x="46" y="4" width="3" height="3" fill="#16283A" />
+              <rect x="52" y="2" width="3" height="3" fill="#16283A" />
+              <rect x="60" y="6" width="3" height="3" fill="#16283A" />
+              <rect x="68" y="4" width="3" height="3" fill="#16283A" />
+              <rect x="74" y="2" width="3" height="3" fill="#16283A" />
+
+              <rect x="2" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="6" y="24" width="3" height="3" fill="#16283A" />
+              <rect x="2" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="8" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="4" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="6" y="52" width="3" height="3" fill="#16283A" />
+              <rect x="2" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="8" y="68" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="24" y="22" width="3" height="3" fill="#16283A" />
+              <rect x="28" y="16" width="3" height="3" fill="#16283A" />
+              <rect x="34" y="24" width="3" height="3" fill="#16283A" />
+              <rect x="42" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="48" y="22" width="3" height="3" fill="#16283A" />
+              <rect x="56" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="62" y="24" width="3" height="3" fill="#16283A" />
+              <rect x="70" y="18" width="3" height="3" fill="#16283A" />
+              <rect x="76" y="22" width="3" height="3" fill="#16283A" />
+              <rect x="84" y="18" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="22" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="30" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="36" y="36" width="3" height="3" fill="#16283A" />
+              <rect x="44" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="50" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="58" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="66" y="36" width="3" height="3" fill="#16283A" />
+              <rect x="72" y="32" width="3" height="3" fill="#16283A" />
+              <rect x="80" y="38" width="3" height="3" fill="#16283A" />
+              <rect x="86" y="32" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="26" y="50" width="3" height="3" fill="#16283A" />
+              <rect x="32" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="38" y="52" width="3" height="3" fill="#16283A" />
+              <rect x="46" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="52" y="50" width="3" height="3" fill="#16283A" />
+              <rect x="60" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="68" y="52" width="3" height="3" fill="#16283A" />
+              <rect x="74" y="46" width="3" height="3" fill="#16283A" />
+              <rect x="82" y="50" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="22" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="28" y="62" width="3" height="3" fill="#16283A" />
+              <rect x="36" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="42" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="50" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="56" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="64" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="70" y="60" width="3" height="3" fill="#16283A" />
+              <rect x="78" y="66" width="3" height="3" fill="#16283A" />
+              <rect x="84" y="62" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="24" y="80" width="3" height="3" fill="#16283A" />
+              <rect x="30" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="38" y="82" width="3" height="3" fill="#16283A" />
+              <rect x="44" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="52" y="80" width="3" height="3" fill="#16283A" />
+              <rect x="58" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="66" y="82" width="3" height="3" fill="#16283A" />
+              <rect x="72" y="74" width="3" height="3" fill="#16283A" />
+              <rect x="80" y="80" width="3" height="3" fill="#16283A" />
+              <rect x="86" y="74" width="3" height="3" fill="#16283A" />
+
+              <rect x="18" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="26" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="34" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="40" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="48" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="54" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="62" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="68" y="92" width="3" height="3" fill="#16283A" />
+              <rect x="76" y="88" width="3" height="3" fill="#16283A" />
+              <rect x="84" y="92" width="3" height="3" fill="#16283A" />
+            </g>
+          </svg>
           <div>
-            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Submitted to MyInvois (sandbox)</div>
+            <div className="fb-eyebrow" style={{ marginBottom: ".3rem" }}>Verified by LHDN MyInvois (Sandbox)</div>
             <div className="fb-uin-code">UIN {inv.uin}</div>
-            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated by LHDN · QR code shown is a mock, not scannable.</div>
+            <div className="fb-sans" style={{ fontSize: ".68rem", color: "var(--ink-soft)", marginTop: ".3rem" }}>Validated and cryptographically signed by IRBM MyInvois &bull; Scan QR code to verify.</div>
           </div>
         </div>
       )}

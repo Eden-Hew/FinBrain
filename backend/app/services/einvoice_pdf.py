@@ -647,11 +647,13 @@ def render_einvoice_pdf(
 
     verification_url = (
         f"https://myinvois.hasil.gov.my/{data.document.irbm_unique_id}"
-        if data.document.irbm_unique_id
-        else f"https://myinvois.hasil.gov.my/verify/{data.document.einvoice_code}"
+        if data.document.irbm_unique_id and data.document.status.lower() == "validated"
+        else None
     )
-    qr_drawing = _build_qr_drawing(verification_url)
-    irbm_strip_table = Table([[t_irbm_left, qr_drawing]], colWidths=[485, 53])
+    qr_drawing = _build_qr_drawing(verification_url) if verification_url else None
+    
+    irbm_cols = [485, 53] if qr_drawing else [538, 0]
+    irbm_strip_table = Table([[t_irbm_left, qr_drawing if qr_drawing else Paragraph("", styles["Normal"])]], colWidths=irbm_cols)
     irbm_strip_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), NAVY_DARK),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
