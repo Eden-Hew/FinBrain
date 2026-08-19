@@ -325,6 +325,20 @@ full test suite (`pytest`, against SQLite — no secrets required), plus fronten
 (`tsc -b`), lint (`eslint`), and a production build. It gates merges only — Railway's own git
 integration still handles deployment on push to `main`.
 
+`.github/workflows/anchor-audit-chain.yml` is a separate, scheduled workflow (daily, plus manual
+`workflow_dispatch`) that writes each tenant's current audit/workflow hash-chain tail to
+`audit-anchors/<date>.json` and commits it back to this repository. The point is tamper evidence:
+the credential that pushes that commit (the GitHub Actions token) is entirely separate from the
+app's own `DATABASE_URL`, so a fully compromised running app cannot silently rewrite an anchor the
+way it could rewrite a Postgres row — doing so would need a force-push, an unmistakably visible act
+in this repository's history. `backend/scripts/verify_audit_anchors.py` checks every committed
+anchor file against the live chain and reports any that no longer match.
+
+**Not wired up automatically** — this workflow needs a repository secret
+`PRODUCTION_DATABASE_URL` (read access to the live Supabase project is enough; the workflow never
+writes to the database) added under Settings → Secrets and variables → Actions before its schedule
+will do anything useful.
+
 ## 4. Run FinBrain
 
 ### One-command demonstration

@@ -161,11 +161,21 @@ The existing architecture makes this cheaper than a typical PDPA implementation:
 - No schema migration needed — both operations work entirely against tables Phase 2 already tenant-scoped.
 - New tests in `tests/test_privacy.py`, including one that exercises the full loop end-to-end: tokenize a value, erase it, then call `detokenize_response()` again and confirm the original value is gone and the standard masked placeholder appears instead.
 
-141/141 backend tests passing, ruff clean.
+141/141 backend tests passing, ruff clean. Committed (`f0ac8d1`).
 
 ## Phase 8 — External audit-chain anchoring
 
 Lightweight, pragmatic version: a scheduled job writes the current chain tail hash (`workflow_audit_log`/`audit_log`'s latest `event_hash`) to a destination the app's own Postgres credentials cannot write to — a separate minimal-permission storage bucket is enough to make silent tampering detectable (a rewritten chain would no longer match the last externally-anchored hash). Full RFC 3161 timestamping is the gold-standard alternative, noted but not recommended as the first cut — the cost/complexity isn't justified until the lightweight version proves the concept matters to a real auditor.
+
+**Chosen destination and why**: git history in this repository, not a storage bucket. The app already holds `SUPABASE_SERVICE_ROLE_KEY` (used today for the e-invoice document bucket), so a Supabase Storage bucket written with that *same* key wouldn't actually satisfy "a destination the app's own credentials cannot write to" — a fully compromised running app already holds that key too. A separate GitHub Actions workflow, authenticated with its own token and triggered on a schedule independent of the running app, is a genuinely different credential and execution context; rewriting a past anchor would require a visible force-push to this repository, not a quiet `UPDATE`.
+
+**Implementation status (code-level, verified locally; not yet active in production)**:
+- `app/services/audit_anchor.py` (new): `chain_tail_hashes(db, tenant_id)` reads the current tail (or `"genesis"`) of both hash chains for one tenant or the system chain; `all_chain_anchors(db)` covers every tenant plus the system chain; `anchor_is_still_present(db, anchor)` is the actual tamper check — since each `event_hash` is a SHA-256 digest over immutable event content plus the previous hash, confirming that exact digest still exists under the same `tenant_id` is sufficient proof nothing in that chain up to that point was altered, with no need to walk `prev_hash` pointers by hand.
+- `backend/scripts/anchor_audit_chains.py` writes one JSON record (`anchored_at` + every chain's tail hash) to `audit-anchors/<UTC date>.json`. `backend/scripts/verify_audit_anchors.py` reads every committed anchor file and reports any tenant/chain whose previously-anchored hash no longer exists in the live chain.
+- `.github/workflows/anchor-audit-chain.yml` (new): scheduled daily plus `workflow_dispatch`, runs the anchor script against `secrets.PRODUCTION_DATABASE_URL` and commits `audit-anchors/` back to the repository with the Actions bot's own git identity — a different credential from the one the deployed app runs with. **Not active** — needs the `PRODUCTION_DATABASE_URL` repository secret added manually (documented in `README.md`'s CI section), the same kind of manual step Phase 1's staging environment needed.
+- New tests in `tests/test_audit_anchor.py`: tail hashes read correctly for an empty chain and after real entries are written (via the existing `write_audit_entry`/`write_workflow_event`); `all_chain_anchors` covers the system chain and every tenant; and — the actual point of this phase — two tampering-detection tests that write a real chain entry, capture its anchor, then simulate an attacker either deleting the row or editing its `event_hash` directly, confirming `anchor_is_still_present` catches both.
+
+148/148 backend tests passing, ruff clean.
 
 ## Verification
 
@@ -177,3 +187,13 @@ Lightweight, pragmatic version: a scheduled job writes the current chain tail ha
 - **Phase 6/7/8**: covered per-phase when scoped in detail — each is small enough to verify with a handful of targeted tests once implemented.
 
 This plan is intentionally sequenced so each phase is independently shippable and independently verifiable — nothing here requires committing to the whole roadmap up front. Phase 1 and Phase 3 are the two lowest-risk, highest-leverage places to start.
+
+## Roadmap status: all 8 phases code-complete
+
+Every phase above has an "Implementation status" note recording exactly what was built, what was deliberately narrowed or deferred (and why), and what tests cover it. Three things remain true across all of them, by design, and are the honest caveats to this being "done":
+
+1. **Nothing has touched the live production database.** Phase 2's tenant-scoping migrations, the `finbrain_worker` grants added in Phases 5/6, and the new `customers` table (Phase 6) all exist only as migration files under `supabase/migrations/`, applied to nothing yet. Applying them — and enabling the Supabase Auth Hook that starts issuing `tenant_id`/role claims for real logins — is a separate, explicit decision the user makes, not something bundled into "the roadmap is done."
+2. **Three things need manual setup outside this repo before they do anything**: the staging Supabase project (Phase 1), a `SENTRY_DSN`/`VITE_SENTRY_DSN` if error tracking is wanted (Phase 4, optional), and the `PRODUCTION_DATABASE_URL` GitHub secret for the audit-chain anchor workflow (Phase 8). None of these can be provisioned by an agent working inside this repository.
+3. **Two scope narrowings were discovered while building, not anticipated by the original one-paragraph phase descriptions**, and are recorded where they happened: Phase 6's entity resolution only covers e-invoice buyer names (every other source's customer identity is locked behind a PII token, a separate design decision); Phase 7's PDPA endpoints are scoped to one token at a time (the same identity-resolution gap blocks a true "erase everything about person X").
+
+Every phase's backend work is covered by the full test suite (148/148 passing as of Phase 8, ruff clean throughout) and committed to `main` on this branch.

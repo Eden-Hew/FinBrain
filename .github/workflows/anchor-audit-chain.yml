@@ -1,0 +1,61 @@
+name: Anchor audit chain
+
+# Phase 8 of INDUSTRIAL_ROADMAP_PLAN.md: writes each tenant's current audit/workflow
+# hash-chain tail to a file committed to this repository. The credential that pushes
+# this commit (the GitHub Actions token) is entirely separate from the app's own
+# DATABASE_URL, so a compromised running app cannot silently rewrite an anchor the
+# way it could rewrite a Postgres row -- doing so would need a force-push, an
+# unmistakably visible act in the repository's history.
+#
+# Requires a repository secret PRODUCTION_DATABASE_URL pointing at the live Supabase
+# project (read access is enough -- this workflow never writes to the database, only
+# to this repository). Not configured automatically; add it under
+# Settings > Secrets and variables > Actions before enabling the schedule below.
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # daily at 00:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  anchor:
+    name: Anchor audit chain tail hashes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Anchor chain tail hashes
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: uv run python -m scripts.anchor_audit_chains
+
+      - name: Commit anchor file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ../audit-anchors
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: anchor audit chain tail hashes ($(date -u +%Y-%m-%d))"
+            git push
+          fi
