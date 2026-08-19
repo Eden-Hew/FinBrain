@@ -652,8 +652,10 @@ def render_einvoice_pdf(
     )
     qr_drawing = _build_qr_drawing(verification_url) if verification_url else None
     
-    irbm_cols = [485, 53] if qr_drawing else [538, 0]
-    irbm_strip_table = Table([[t_irbm_left, qr_drawing if qr_drawing else Paragraph("", styles["Normal"])]], colWidths=irbm_cols)
+    if qr_drawing:
+        irbm_strip_table = Table([[t_irbm_left, qr_drawing]], colWidths=[485, 53])
+    else:
+        irbm_strip_table = Table([[t_irbm_left]], colWidths=[538])
     irbm_strip_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), NAVY_DARK),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
