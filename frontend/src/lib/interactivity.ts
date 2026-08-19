@@ -60,7 +60,7 @@ export function useTypewriterDemo(demos: TypewriterDemoItem[], options?: { typeS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, reduced, answerHold, demos.length]);
 
-  return { demo: demos[demoIndex], typed, phase };
+  return { demo: demos[demoIndex], typed, phase, demoIndex, select: setDemoIndex };
 }
 
 /** True once the element has scrolled into view; stays true after (no re-hide on scroll-out). */
@@ -184,6 +184,27 @@ export function useCycle(steps: number, intervalMs: number) {
     return () => window.clearInterval(timer);
   }, [steps, intervalMs]);
   return index;
+}
+
+/** Like useCycle, but a visitor can take the wheel: selecting a step stops autoplay
+ * permanently, since a demo that snaps back to autoplay right after you touch it
+ * reads as broken, not helpful. */
+export function useControllableCycle(steps: number, intervalMs: number) {
+  const [index, setIndex] = useState(0);
+  const [autoplay, setAutoplay] = useState(true);
+
+  useEffect(() => {
+    if (!autoplay || prefersReducedMotion() || steps <= 1) return;
+    const timer = window.setInterval(() => setIndex((i) => (i + 1) % steps), intervalMs);
+    return () => window.clearInterval(timer);
+  }, [autoplay, steps, intervalMs]);
+
+  const select = (next: number) => {
+    setAutoplay(false);
+    setIndex(next);
+  };
+
+  return [index, select] as const;
 }
 
 /** Pointer-follow parallax offset for decorative elements (e.g. hero blobs). */

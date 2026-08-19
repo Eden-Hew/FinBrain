@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { useAppState } from "../lib/appState";
 import { MarketingNav } from "../components/Nav";
 import { LogoMark, Wordmark } from "../components/Logo";
-import { useCountUp, useCycle, useInView, useParallax, useTilt, useTypewriterDemo, type TypewriterDemoItem } from "../lib/interactivity";
+import { useControllableCycle, useCountUp, useInView, useParallax, useTilt, useTypewriterDemo, type TypewriterDemoItem } from "../lib/interactivity";
 
 const HERO_NAV_ICONS: Record<string, ReactNode> = {
   agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
@@ -34,7 +34,21 @@ const HERO_DEMOS: TypewriterDemoItem[] = [
     citation: "MyInvois validation",
     pill: "Restricted",
   },
+  {
+    question: "Why are approvals delayed?",
+    answer: "3 approvals have sat over 48 hours, all waiting on Finance Ops sign-off. Escalate to the owner?",
+    citation: "Workflow audit trail",
+    pill: "Restricted",
+  },
+  {
+    question: "Who hasn't paid us this month?",
+    answer: "4 customers show no payment against a validated invoice this month, totaling RM 12,600.",
+    citation: "Finance Dashboard · AR aging",
+    pill: "Restricted",
+  },
 ];
+
+const HERO_DEMO_CHIP_LABELS = ["Overdue accounts", "Invoices to review", "Delayed approvals", "Unpaid this month"];
 
 const AGENTS = [
   {
@@ -165,9 +179,15 @@ export default function Landing() {
     onMouseLeave: onPreviewMouseLeave,
   } = useTilt<HTMLDivElement>(9);
   const [statsRef, statsIn] = useInView<HTMLDivElement>({ threshold: 0.4 });
-  const { demo, typed, phase } = useTypewriterDemo(HERO_DEMOS);
-  const screenIndex = useCycle(HERO_SCREENS.length, 4500);
+  const { demo, typed, phase, demoIndex, select: selectDemo } = useTypewriterDemo(HERO_DEMOS);
+  const [screenIndex, selectScreen] = useControllableCycle(HERO_SCREENS.length, 4500);
   const activeScreen = HERO_SCREENS[screenIndex];
+
+  const tryQuestion = (index: number) => {
+    selectDemo(index);
+    const agentsIndex = HERO_SCREENS.indexOf("agents");
+    if (agentsIndex >= 0) selectScreen(agentsIndex);
+  };
 
   return (
     <div className="fb-root fb-mkt">
@@ -192,8 +212,21 @@ export default function Landing() {
             <button className="fb-mkt-btn is-accent is-lg" onClick={() => show("signup")}>Start free trial</button>
             <button className="fb-mkt-btn is-outline is-lg" type="button" onClick={() => document.getElementById("landing-agents")?.scrollIntoView({ behavior: "smooth" })}>See it in action</button>
           </div>
+          <div className="fb-mkt-try-row">
+            <span className="fb-mkt-try-label">Try asking —</span>
+            {HERO_DEMO_CHIP_LABELS.map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                className={"fb-mkt-try-chip" + (activeScreen === "agents" && demoIndex === index ? " is-active" : "")}
+                onClick={() => tryQuestion(index)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="fb-mkt-preview" aria-hidden="true">
+        <div className="fb-mkt-preview">
           <div
             className="fb-mkt-preview-card"
             ref={previewTiltRef}
@@ -209,10 +242,19 @@ export default function Landing() {
                   <div className="fb-mkt-preview-nav-group" key={group.label ?? "primary"}>
                     {group.label && <div className="fb-mkt-preview-nav-label">{group.label}</div>}
                     {group.items.map((item) => (
-                      <div key={item.key} className={"fb-mkt-preview-nav-item" + (activeScreen === item.key ? " is-active" : "")}>
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={"fb-mkt-preview-nav-item" + (activeScreen === item.key ? " is-active" : "")}
+                        onClick={() => {
+                          const idx = HERO_SCREENS.indexOf(item.key);
+                          if (idx >= 0) selectScreen(idx);
+                          else show("signup");
+                        }}
+                      >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{HERO_NAV_ICONS[item.key]}</svg>
                         {item.label}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ))}
