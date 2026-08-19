@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppState } from "../../lib/appState";
 import {
   FB_AGENTS, FB_ASK_ROLES, FB_EINVOICE_STATUS_LABEL, FB_TG_SAMPLES,
   type AgentDef,
 } from "../../data/sampleData";
+import { fetchEinvoiceReadiness, type EinvoiceReadinessResponse } from "../../api/client";
 
 export function EmbedRevenue() {
   const { askRole } = useAppState();
@@ -100,6 +101,54 @@ export function EmbedEinvoicePending() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+export function EmbedEinvoiceReadiness() {
+  const { show } = useAppState();
+  const [data, setData] = useState<EinvoiceReadinessResponse | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetchEinvoiceReadiness()
+      .then((res) => { if (active) setData(res); })
+      .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Could not load the readiness check."); });
+    return () => { active = false; };
+  }, []);
+
+  if (error) {
+    return <p className="fb-sans" style={{ color: "var(--chart-attn)", fontSize: ".8rem", margin: 0 }}>{error}</p>;
+  }
+  if (!data) {
+    return <div className="fb-thinking" role="status"><span></span><span></span><span></span></div>;
+  }
+
+  return (
+    <div className="fb-rec-card is-type-outreach">
+      <div className="fb-rec-card-top">
+        <h3>MyInvois readiness</h3>
+        <span className={"fb-status-pill " + (data.critical.count > 0 ? "is-review" : "is-active")}>
+          <span className="fb-status-dot" />{Math.round(data.score * 100)}% ready
+        </span>
+      </div>
+      <div className="fb-settings-list">
+        <div className="fb-settings-row"><span>Critical — blocks submission</span><span>{data.critical.count}</span></div>
+        <div className="fb-settings-row"><span>Warnings</span><span>{data.warning.count}</span></div>
+        <div className="fb-settings-row"><span>Passing</span><span>{data.passing.count}</span></div>
+      </div>
+      {data.critical.records.length > 0 && (
+        <div className="fb-log-list" style={{ marginTop: ".8rem" }}>
+          {data.critical.records.slice(0, 3).map((record) => (
+            <div className="fb-log-row" key={record.id}>
+              <div className="fb-log-row-time">{record.supplier_name}</div>
+              <div className="fb-log-row-text">Missing TIN · RM {record.total_amount}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <button className="fb-btn fb-btn-outline" style={{ marginTop: ".8rem" }} type="button" onClick={() => show("einvoice")}>Open Readiness Check →</button>
     </div>
   );
 }
@@ -443,6 +492,7 @@ const RULES: { test: string[]; text: string; embed: () => React.ReactNode }[] = 
   { test: ["72-hour", "72 hour", "rejection window", "expiring invoice"], text: "Here's what's inside the 72-hour rejection window:", embed: () => <EmbedWindow /> },
   { test: ["consolidat", "b2c"], text: "Here's the consolidated B2C e-invoice status:", embed: () => <EmbedConsol /> },
   { test: ["general ledger", "gl reconcil", "reconcile the ledger"], text: "Here's the GL reconciliation status:", embed: () => <EmbedGl /> },
+  { test: ["myinvois", "readiness check", "compliance score", "e-invoice ready", "invoices need fixes"], text: "Here's your MyInvois readiness:", embed: () => <EmbedEinvoiceReadiness /> },
   { test: ["e-invoice", "einvoice", "need my approval", "pending invoice", "invoice review"], text: "Here's what needs your approval or review:", embed: () => <EmbedEinvoicePending /> },
   { test: ["overdue", "aging", "ar aging", "escalat", "collections"], text: "Here's AR aging, and where each overdue account stands:", embed: () => <EmbedAr /> },
   { test: ["lead", "instagram", "inquiry"], text: "Here's lead response status:", embed: () => <EmbedLead /> },
@@ -450,6 +500,19 @@ const RULES: { test: string[]; text: string; embed: () => React.ReactNode }[] = 
   { test: ["renewal", "renew"], text: "Here's renewal tracking:", embed: () => <EmbedRenewal /> },
   { test: ["revenue", "q3", "earnings", "profit", "acme"], text: "Here's what I can tell you, filtered to your current role:", embed: () => <EmbedRevenue /> },
 ];
+
+const EINVOICE_READINESS_KEYWORDS = ["myinvois", "readiness check", "compliance score", "e-invoice ready", "invoices need fixes"];
+
+/**
+ * Unlike the RULES table above (only used for the offline/demo fallback), this stays
+ * live once the real backend is answering — so a real question about MyInvois readiness
+ * still gets the rich embed even though `askQuestion` isn't classifying this intent yet.
+ */
+export function matchEinvoiceReadinessEmbed(rawMessage: string): React.ReactNode | null {
+  const lower = rawMessage.toLowerCase();
+  const matched = EINVOICE_READINESS_KEYWORDS.some((kw) => lower.indexOf(kw) !== -1 || rawMessage.indexOf(kw) !== -1);
+  return matched ? <EmbedEinvoiceReadiness /> : null;
+}
 
 export function resolveChatReply(rawMessage: string, lang: "en" | "ms" | "zh", fallback: string): ChatReply {
   const lower = rawMessage.toLowerCase();

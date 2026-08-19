@@ -71,10 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!authConfigured) {
       throw new Error("Supabase Auth is not configured for this frontend.");
     }
-    setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.session) {
-      setLoading(false);
       throw new Error(error?.message ?? "Sign in failed.");
     }
     try {
@@ -85,8 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setIdentity(null);
       throw cause;
-    } finally {
-      setLoading(false);
     }
   }, []);
 

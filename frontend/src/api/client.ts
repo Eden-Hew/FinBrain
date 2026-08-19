@@ -481,6 +481,158 @@ export async function decideRecommendation(
   );
 }
 
+export interface EInvoiceApiRecord {
+  id: number;
+  supplier_name: string;
+  supplier_tin: string | null;
+  buyer_name: string | null;
+  invoice_no: string | null;
+  issue_date: string | null;
+  currency: string | null;
+  tax_type: string | null;
+  tax_rate: string | null;
+  total_amount: string;
+  status: "review" | "pending" | "submitted" | "validated";
+  created_at: string;
+  document_available: boolean;
+  readiness_reason: string;
+  uin: string | null;
+}
+
+export interface EinvoiceDocumentUrl {
+  url: string;
+  expires_in: number;
+}
+
+export interface EinvoiceReadinessCategory {
+  label: "critical" | "warning" | "passing";
+  count: number;
+  records: EInvoiceApiRecord[];
+}
+
+export interface EinvoiceReadinessResponse {
+  score: number;
+  total_records: number;
+  passing_count: number;
+  critical: EinvoiceReadinessCategory;
+  warning: EinvoiceReadinessCategory;
+  passing: EinvoiceReadinessCategory;
+}
+
+export interface EinvoiceOutreachDraft {
+  id: number;
+  einvoice_record_id: number;
+  channel: "telegram" | "email";
+  draft_text: string;
+  status: "draft" | "approved" | "rejected";
+  created_at: string;
+  decided_at: string | null;
+}
+
+export async function fetchEinvoiceReadiness(): Promise<EinvoiceReadinessResponse> {
+  return parse<EinvoiceReadinessResponse>(await authenticatedFetch("/einvoice-readiness"));
+}
+
+export async function requestEinvoiceFix(
+  recordId: number,
+  channel: "telegram" | "email",
+): Promise<EinvoiceOutreachDraft> {
+  return parse<EinvoiceOutreachDraft>(
+    await authenticatedFetch(`/einvoice-readiness/${recordId}/request-fix`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+    }),
+  );
+}
+
+export async function fetchEinvoiceDocumentUrl(recordId: number): Promise<EinvoiceDocumentUrl> {
+  return parse<EinvoiceDocumentUrl>(
+    await authenticatedFetch(`/einvoice-readiness/${recordId}/document`),
+  );
+}
+
+export async function fetchEinvoiceRecords(): Promise<EInvoiceApiRecord[]> {
+  return parse<EInvoiceApiRecord[]>(await authenticatedFetch("/einvoice-records"));
+}
+
+export interface EInvoiceCreatePayload {
+  supplier_name: string;
+  supplier_tin?: string | null;
+  buyer_name?: string | null;
+  invoice_no?: string | null;
+  issue_date?: string | null;
+  currency?: string | null;
+  tax_type?: string | null;
+  tax_rate?: string | null;
+  total_amount: string;
+}
+
+export async function createEinvoiceRecord(payload: EInvoiceCreatePayload): Promise<EInvoiceApiRecord> {
+  return parse<EInvoiceApiRecord>(
+    await authenticatedFetch("/einvoice-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
+}
+
+export interface InvoiceExtraction {
+  supplier_name: string | null;
+  supplier_tin: string | null;
+  buyer_name: string | null;
+  invoice_no: string | null;
+  issue_date: string | null;
+  currency: string | null;
+  tax_type: string | null;
+  tax_rate: string | null;
+  total_amount: string | null;
+}
+
+export async function extractEinvoiceFields(file: File): Promise<InvoiceExtraction> {
+  return parse<InvoiceExtraction>(
+    await authenticatedFetch("/einvoice-records/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/pdf" },
+      body: file,
+    }),
+  );
+}
+
+export async function uploadEinvoiceDocument(recordId: number, file: File): Promise<EInvoiceApiRecord> {
+  return parse<EInvoiceApiRecord>(
+    await authenticatedFetch(`/einvoice-records/${recordId}/document`, {
+      method: "POST",
+      headers: { "Content-Type": "application/pdf" },
+      body: file,
+    }),
+  );
+}
+
+export async function fetchEinvoiceRecord(recordId: number): Promise<EInvoiceApiRecord> {
+  return parse<EInvoiceApiRecord>(await authenticatedFetch(`/einvoice-records/${recordId}`));
+}
+
+export async function approveEinvoiceRecord(recordId: number): Promise<EInvoiceApiRecord> {
+  return parse<EInvoiceApiRecord>(
+    await authenticatedFetch(`/einvoice-records/${recordId}/approve`, { method: "POST" }),
+  );
+}
+
+export async function fetchEinvoiceOutreachDrafts(): Promise<EinvoiceOutreachDraft[]> {
+  return parse<EinvoiceOutreachDraft[]>(await authenticatedFetch("/einvoice-outreach-drafts"));
+}
+
+export async function decideEinvoiceOutreach(
+  id: number,
+  decision: "approve" | "reject",
+): Promise<EinvoiceOutreachDraft> {
+  return parse<EinvoiceOutreachDraft>(
+    await authenticatedFetch(`/einvoice-outreach-drafts/${id}/${decision}`, { method: "POST" }),
+  );
+}
+
 export async function fetchWorkflowAudit(): Promise<WorkflowAuditResponse> {
   return parse<WorkflowAuditResponse>(
     await authenticatedFetch("/workflow-audit"),

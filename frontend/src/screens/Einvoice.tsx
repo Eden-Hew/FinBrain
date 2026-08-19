@@ -1,8 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../lib/i18n";
-import { useAppState, submitterName } from "../lib/appState";
+import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
-import { FB_EINVOICE_ORDER, FB_EINVOICE_STATUS_LABEL, FB_ROLE_IDENTITY, type EinvoiceStatus } from "../data/sampleData";
+import { PERSONAS } from "../lib/personas";
+import { FB_EINVOICE_STATUS_LABEL, type EinvoiceStatus } from "../data/sampleData";
+import {
+  createEinvoiceRecord,
+  extractEinvoiceFields,
+  fetchEinvoiceDocumentUrl,
+  fetchEinvoiceReadiness,
+  fetchEinvoiceRecords,
+  requestEinvoiceFix,
+  uploadEinvoiceDocument,
+  type EInvoiceApiRecord,
+  type EInvoiceCreatePayload,
+  type EinvoiceReadinessResponse,
+} from "../api/client";
 
 const STATUS_LEGEND: { status: EinvoiceStatus; note: string }[] = [
   { status: "review", note: "A required field couldn't be read — needs a human fix before it can move forward." },
@@ -11,58 +24,330 @@ const STATUS_LEGEND: { status: EinvoiceStatus; note: string }[] = [
   { status: "validated", note: "LHDN returned a UIN and QR code. Nothing further to do." },
 ];
 
-function parseAmount(amount: string): number {
-  const n = Number(amount.replace(/[^0-9.]/g, ""));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function formatRm(total: number): string {
   return "RM " + total.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function Einvoice() {
-  const { t } = useI18n();
-  const { einvoices, einvoiceFilterMine, setEinvoiceFilterMine, askRole, showEinvoiceDetail } = useAppState();
-  const myEmail = FB_ROLE_IDENTITY[askRole].email;
+type ReadinessCategoryKey = "critical" | "warning" | "passing";
+type FixState = "idle" | "sending" | "sent" | "failed";
+type DocumentState = "idle" | "loading" | "failed";
+
+export async function openEinvoiceDocument(
+  recordId: number,
+  setDocumentState: (updater: (s: Record<number, DocumentState>) => Record<number, DocumentState>) => void,
+) {
+  const tab = window.open("", "_blank");
+  setDocumentState((s) => ({ ...s, [recordId]: "loading" }));
+  try {
+    const { url } = await fetchEinvoiceDocumentUrl(recordId);
+    setDocumentState((s) => ({ ...s, [recordId]: "idle" }));
+    if (tab) tab.location.href = url;
+  } catch {
+    tab?.close();
+    setDocumentState((s) => ({ ...s, [recordId]: "failed" }));
+  }
+}
+
+function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
+  const [data, setData] = useState<EinvoiceReadinessResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState<ReadinessCategoryKey | null>("critical");
+  const [fixState, setFixState] = useState<Record<number, FixState>>({});
+  const [documentState, setDocumentState] = useState<Record<number, DocumentState>>({});
+
+  useEffect(() => {
+    let active = true;
+    fetchEinvoiceReadiness()
+      .then((res) => { if (active) { setData(res); setLoading(false); } })
+      .catch((err) => { if (active) { setError(err instanceof Error ? err.message : "Failed to load readiness check."); setLoading(false); } });
+    return () => { active = false; };
+  }, []);
+
+  const requestFix = async (recordId: number) => {
+    setFixState((s) => ({ ...s, [recordId]: "sending" }));
+    try {
+      await requestEinvoiceFix(recordId, "telegram");
+      setFixState((s) => ({ ...s, [recordId]: "sent" }));
+    } catch {
+      setFixState((s) => ({ ...s, [recordId]: "failed" }));
+    }
+  };
+
+  if (loading) return <div className="fb-callout">Loading readiness check…</div>;
+  if (error) return <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>{error}</div>;
+  if (!data) return null;
+
+  const categoryColor = (key: ReadinessCategoryKey) =>
+    key === "critical" ? "var(--chart-attn)" : key === "passing" ? "var(--chart-good)" : undefined;
+
+  return (
+    <div>
+      <div className="fb-readiness-score">
+        <div className="fb-readiness-score-value">{Math.round(data.score * 100)}%</div>
+        <div>
+          <div className="fb-readiness-score-label">Ready for MyInvois submission</div>
+          <div className="fb-fine">{data.passing_count} of {data.total_records} invoices pass all checks</div>
+        </div>
+      </div>
+
+      <div className="fb-kpi-row" style={{ padding: "0 1.5rem", margin: "1.4rem 0" }}>
+        {(["critical", "warning", "passing"] as const).map((key) => (
+          <button
+            key={key}
+            className={"fb-kpi-tile fb-readiness-cat" + (expanded === key ? " is-open" : "")}
+            type="button"
+            onClick={() => setExpanded((current) => (current === key ? null : key))}
+            aria-expanded={expanded === key}
+          >
+            <div className="fb-kpi-label">{key === "critical" ? "Critical" : key === "warning" ? "Warnings" : "Passing"}</div>
+            <div className="fb-kpi-value" style={{ color: categoryColor(key) }}>{data[key].count}</div>
+          </button>
+        ))}
+      </div>
+
+      {expanded && (
+        <div className="fb-table-wrap">
+          <table className="fb-table">
+            <thead>
+              <tr><th>Supplier</th><th>Invoice</th><th style={{ textAlign: "right" }}>Amount</th><th>Document</th><th aria-hidden="true"></th></tr>
+            </thead>
+            <tbody>
+              {data[expanded].records.length === 0 ? (
+                <tr><td colSpan={5} style={{ color: "var(--ink-soft)" }}>Nothing in this category.</td></tr>
+              ) : (
+                data[expanded].records.map((record) => (
+                  <tr key={record.id}>
+                    <td>
+                      <div>{record.supplier_name}</div>
+                      {expanded !== "passing" && (
+                        <div className="fb-fine" style={{ marginTop: ".2rem", maxWidth: "34ch", whiteSpace: "normal" }}>
+                          {record.readiness_reason}
+                        </div>
+                      )}
+                    </td>
+                    <td>{record.invoice_no ?? "—"}</td>
+                    <td className="fb-num">RM {record.total_amount}</td>
+                    <td>
+                      {record.document_available ? (
+                        <button
+                          className="fb-link-toggle"
+                          type="button"
+                          disabled={documentState[record.id] === "loading"}
+                          onClick={() => openEinvoiceDocument(record.id, setDocumentState)}
+                        >
+                          {documentState[record.id] === "loading" ? "Opening…" : documentState[record.id] === "failed" ? "Retry" : "View invoice"}
+                        </button>
+                      ) : (
+                        <span className="fb-fine">No document</span>
+                      )}
+                    </td>
+                    <td>
+                      {expanded === "critical" && canManage && (
+                        fixState[record.id] === "sent" ? (
+                          <span className="fb-fine">Draft sent to Approvals</span>
+                        ) : (
+                          <button
+                            className="fb-btn fb-btn-outline"
+                            type="button"
+                            disabled={fixState[record.id] === "sending"}
+                            onClick={() => requestFix(record.id)}
+                          >
+                            {fixState[record.id] === "sending" ? "Drafting…" : fixState[record.id] === "failed" ? "Retry" : "Request Fix"}
+                          </button>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record: EInvoiceApiRecord) => void; onCancel: () => void; onWarning: (msg: string) => void }) {
+  const [form, setForm] = useState({
+    supplier_name: "",
+    supplier_tin: "",
+    buyer_name: "",
+    invoice_no: "",
+    issue_date: "",
+    currency: "MYR",
+    tax_type: "",
+    tax_rate: "",
+    total_amount: "",
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractNotice, setExtractNotice] = useState("");
+  const [error, setError] = useState("");
+
+  const field = (key: keyof typeof form) => ({
+    value: form[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [key]: e.target.value })),
+  });
+
+  const selectFile = async (selected: File | undefined) => {
+    if (!selected) { setFile(null); return; }
+    setFile(selected);
+    setExtracting(true);
+    setExtractNotice("");
+    setError("");
+    try {
+      const extracted = await extractEinvoiceFields(selected);
+      setForm((f) => ({
+        supplier_name: extracted.supplier_name ?? f.supplier_name,
+        supplier_tin: extracted.supplier_tin ?? f.supplier_tin,
+        buyer_name: extracted.buyer_name ?? f.buyer_name,
+        invoice_no: extracted.invoice_no ?? f.invoice_no,
+        issue_date: extracted.issue_date ?? f.issue_date,
+        currency: extracted.currency ?? f.currency,
+        tax_type: extracted.tax_type ?? f.tax_type,
+        tax_rate: extracted.tax_rate ?? f.tax_rate,
+        total_amount: extracted.total_amount ?? f.total_amount,
+      }));
+      setExtractNotice("Fields auto-filled from the PDF — please review before saving.");
+    } catch (err) {
+      setExtractNotice(
+        "Couldn't auto-fill from this PDF (" +
+        (err instanceof Error ? err.message : "extraction failed") +
+        "). You can still fill in the fields manually — the file will still be attached.",
+      );
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const payload: EInvoiceCreatePayload = {
+        supplier_name: form.supplier_name.trim(),
+        supplier_tin: form.supplier_tin.trim() || null,
+        buyer_name: form.buyer_name.trim() || null,
+        invoice_no: form.invoice_no.trim() || null,
+        issue_date: form.issue_date || null,
+        currency: form.currency.trim() || null,
+        tax_type: form.tax_type.trim() || null,
+        tax_rate: form.tax_rate.trim() || null,
+        total_amount: form.total_amount.trim(),
+      };
+      const created = await createEinvoiceRecord(payload);
+      if (!file) {
+        onCreated(created);
+        return;
+      }
+      try {
+        onCreated(await uploadEinvoiceDocument(created.id, file));
+      } catch (uploadErr) {
+        onWarning(
+          `${created.supplier_name} was saved, but the PDF failed to attach (` +
+          (uploadErr instanceof Error ? uploadErr.message : "unknown error") +
+          "). Open the invoice's detail page to retry.",
+        );
+        onCreated(created);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save invoice.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="fb-answer-card" style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px", margin: "0 0 1.4rem", padding: "1.2rem 1.4rem" }}>
+      <label className="fb-field-label">Invoice PDF (optional — auto-fills the fields below)
+        <input
+          className="fb-field-mock"
+          type="file"
+          accept="application/pdf"
+          disabled={extracting}
+          onChange={(e) => void selectFile(e.target.files?.[0])}
+        />
+      </label>
+      {extracting && <div className="fb-fine">Reading the PDF and extracting fields…</div>}
+      {extractNotice && !extracting && <div className="fb-fine">{extractNotice}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
+        <label className="fb-field-label" style={{ gridColumn: "1 / -1" }}>Supplier name
+          <input className="fb-field-mock" {...field("supplier_name")} required />
+        </label>
+        <label className="fb-field-label">Supplier TIN
+          <input className="fb-field-mock" {...field("supplier_tin")} placeholder="Leave blank if unknown" />
+        </label>
+        <label className="fb-field-label">Buyer name
+          <input className="fb-field-mock" {...field("buyer_name")} />
+        </label>
+        <label className="fb-field-label">Invoice no.
+          <input className="fb-field-mock" {...field("invoice_no")} />
+        </label>
+        <label className="fb-field-label">Issue date
+          <input className="fb-field-mock" type="date" {...field("issue_date")} />
+        </label>
+        <label className="fb-field-label">Currency
+          <input className="fb-field-mock" {...field("currency")} />
+        </label>
+        <label className="fb-field-label">Tax type
+          <input className="fb-field-mock" {...field("tax_type")} placeholder="e.g. SST" />
+        </label>
+        <label className="fb-field-label">Tax rate
+          <input className="fb-field-mock" {...field("tax_rate")} placeholder="e.g. 6%" />
+        </label>
+        <label className="fb-field-label">Total amount (RM)
+          <input className="fb-field-mock" type="number" step="0.01" min="0.01" {...field("total_amount")} required />
+        </label>
+      </div>
+      {error && <div className="fb-fine" style={{ color: "var(--chart-attn)" }} role="alert">{error}</div>}
+      <div style={{ display: "flex", gap: ".6rem" }}>
+        <button type="submit" className="fb-btn fb-btn-solid" disabled={submitting || extracting}>
+          {submitting ? "Saving…" : "Save invoice"}
+        </button>
+        <button type="button" className="fb-btn fb-btn-outline" onClick={onCancel} disabled={submitting}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function AllInvoicesPanel() {
+  const { showEinvoiceDetail, askRole } = useAppState();
+  const [records, setRecords] = useState<EInvoiceApiRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [legendOpen, setLegendOpen] = useState(false);
   const [pdpaOpen, setPdpaOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [banner, setBanner] = useState("");
+  const canAdd = PERSONAS[askRole].capabilities.manageEinvoiceReadiness;
 
-  const scoped = FB_EINVOICE_ORDER.filter((id) => !einvoiceFilterMine || einvoices[id].submitter === myEmail);
-  const order = scoped.filter((id) => einvoices[id].supplier.toLowerCase().includes(search.trim().toLowerCase()));
+  useEffect(() => {
+    let active = true;
+    fetchEinvoiceRecords()
+      .then((res) => { if (active) { setRecords(res); setLoading(false); } })
+      .catch((err) => { if (active) { setError(err instanceof Error ? err.message : "Failed to load invoices."); setLoading(false); } });
+    return () => { active = false; };
+  }, []);
 
-  const needsAttention = scoped
-    .map((id) => einvoices[id])
-    .filter((inv) => inv.submitter === myEmail && (inv.status === "pending" || inv.status === "review"));
+  const order = records.filter((r) => r.supplier_name.toLowerCase().includes(search.trim().toLowerCase()));
 
-  const stats = useMemo(() => {
-    const rows = scoped.map((id) => einvoices[id]);
-    return {
-      review: rows.filter((r) => r.status === "review").length,
-      pending: rows.filter((r) => r.status === "pending").length,
-      processed: rows.filter((r) => r.status === "submitted" || r.status === "validated").length,
-      total: formatRm(rows.reduce((sum, r) => sum + parseAmount(r.amount), 0)),
-    };
-  }, [scoped, einvoices]);
+  const stats = useMemo(() => ({
+    review: records.filter((r) => r.status === "review").length,
+    pending: records.filter((r) => r.status === "pending").length,
+    processed: records.filter((r) => r.status === "submitted" || r.status === "validated").length,
+    total: formatRm(records.reduce((sum, r) => sum + Number(r.total_amount), 0)),
+  }), [records]);
+
+  if (loading) return <div className="fb-callout">Loading invoices…</div>;
+  if (error) return <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>{error}</div>;
 
   return (
-    <div className="fb-root fb-shell">
-      <Sidebar current="einvoice" />
-      <AppTopBar current="einvoice" />
-
-      <header className="fb-app-header">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
-          <div>
-            <h1>{t("einvoice.title")}</h1>
-            <p>{t("einvoice.desc")}</p>
-          </div>
-          <div className="fb-role-switch" role="tablist" style={{ margin: 0 }}>
-            <button className={"fb-role-btn" + (!einvoiceFilterMine ? " is-current" : "")} type="button" onClick={() => setEinvoiceFilterMine(false)}>{t("einvoice.filterAll")}</button>
-            <button className={"fb-role-btn" + (einvoiceFilterMine ? " is-current" : "")} type="button" onClick={() => setEinvoiceFilterMine(true)}>{t("einvoice.filterMine")}</button>
-          </div>
-        </div>
-      </header>
-
+    <>
       <div className="fb-kpi-row" style={{ paddingBottom: "1.4rem" }}>
         <div className="fb-kpi-tile">
           <div className="fb-kpi-label">Needs review</div>
@@ -82,12 +367,21 @@ export default function Einvoice() {
         </div>
       </div>
 
-      {needsAttention.length > 0 && myEmail && (
-        <div className="fb-callout" style={{ marginTop: 0, borderColor: "var(--chart-attn)" }}>
-          <strong>{needsAttention.length} of your submissions need attention:</strong>{" "}
-          {needsAttention
-            .map((inv) => inv.supplier + (inv.status === "review" ? " — missing a field, please resubmit with the correction" : " — awaiting Finance Director approval"))
-            .join("; ")}.
+      {canAdd && (
+        <div style={{ padding: "0 1.5rem", margin: "0 0 1.2rem" }}>
+          {banner && <div className="fb-callout" style={{ marginBottom: "1rem" }} role="status">{banner}</div>}
+          {addOpen ? (
+            <AddInvoiceForm
+              onCreated={(created) => {
+                setRecords((r) => [created, ...r]);
+                setAddOpen(false);
+              }}
+              onCancel={() => setAddOpen(false)}
+              onWarning={setBanner}
+            />
+          ) : (
+            <button className="fb-btn fb-btn-solid" type="button" onClick={() => setAddOpen(true)}>+ Add invoice</button>
+          )}
         </div>
       )}
 
@@ -136,23 +430,28 @@ export default function Einvoice() {
       <div className="fb-table-wrap">
         <table className="fb-table">
           <thead>
-            <tr><th>Date</th><th>Supplier</th><th style={{ textAlign: "right" }}>Amount</th><th>Status</th><th>Submitted by</th><th>UIN</th><th aria-hidden="true"></th></tr>
+            <tr><th>Date</th><th>Supplier</th><th style={{ textAlign: "right" }}>Amount</th><th>Status</th><th>UIN</th><th aria-hidden="true"></th></tr>
           </thead>
           <tbody>
             {order.length === 0 ? (
-              <tr><td colSpan={7} style={{ color: "var(--ink-soft)" }}>{scoped.length === 0 ? "No submissions from you yet — receipts you send via Telegram, email, or upload will show up here." : "No suppliers match your search."}</td></tr>
+              <tr><td colSpan={6} style={{ color: "var(--ink-soft)" }}>{records.length === 0 ? "No invoices on file yet." : "No suppliers match your search."}</td></tr>
             ) : (
-              order.map((id) => {
-                const inv = einvoices[id];
-                const pillClass = inv.status === "review" ? "is-review" : inv.status === "pending" ? "" : "is-active";
+              order.map((record) => {
+                const pillClass = record.status === "review" ? "is-review" : record.status === "pending" ? "" : "is-active";
                 return (
-                  <tr key={id} className="fb-table-row-clickable" tabIndex={0} role="button" onClick={() => showEinvoiceDetail(id)} onKeyDown={(e) => { if (e.key === "Enter") showEinvoiceDetail(id); }}>
-                    <td>{inv.date}</td>
-                    <td>{inv.supplier}</td>
-                    <td className="fb-num">{inv.amount}</td>
-                    <td><span className={"fb-status-pill " + pillClass}><span className="fb-status-dot"></span>{FB_EINVOICE_STATUS_LABEL[inv.status]}</span></td>
-                    <td>{inv.submitter === myEmail ? "You" : submitterName(inv.submitter)}</td>
-                    <td>{inv.uin || "—"}</td>
+                  <tr
+                    key={record.id}
+                    className="fb-table-row-clickable"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => showEinvoiceDetail(`real-${record.id}`)}
+                    onKeyDown={(e) => { if (e.key === "Enter") showEinvoiceDetail(`real-${record.id}`); }}
+                  >
+                    <td>{record.issue_date ?? "—"}</td>
+                    <td>{record.supplier_name}</td>
+                    <td className="fb-num">RM {record.total_amount}</td>
+                    <td><span className={"fb-status-pill " + pillClass}><span className="fb-status-dot"></span>{FB_EINVOICE_STATUS_LABEL[record.status]}</span></td>
+                    <td>{record.uin || "—"}</td>
                     <td className="fb-table-row-chevron" aria-hidden="true">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
                     </td>
@@ -163,6 +462,36 @@ export default function Einvoice() {
           </tbody>
         </table>
       </div>
+    </>
+  );
+}
+
+export default function Einvoice() {
+  const { t } = useI18n();
+  const { askRole } = useAppState();
+  const [activeTab, setActiveTab] = useState<"all" | "readiness">("all");
+
+  return (
+    <div className="fb-root fb-shell">
+      <Sidebar current="einvoice" />
+      <AppTopBar current="einvoice" />
+
+      <header className="fb-app-header">
+        <div>
+          <h1>{t("einvoice.title")}</h1>
+          <p>{t("einvoice.desc")}</p>
+        </div>
+        <div className="fb-role-switch" role="tablist" style={{ marginTop: "1rem" }}>
+          <button className={"fb-role-btn" + (activeTab === "all" ? " is-current" : "")} type="button" onClick={() => setActiveTab("all")}>All invoices</button>
+          <button className={"fb-role-btn" + (activeTab === "readiness" ? " is-current" : "")} type="button" onClick={() => setActiveTab("readiness")}>Readiness Check</button>
+        </div>
+      </header>
+
+      {activeTab === "readiness" ? (
+        <ReadinessCheckPanel canManage={PERSONAS[askRole].capabilities.manageEinvoiceReadiness} />
+      ) : (
+        <AllInvoicesPanel />
+      )}
     </div>
   );
 }

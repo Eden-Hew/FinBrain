@@ -8,7 +8,7 @@ import {
   StandaloneExposureReceipt,
   StructuredCitationResults,
 } from "../components/intelligence/IntelligenceExperience";
-import { resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
+import { matchEinvoiceReadinessEmbed, resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
 import {
   askQuestion,
   commitUpload,
@@ -52,6 +52,7 @@ const SUGGESTIONS = [
   "Summarize all approval-delay records and cite every source.",
   "Which records have no assigned owner?",
   "How many high-priority approval delays came from email this week?",
+  "Which invoices need fixes before MyInvois submission?",
 ];
 
 let msgId = 1;
@@ -134,7 +135,7 @@ export default function Agents() {
         exposure = response.exposure_receipt ?? undefined;
         modelQuestion = response.model_question;
         turnId = response.turn_id ?? undefined;
-        embed = undefined;
+        embed = matchEinvoiceReadinessEmbed(trimmed) ?? undefined;
       } catch {
         // Preserve the visual demonstration when the local backend is unavailable.
         isFallback = true;

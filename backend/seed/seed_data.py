@@ -1,10 +1,11 @@
 import argparse
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import text
 
 from app.config import get_settings
 from app.db import SessionLocal, initialize_local_schema
+from app.models import EInvoiceRecord
 from app.schemas import CanonicalIngestionRecord
 from app.services.ingestion import ingest_canonical_record
 from seed.sample_records import SAMPLE_RECORDS
@@ -17,6 +18,8 @@ RESET_TABLES = (
     "recommendation_decisions",
     "recommendation_evidence",
     "process_recommendations",
+    "einvoice_outreach_drafts",
+    "einvoice_records",
     "workflow_audit_log",
     "audit_log",
     "email_ingestion_receipts",
@@ -29,6 +32,120 @@ RESET_TABLES = (
     "vault_rotation_jobs",
     "vault_key_versions",
 )
+
+EINVOICE_SEED_RECORDS = [
+    dict(
+        supplier_name="Tenaga Nasional Berhad", supplier_tin="C1234567890",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="TNB-2026-88213",
+        issue_date=date(2026, 8, 10), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="1240.00", status="validated",
+    ),
+    dict(
+        supplier_name="Grab Malaysia", supplier_tin="C9988776655",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="GRB-4471209",
+        issue_date=date(2026, 8, 9), currency="MYR", tax_type="SST", tax_rate="0%",
+        total_amount="86.40", status="submitted",
+    ),
+    dict(
+        supplier_name="Petronas Dagangan", supplier_tin="C1122334455",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="PDB-990214",
+        issue_date=date(2026, 8, 8), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="320.00", status="pending",
+    ),
+    dict(
+        supplier_name="Office Supplies Sdn Bhd", supplier_tin=None,
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="OS-4471",
+        issue_date=date(2026, 8, 7), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="545.90", status="review",
+    ),
+    dict(
+        supplier_name="Astro Malaysia", supplier_tin="C5566778899",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="AST-118820",
+        issue_date=date(2026, 8, 5), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="129.00", status="validated",
+    ),
+    dict(
+        supplier_name="Acme Retail", supplier_tin="C3344556677",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="ACM-77102",
+        issue_date=date(2026, 8, 4), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="980.00", status="submitted",
+    ),
+    dict(
+        supplier_name="ACME RETAIL SDN BHD", supplier_tin="C3344556677",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="ACM-77145",
+        issue_date=date(2026, 8, 2), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="410.00", status="submitted",
+    ),
+    # --- Deliberate single-flaw test cases below, each isolating one readiness check ---
+    dict(
+        # Flaw: missing supplier TIN only -> critical (blocks submission).
+        supplier_name="Kedai Runcit Maju", supplier_tin=None,
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="KRM-3021",
+        issue_date=date(2026, 8, 11), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="212.50", status="review",
+    ),
+    dict(
+        # Flaw: missing buyer name only -> warning.
+        supplier_name="Segar Fresh Mart", supplier_tin="C4455667788",
+        buyer_name=None, invoice_no="SFM-9012",
+        issue_date=date(2026, 8, 12), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="88.20", status="submitted",
+    ),
+    dict(
+        # Flaw: missing tax type only -> warning.
+        supplier_name="Bina Jaya Hardware", supplier_tin="C6677889900",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="BJH-5510",
+        issue_date=date(2026, 8, 13), currency="MYR", tax_type=None, tax_rate=None,
+        total_amount="1560.00", status="submitted",
+    ),
+    dict(
+        # Flaw: name variant, spelling 1 of 3 -> warning (all three should flag).
+        supplier_name="Impian Services", supplier_tin="C7788990011",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="IMP-1001",
+        issue_date=date(2026, 8, 14), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="640.00", status="submitted",
+    ),
+    dict(
+        # Flaw: name variant, spelling 2 of 3.
+        supplier_name="IMPIAN SERVICES SDN BHD", supplier_tin="C7788990011",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="IMP-1014",
+        issue_date=date(2026, 8, 15), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="720.00", status="submitted",
+    ),
+    dict(
+        # Flaw: name variant, spelling 3 of 3.
+        supplier_name="Impian Services Sdn. Bhd.", supplier_tin="C7788990011",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="IMP-1029",
+        issue_date=date(2026, 8, 16), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="305.00", status="submitted",
+    ),
+    dict(
+        # Flaw: combined (missing TIN AND missing buyer name) -> still critical, not double-counted.
+        supplier_name="Damaged Goods Trading", supplier_tin=None,
+        buyer_name=None, invoice_no="DGT-4400",
+        issue_date=date(2026, 8, 17), currency="MYR", tax_type=None, tax_rate=None,
+        total_amount="95.00", status="review",
+    ),
+    dict(
+        # No flaws -> passing.
+        supplier_name="Bright Solutions Sdn Bhd", supplier_tin="C8899001122",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="BSS-7701",
+        issue_date=date(2026, 8, 18), currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="1980.00", status="validated",
+    ),
+]
+
+
+def seed_einvoice_records(db) -> None:
+    """Seed EInvoiceRecord rows directly — no ingestion/LLM pipeline needed."""
+    from sqlalchemy import select
+
+    if db.scalar(select(EInvoiceRecord.id).limit(1)) is not None:
+        return
+    for fields in EINVOICE_SEED_RECORDS:
+        db.add(EInvoiceRecord(**fields))
+    db.commit()
+    print(f"seeded {len(EINVOICE_SEED_RECORDS)} einvoice_records")
 
 
 def adapt_seed_record(record: dict) -> CanonicalIngestionRecord:
@@ -77,6 +194,7 @@ def run(
                 f"seeded {canonical.source_system}/{result.source_record_id} "
                 f"[{result.processing_status}] via {result.enrichment_mode or 'none'}"
             )
+        seed_einvoice_records(db)
 
 
 if __name__ == "__main__":

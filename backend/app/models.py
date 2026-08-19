@@ -1,5 +1,6 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -7,11 +8,13 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -425,3 +428,42 @@ class WorkflowAuditEntry(Base):
     resource_id: Mapped[str] = mapped_column(String, nullable=False)
     event_payload: Mapped[dict[str, Any]] = mapped_column(ObjectType(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EInvoiceRecord(Base):
+    __tablename__ = "einvoice_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    supplier_name: Mapped[str] = mapped_column(String, nullable=False)
+    supplier_tin: Mapped[str | None] = mapped_column(String)
+    buyer_name: Mapped[str | None] = mapped_column(String)
+    invoice_no: Mapped[str | None] = mapped_column(String)
+    issue_date: Mapped[date | None] = mapped_column(Date)
+    currency: Mapped[str | None] = mapped_column(String)
+    tax_type: Mapped[str | None] = mapped_column(String)
+    tax_rate: Mapped[str | None] = mapped_column(String)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
+    source_record_id: Mapped[str | None] = mapped_column(String)
+    document_storage_path: Mapped[str | None] = mapped_column(String)
+    uin: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class EinvoiceOutreachDraft(Base):
+    __tablename__ = "einvoice_outreach_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    einvoice_record_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("einvoice_records.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String, nullable=False)
+    draft_text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="draft", nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    decided_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

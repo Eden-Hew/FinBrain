@@ -9,6 +9,8 @@ export interface Persona {
     analyzeProcesses: boolean;
     decideRecommendations: boolean;
     viewAudit: boolean;
+    manageEinvoiceReadiness: boolean;
+    approveEinvoiceSubmission: boolean;
   };
 }
 
@@ -22,6 +24,8 @@ export const PERSONAS: Record<Role, Persona> = {
       analyzeProcesses: false,
       decideRecommendations: false,
       viewAudit: false,
+      manageEinvoiceReadiness: false,
+      approveEinvoiceSubmission: false,
     },
   },
   finance_ops: {
@@ -33,6 +37,8 @@ export const PERSONAS: Record<Role, Persona> = {
       analyzeProcesses: false,
       decideRecommendations: false,
       viewAudit: false,
+      manageEinvoiceReadiness: true,
+      approveEinvoiceSubmission: false,
     },
   },
   compliance: {
@@ -44,6 +50,8 @@ export const PERSONAS: Record<Role, Persona> = {
       analyzeProcesses: false,
       decideRecommendations: false,
       viewAudit: true,
+      manageEinvoiceReadiness: false,
+      approveEinvoiceSubmission: false,
     },
   },
   owner_director: {
@@ -55,6 +63,8 @@ export const PERSONAS: Record<Role, Persona> = {
       analyzeProcesses: true,
       decideRecommendations: true,
       viewAudit: false,
+      manageEinvoiceReadiness: true,
+      approveEinvoiceSubmission: true,
     },
   },
 };

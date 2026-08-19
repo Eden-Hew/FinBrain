@@ -9,6 +9,7 @@ from app.routes import (
     audit_log,
     auth,
     conversations,
+    einvoice,
     health,
     ingestion,
     integrations,
@@ -48,6 +49,7 @@ app.include_router(audit_log.router)
 app.include_router(ingestion.router)
 app.include_router(integrations.router)
 app.include_router(recommendations.router)
+app.include_router(einvoice.router)
 app.include_router(uploads.router)
 app.include_router(conversations.router)
 app.include_router(health.router)

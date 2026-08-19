@@ -6,18 +6,22 @@ import { PersonaSelector } from "../components/PersonaSelector";
 import { PERSONAS } from "../lib/personas";
 import {
   analyzeProcesses,
+  decideEinvoiceOutreach,
   decideRecommendation,
+  fetchEinvoiceOutreachDrafts,
   fetchRecommendations,
+  type EinvoiceOutreachDraft,
   type ProcessRecommendation,
 } from "../api/client";
 
-type CardType = "invoice" | "sop" | "action" | "recommendation";
+type CardType = "invoice" | "sop" | "action" | "recommendation" | "outreach";
 
 const TYPE_ICON: Record<CardType, React.ReactNode> = {
   invoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
   sop: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
   action: <path d="M13 2 3 14h7l-1 8 10-12h-7z" />,
   recommendation: <path d="M9 18h6M10 22h4M12 2a6 6 0 0 0-3.6 10.8c.5.4.6 1 .6 1.6V16h6v-1.6c0-.6.1-1.2.6-1.6A6 6 0 0 0 12 2z" />,
+  outreach: <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" />,
 };
 
 const TYPE_LABEL: Record<CardType, string> = {
@@ -25,6 +29,7 @@ const TYPE_LABEL: Record<CardType, string> = {
   sop: "SOP",
   action: "Agent action",
   recommendation: "AI recommendation",
+  outreach: "Outreach message",
 };
 
 const TYPE_SUMMARY_LABEL: Record<CardType, [string, string]> = {
@@ -32,6 +37,7 @@ const TYPE_SUMMARY_LABEL: Record<CardType, [string, string]> = {
   sop: ["SOP", "SOPs"],
   action: ["agent action", "agent actions"],
   recommendation: ["AI recommendation", "AI recommendations"],
+  outreach: ["outreach message", "outreach messages"],
 };
 
 function TypeBadge({ type }: { type: CardType }) {
@@ -79,6 +85,8 @@ export default function Approvals() {
   const [recommendations, setRecommendations] = useState<ProcessRecommendation[]>([]);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
+  const [outreachDrafts, setOutreachDrafts] = useState<EinvoiceOutreachDraft[]>([]);
+  const [outreachError, setOutreachError] = useState("");
 
   const refreshRecommendations = async () => {
     const rows = await fetchRecommendations();
@@ -102,6 +110,24 @@ export default function Approvals() {
     void initialLoad();
     return () => { active = false; };
   }, [askRole, capabilities.viewRecommendations]);
+
+  useEffect(() => {
+    let active = true;
+    const initialLoad = async () => {
+      try {
+        if (!capabilities.manageEinvoiceReadiness) {
+          if (active) setOutreachDrafts([]);
+          return;
+        }
+        const rows = await fetchEinvoiceOutreachDrafts();
+        if (active) setOutreachDrafts(rows);
+      } catch {
+        if (active) setOutreachDrafts([]);
+      }
+    };
+    void initialLoad();
+    return () => { active = false; };
+  }, [askRole, capabilities.manageEinvoiceReadiness]);
 
   useEffect(() => {
     if (focusedRecommendationId == null) return;
@@ -137,6 +163,16 @@ export default function Approvals() {
     }
   };
 
+  const decideOutreach = async (id: number, decision: "approve" | "reject") => {
+    setOutreachError("");
+    try {
+      await decideEinvoiceOutreach(id, decision);
+      setOutreachDrafts((rows) => rows.filter((row) => row.id !== id));
+    } catch (error) {
+      setOutreachError(error instanceof Error ? error.message : "Decision failed.");
+    }
+  };
+
   const pendingInvoices = Object.values(einvoices).filter((inv) => inv.status === "pending");
   const draftSops = sops.filter((s) => s.status === "draft");
   const activeActions = pendingActions.filter((a) => a.active);
@@ -147,13 +183,15 @@ export default function Approvals() {
   const isEmpty = pendingInvoices.length === 0
     && draftSops.length === 0
     && activeActions.length === 0
-    && openRecommendations.length === 0;
+    && openRecommendations.length === 0
+    && outreachDrafts.length === 0;
 
   const summary: { type: CardType; tone: string; count: number }[] = [
     { type: "invoice" as const, tone: "is-blue", count: pendingInvoices.length },
     { type: "sop" as const, tone: "is-purple", count: draftSops.length },
     { type: "action" as const, tone: "is-orange", count: activeActions.length },
     { type: "recommendation" as const, tone: "is-green", count: openRecommendations.length },
+    { type: "outreach" as const, tone: "is-teal", count: outreachDrafts.length },
   ].filter((item) => item.count > 0);
 
   return (
@@ -195,6 +233,7 @@ export default function Approvals() {
           <div className="fb-callout">This persona cannot view process recommendations.</div>
         )}
         {recommendationError && <div className="fb-callout" role="alert">{recommendationError}</div>}
+        {outreachError && <div className="fb-callout" role="alert">{outreachError}</div>}
         <div className="fb-card-list">
           {isEmpty && <p className="fb-sans" style={{ color: "var(--ink-soft)", fontSize: ".8rem" }}>Nothing waiting on you right now — you're fully caught up.</p>}
 
@@ -282,6 +321,18 @@ export default function Approvals() {
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
                 <ConfirmApproveButton label={act.approveLabel} onConfirm={() => approveAction(act.id)} />
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => rejectAction(act.id)}>Discard</button>
+              </div>
+            </div>
+          ))}
+
+          {outreachDrafts.map((draft) => (
+            <div className="fb-rec-card is-type-outreach" key={`outreach-${draft.id}`}>
+              <TypeBadge type="outreach" />
+              <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>e-Invoice Readiness · via {draft.channel}</div>
+              <div className="fb-rec-evidence">{draft.draft_text}</div>
+              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
+                <ConfirmApproveButton label="Approve & send" onConfirm={() => decideOutreach(draft.id, "approve")} />
+                <button className="fb-btn fb-btn-outline" type="button" onClick={() => decideOutreach(draft.id, "reject")}>Discard</button>
               </div>
             </div>
           ))}

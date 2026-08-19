@@ -28,6 +28,7 @@ def verify_access_token(token: str) -> dict[str, Any]:
             algorithms=settings.supabase_jwt_algorithm_list,
             audience=settings.supabase_jwt_audience,
             issuer=settings.effective_supabase_jwt_issuer,
+            leeway=30,
             options={"require": ["exp", "iss", "sub", "aud"]},
         )
     except jwt.PyJWTError as error:

@@ -55,6 +55,8 @@ def _source_aliases(source_system: str) -> set[str]:
         aliases.update({"support", "support tickets"})
     elif readable == "bank csv":
         aliases.update({"bank", "bank records", "bank transactions"})
+    elif readable == "einvoice":
+        aliases.update({"e-invoice", "e invoice", "einvoices", "e-invoices", "e invoices"})
     return {alias for alias in aliases if alias}
 
 
@@ -126,16 +128,17 @@ def _date_range(
 
 def _record_types(lowered: str) -> tuple[str, ...]:
     values: list[str] = []
-    rules = (
-        (r"\b(?:spreadsheet rows?|invoice rows?|csv rows?|invoices?)\b", "invoice_row"),
-        (r"\bmeeting (?:notes?|minutes)\b", "operations_minutes"),
-        (r"\bsupport tickets?\b", "support_ticket"),
-        (r"\bcustomer emails?\b", "customer_email"),
-        (r"\btelegram messages?\b", "customer_message"),
+    rules: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (r"\b(?:spreadsheet rows?|csv rows?)\b", ("invoice_row",)),
+        (r"\b(?:invoice rows?|invoices?|e-?invoices?)\b", ("invoice_row", "einvoice")),
+        (r"\bmeeting (?:notes?|minutes)\b", ("operations_minutes",)),
+        (r"\bsupport tickets?\b", ("support_ticket",)),
+        (r"\bcustomer emails?\b", ("customer_email",)),
+        (r"\btelegram messages?\b", ("customer_message",)),
     )
-    for pattern, value in rules:
+    for pattern, mapped in rules:
         if re.search(pattern, lowered):
-            values.append(value)
+            values.extend(mapped)
     return tuple(dict.fromkeys(values))
 
 

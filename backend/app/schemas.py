@@ -1,5 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -474,3 +476,79 @@ class WorkflowAuditResponse(BaseModel):
 class WorkflowAuditListResponse(BaseModel):
     entries: list[WorkflowAuditResponse]
     chain_valid: bool
+
+
+class EInvoiceRecordResponse(BaseModel):
+    id: int
+    supplier_name: str
+    supplier_tin: str | None
+    buyer_name: str | None
+    invoice_no: str | None
+    issue_date: date | None
+    currency: str | None
+    tax_type: str | None
+    tax_rate: str | None
+    total_amount: Decimal
+    status: str
+    created_at: datetime
+    document_available: bool = False
+    readiness_reason: str = ""
+    uin: str | None = None
+
+
+class EinvoiceDocumentUrlResponse(BaseModel):
+    url: str
+    expires_in: int
+
+
+class InvoiceExtraction(BaseModel):
+    supplier_name: str | None = None
+    supplier_tin: str | None = None
+    buyer_name: str | None = None
+    invoice_no: str | None = None
+    issue_date: str | None = None
+    currency: str | None = None
+    tax_type: str | None = None
+    tax_rate: str | None = None
+    total_amount: str | None = None
+
+
+class EInvoiceCreatePayload(BaseModel):
+    supplier_name: str = Field(min_length=1, max_length=255)
+    supplier_tin: str | None = Field(default=None, max_length=64)
+    buyer_name: str | None = Field(default=None, max_length=255)
+    invoice_no: str | None = Field(default=None, max_length=64)
+    issue_date: date | None = None
+    currency: str | None = Field(default="MYR", max_length=8)
+    tax_type: str | None = Field(default=None, max_length=32)
+    tax_rate: str | None = Field(default=None, max_length=16)
+    total_amount: Decimal = Field(gt=0)
+
+
+class EinvoiceReadinessCategory(BaseModel):
+    label: Literal["critical", "warning", "passing"]
+    count: int
+    records: list[EInvoiceRecordResponse]
+
+
+class EinvoiceReadinessResponse(BaseModel):
+    score: float
+    total_records: int
+    passing_count: int
+    critical: EinvoiceReadinessCategory
+    warning: EinvoiceReadinessCategory
+    passing: EinvoiceReadinessCategory
+
+
+class RequestFixPayload(BaseModel):
+    channel: Literal["telegram", "email"]
+
+
+class EinvoiceOutreachDraftResponse(BaseModel):
+    id: int
+    einvoice_record_id: int
+    channel: str
+    draft_text: str
+    status: str
+    created_at: datetime
+    decided_at: datetime | None

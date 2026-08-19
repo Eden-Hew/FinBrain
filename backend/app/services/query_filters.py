@@ -15,6 +15,8 @@ ALLOWED_METADATA_KEYS = {
     "amount_band",
     "schema_name",
     "batch_ref",
+    "has_tin",
+    "currency",
 }
 
 

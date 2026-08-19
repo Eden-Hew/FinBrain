@@ -62,7 +62,7 @@ def test_planner_builds_typed_filters_for_acceptance_questions():
             QueryIntent.LIST_RECORDS,
             {
                 "source_systems": ("spreadsheet",),
-                "record_types": ("invoice_row",),
+                "record_types": ("invoice_row", "einvoice"),
                 "metadata_equals": (
                     ("overdue", "overdue"),
                     ("has_assigned_owner", "false"),

@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     supabase_jwt_issuer: str = ""
     supabase_jwt_audience: str = "authenticated"
     supabase_jwt_algorithms: str = "RS256,ES256"
+    supabase_service_role_key: str | None = None
+    einvoice_document_bucket: str = "einvoice-documents"
 
     @field_validator(
         "telegram_draft_ttl_seconds",
