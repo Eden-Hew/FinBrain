@@ -56,8 +56,8 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
 
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const showApproveBtn = record.status === "pending";
-  const showUinPanel = record.status === "validated" || record.status === "submitted" || Boolean(record.uin);
-  const displayUin = record.uin || ("MY29A" + (record.invoice_no ? record.invoice_no.replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() : record.id));
+  const showUinPanel = record.status === "validated" && Boolean(record.uin);
+  const displayUin = record.uin || "";
 
   const fields: [string, string][] = [
     ["Supplier", record.supplier_name],
@@ -166,8 +166,8 @@ export default function EinvoiceDetail() {
   if (!inv) return null;
 
   const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
-  const showUinPanel = inv.status === "validated" || inv.status === "submitted" || Boolean(inv.uin);
-  const displayUin = inv.uin || ("MY29A" + inv.id.replace("-", "").toUpperCase());
+  const showUinPanel = inv.status === "validated" && Boolean(inv.uin);
+  const displayUin = inv.uin || "";
 
   return (
     <div className="fb-root fb-shell">
