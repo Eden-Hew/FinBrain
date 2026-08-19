@@ -62,11 +62,13 @@ def test_sqlite_retrieval_uses_portable_embedding_values():
                     source_record_id="finance",
                     content_text="finance record",
                     embedding=[1.0, 0.0],
+                    processing_status="ready",
                 ),
                 TokenizedContent(
                     source_record_id="shipping",
                     content_text="shipping record",
                     embedding=[0.0, 1.0],
+                    processing_status="ready",
                 ),
             ]
         )
@@ -84,6 +86,7 @@ def test_retrieval_keeps_protected_summary_and_source_together():
                 content_text="PERSON_0011223344 has an overdue invoice.",
                 summary="PERSON_0011223344 needs payment attention.",
                 embedding=[1.0, 0.0],
+                processing_status="ready",
             )
         )
         db.commit()

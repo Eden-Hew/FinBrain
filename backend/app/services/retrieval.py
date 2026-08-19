@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.models import DEFAULT_TENANT_ID, TokenizedContent
+from app.models import TokenizedContent
+
+if TYPE_CHECKING:
+    from app.services.query_filters import QueryFilters
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,75 +42,58 @@ def _cosine(left: list[float], right: list[float]) -> float:
     return float(np.dot(a, b) / denominator) if denominator else 0.0
 
 
+def _hit_from_row(row: TokenizedContent, similarity: float) -> RetrievalHit:
+    return RetrievalHit(
+        content_id=row.id,
+        source_record_id=row.source_record_id,
+        source_system=row.source_system,
+        record_type=row.record_type,
+        occurred_at=row.occurred_at,
+        protected_excerpt=row.content_text,
+        protected_summary=row.summary,
+        similarity=similarity,
+    )
+
+
 def retrieve_hits(
     db: Session,
     query_embedding: list[float],
     k: int = 5,
     *,
-    tenant_id: str = DEFAULT_TENANT_ID,
-    source_systems: list[str] | None = None,
+    filters: "QueryFilters | None" = None,
 ) -> list[RetrievalHit]:
+    # Local import: query_filters imports RetrievalHit from this module, so a
+    # top-level import here would be circular. QueryFilters() is a cheap default
+    # (DEFAULT_TENANT_ID, no other filters) matching this function's old signature.
+    from app.services.query_filters import QueryFilters, apply_content_filters
+
+    filters = filters or QueryFilters()
+
     if db.bind is not None and db.bind.dialect.name == "postgresql":
         vector_literal = "[" + ",".join(str(value) for value in query_embedding) + "]"
-        source_filter = ""
-        parameters: dict[str, object] = {
-            "query_embedding": vector_literal,
-            "limit": k,
-            "tenant_id": tenant_id,
-        }
-        if source_systems:
-            source_filter = "and source_system = any(:source_systems) "
-            parameters["source_systems"] = source_systems
-        query = (
-                "select id, source_record_id, source_system, record_type, occurred_at, "
-                "content_text, summary, "
-                "1 - (embedding <=> cast(:query_embedding as extensions.vector)) "
-                "as similarity from tokenized_content "
-                "where embedding is not null and tenant_id = cast(:tenant_id as uuid) "
-                + source_filter
-                + "order by embedding <=> cast(:query_embedding as extensions.vector) "
-                "limit :limit"
+        distance_sql = (
+            "tokenized_content.embedding <=> cast(:query_embedding as extensions.vector)"
         )
-        rows = db.execute(text(query), parameters)
-        return [
-            RetrievalHit(
-                content_id=row.id,
-                source_record_id=row.source_record_id,
-                source_system=row.source_system,
-                record_type=row.record_type,
-                occurred_at=row.occurred_at,
-                protected_excerpt=row.content_text,
-                protected_summary=row.summary,
-                similarity=float(row.similarity),
-            )
-            for row in rows
-        ]
+        statement = (
+            apply_content_filters(select(TokenizedContent), filters)
+            .where(TokenizedContent.embedding.is_not(None))
+            .add_columns(text(f"1 - ({distance_sql})").label("similarity"))
+            .order_by(text(distance_sql))
+            .limit(k)
+        )
+        rows = db.execute(statement, {"query_embedding": vector_literal}).all()
+        return [_hit_from_row(row.TokenizedContent, float(row.similarity)) for row in rows]
 
-    statement = select(TokenizedContent).where(
-        TokenizedContent.embedding.is_not(None), TokenizedContent.tenant_id == tenant_id
+    statement = apply_content_filters(select(TokenizedContent), filters).where(
+        TokenizedContent.embedding.is_not(None)
     )
-    if source_systems:
-        statement = statement.where(TokenizedContent.source_system.in_(source_systems))
     rows = db.scalars(statement).all()
     ranked = sorted(
         ((_cosine(query_embedding, row.embedding), row) for row in rows),
         key=lambda pair: pair[0],
         reverse=True,
     )
-    return [
-        RetrievalHit(
-            content_id=row.id,
-            source_record_id=row.source_record_id,
-            source_system=row.source_system,
-            record_type=row.record_type,
-            occurred_at=row.occurred_at,
-            protected_excerpt=row.content_text,
-            protected_summary=row.summary,
-            similarity=score,
-        )
-        for score, row in ranked[:k]
-        if score > -1.0
-    ]
+    return [_hit_from_row(row, score) for score, row in ranked[:k] if score > -1.0]
 
 
 def retrieve_top_k(db: Session, query_embedding: list[float], k: int = 5) -> list[str]:

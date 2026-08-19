@@ -1,12 +1,17 @@
 import hashlib
 import math
 import re
+from collections import OrderedDict
 
 from app.config import get_settings
 from app.security.detect import contains_known_pii
 
+# Matches the pgvector column width (vector(768)) so the offline fallback stays a
+# valid drop-in for real HNSW similarity search, not just SQLite's Python-side cosine.
+EMBEDDING_DIMENSIONS = 768
 
-def _offline_embedding(text: str, dimensions: int = 128) -> list[float]:
+
+def _offline_embedding(text: str, dimensions: int = EMBEDDING_DIMENSIONS) -> list[float]:
     """Deterministic feature-hashing fallback for local demonstrations."""
     vector = [0.0] * dimensions
     for word in re.findall(r"[A-Za-z0-9_]+", text.casefold()):
@@ -38,3 +43,25 @@ def embed_text(text: str) -> tuple[list[float], str]:
     if not settings.allow_offline_demo:
         raise RuntimeError("GEMINI_API_KEY is required when offline demo mode is disabled")
     return _offline_embedding(text), "offline-demo"
+
+
+_QUERY_EMBEDDING_CACHE_SIZE = 256
+_query_embedding_cache: OrderedDict[str, tuple[list[float], str]] = OrderedDict()
+
+
+def embed_query_cached(text: str) -> tuple[list[float], str]:
+    """In-process LRU cache for query-time embeddings.
+
+    Chat questions repeat often within a session; this avoids re-embedding an
+    identical sanitized question. Per-process only (no cross-instance sharing) --
+    the cheap first cut called out in the roadmap, not a durability guarantee.
+    """
+    cached = _query_embedding_cache.get(text)
+    if cached is not None:
+        _query_embedding_cache.move_to_end(text)
+        return cached
+    result = embed_text(text)
+    _query_embedding_cache[text] = result
+    if len(_query_embedding_cache) > _QUERY_EMBEDDING_CACHE_SIZE:
+        _query_embedding_cache.popitem(last=False)
+    return result

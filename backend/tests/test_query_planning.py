@@ -24,7 +24,9 @@ def _record(index: int, source: str, *, embedding: list[float] | None = None):
             "action_required": True,
             "priority": "high",
         },
-        embedding=embedding or [1.0, 0.0],
+        # 768-dim to match the offline embedding fallback's real width, so SEMANTIC's
+        # cosine-similarity retrieval doesn't reject these fixtures on dimension mismatch.
+        embedding=embedding or [1.0, 0.0] * 384,
         processing_status="ready",
     )
 

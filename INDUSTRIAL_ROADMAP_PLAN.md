@@ -96,6 +96,15 @@ Confirmed from research: `retrieve_hits()` takes a pre-computed embedding and do
 
 **Fix the offline-fallback dimension mismatch**: `_offline_embedding()` produces 128-dim vectors against a `vector(768)` column — this would break outright if `retrieve_hits()` runs in offline-demo mode against real Postgres. Pad/resize the offline fallback to 768 dims so local dev without a Gemini key stays fully testable against a real pgvector column.
 
+**Implementation status (code-level, verified locally)**: all four items above are done.
+- `_offline_embedding()` now defaults to 768 dims (`EMBEDDING_DIMENSIONS` in `embeddings.py`), matching the real pgvector column width.
+- Filter parity was achieved by extracting the predicate logic shared between the plain-listing and similarity-ranked paths into one function, `apply_content_filters(statement, filters)` in `query_filters.py` — `eligible_statement()` and `retrieve_hits()` both build on it now, so the two paths stay in parity by construction rather than by convention. `retrieve_hits()` takes a `filters: QueryFilters` param (default `QueryFilters()`, i.e. the old tenant-only behavior) instead of separate `tenant_id`/`source_systems` kwargs.
+- `/query`'s intent dispatch in `routes/query.py` now branches SEMANTIC into its own case: it embeds the sanitized question (`embed_query_cached()`) and calls `retrieve_hits(db, embedding, k=SEMANTIC_TOP_K, filters=plan.filters)` with `SEMANTIC_TOP_K = 10`. ANALYZE_ALL is untouched, still calling `list_eligible_hits()` unbounded.
+- `embed_query_cached()` (`embeddings.py`) is the "cheaper first cut" in-memory LRU (256 entries, per-process, keyed by exact sanitized-question text) rather than a `query_embedding_cache` table — sufficient for the common case of exact-repeat questions in one chat session; not durable or shared across Railway instances, which is an accepted tradeoff at this stage.
+- One subtlety worth recording: `retrieve_hits()`'s Postgres branch still uses a raw `text()` fragment for the `<=>` cosine-distance operator (not the SQLAlchemy ORM column, since `TokenizedContent.embedding`'s `EmbeddingType` is a `TypeDecorator` over `Text` and doesn't expose pgvector's `.cosine_distance()` comparator) — this mirrors the pre-existing working pattern rather than introducing a new one, just extended to compose with `apply_content_filters()`'s ORM-built WHERE clause in the same statement.
+
+124/124 backend tests passing, ruff clean. Not yet committed — pending confirmation.
+
 ## Phase 4 — Observability (lighter touch)
 
 - Structured logging in `app/main.py` (currently unconfigured — falls through to uvicorn defaults). Standard library `logging` with a JSON formatter is enough; no need for a new dependency.

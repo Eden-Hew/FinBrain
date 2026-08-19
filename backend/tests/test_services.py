@@ -7,7 +7,7 @@ def test_offline_embedding_is_deterministic():
     second, _ = embed_text("protected customer record")
     assert mode == "offline-demo"
     assert first == second
-    assert len(first) == 128
+    assert len(first) == 768
 
 
 def test_offline_reasoning_preserves_tokens():

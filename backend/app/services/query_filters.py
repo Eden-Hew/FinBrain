@@ -38,8 +38,16 @@ class QueryFilters:
         return replace(self, content_ids=tuple(content_ids))
 
 
-def eligible_statement(filters: QueryFilters) -> Select[tuple[TokenizedContent]]:
-    statement = select(TokenizedContent).where(
+def apply_content_filters(
+    statement: Select[tuple[TokenizedContent]], filters: QueryFilters
+) -> Select[tuple[TokenizedContent]]:
+    """Apply the full QueryFilters predicate set to any TokenizedContent select.
+
+    Shared by the plain SQL listing path (eligible_statement below) and the
+    vector-similarity retrieval path (services.retrieval.retrieve_hits), so both
+    stay in filter parity by construction instead of by convention.
+    """
+    statement = statement.where(
         TokenizedContent.processing_status == "ready",
         TokenizedContent.tenant_id == filters.tenant_id,
     )
@@ -75,6 +83,10 @@ def eligible_statement(filters: QueryFilters) -> Select[tuple[TokenizedContent]]
             raise ValueError("unsupported_metadata_filter")
         statement = statement.where(TokenizedContent.safe_metadata[key].as_string().is_(None))
     return statement
+
+
+def eligible_statement(filters: QueryFilters) -> Select[tuple[TokenizedContent]]:
+    return apply_content_filters(select(TokenizedContent), filters)
 
 
 def _hit(row: TokenizedContent) -> RetrievalHit:

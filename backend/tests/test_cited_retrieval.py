@@ -22,6 +22,7 @@ def test_structured_retrieval_preserves_cross_source_provenance(monkeypatch):
                     content_text="PERSON_aabbccddee reported an overdue approval.",
                     summary="Approval delay requires attention.",
                     embedding=[1.0, 0.0],
+                    processing_status="ready",
                 ),
                 TokenizedContent(
                     source_record_id="email:two",
@@ -30,6 +31,7 @@ def test_structured_retrieval_preserves_cross_source_provenance(monkeypatch):
                     content_text="The invoice approval remains overdue.",
                     summary="A second approval delay requires attention.",
                     embedding=[0.9, 0.1],
+                    processing_status="ready",
                 ),
             ]
         )

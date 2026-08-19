@@ -19,6 +19,7 @@ from app.services.conversations import (
     prior_citation_hits,
     protected_history,
 )
+from app.services.embeddings import embed_query_cached
 from app.services.intelligence import (
     authorize_brief_with_trace,
     citation_freshness,
@@ -32,9 +33,14 @@ from app.services.reasoning import (
     structured_record_listing,
     unknown_tokens,
 )
-from app.services.retrieval import RetrievalHit
+from app.services.retrieval import RetrievalHit, retrieve_hits
 
 router = APIRouter(tags=["query"])
+
+# Open-ended SEMANTIC questions get similarity-ranked evidence rather than every
+# eligible row; ANALYZE_ALL keeps the unbounded listing since its whole meaning is
+# "every/all/entire" and truncating to top-k would silently drop requested data.
+SEMANTIC_TOP_K = 10
 
 
 @router.post("/query", response_model=QueryResponse)
@@ -147,7 +153,14 @@ def query(
         hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters, limit=50)
         cited_answer = structured_record_listing(hits)
         reasoning_mode = "structured-filter"
-    else:
+    elif plan.intent is QueryIntent.SEMANTIC:
+        if referential:
+            hits = prior_hits or []
+        else:
+            query_embedding, _embedding_mode = embed_query_cached(sanitized_question)
+            hits = retrieve_hits(db, query_embedding, k=SEMANTIC_TOP_K, filters=plan.filters)
+        cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
+    else:  # QueryIntent.ANALYZE_ALL: unbounded on purpose, see SEMANTIC_TOP_K note above.
         hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters)
         cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
     raw_answer = cited_answer.answer
