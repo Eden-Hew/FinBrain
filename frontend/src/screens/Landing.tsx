@@ -3,6 +3,7 @@ import { useAppState } from "../lib/appState";
 import { MarketingNav } from "../components/Nav";
 import { LogoMark, Wordmark } from "../components/Logo";
 import { useControllableCycle, useCountUp, useInView, useParallax, useTilt, useTypewriterDemo, type TypewriterDemoItem } from "../lib/interactivity";
+import { CookieConsentBanner, SupportWidget } from "../components/MarketingWidgets";
 
 const HERO_NAV_ICONS: Record<string, ReactNode> = {
   agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
@@ -107,6 +108,29 @@ const PRICING = [
   },
 ];
 
+function buildSupportTopics(
+  show: (screen: "signup" | "login") => void,
+  goToSecurity: (from: "landing") => void,
+): { label: string; reply: string; action?: { label: string; onClick: () => void } }[] {
+  return [
+    {
+      label: "Pricing",
+      reply: "Starter is RM 299/mo (1 seat, 100 AI queries), Team is RM 899/mo (5 seats, unlimited queries — most popular), and Enterprise is custom-priced.",
+      action: { label: "Start free trial", onClick: () => show("signup") },
+    },
+    {
+      label: "Security & PDPA",
+      reply: "Personal identifiers are masked before they're ever stored, and every AI answer is permission-aware and cited back to its source record.",
+      action: { label: "Read about security", onClick: () => goToSecurity("landing") },
+    },
+    {
+      label: "Getting started",
+      reply: "The fastest way in is a free trial — no card required for this prototype.",
+      action: { label: "Start free trial", onClick: () => show("signup") },
+    },
+  ];
+}
+
 function Reveal({ children, className = "", id, style }: { children: ReactNode; className?: string; id?: string; style?: CSSProperties }) {
   const [ref, inView] = useInView<HTMLElement>();
   const cls = className + " fb-mkt-reveal" + (inView ? " is-visible" : "");
@@ -188,6 +212,8 @@ export default function Landing() {
     const agentsIndex = HERO_SCREENS.indexOf("agents");
     if (agentsIndex >= 0) selectScreen(agentsIndex);
   };
+
+  const supportTopics = buildSupportTopics(show, goToSecurity);
 
   return (
     <div className="fb-root fb-mkt">
@@ -482,6 +508,9 @@ export default function Landing() {
         </div>
         <div className="fb-mkt-footer-bottom">© 2026 FINBRAIN OS. Prototype for demonstration purposes — not a live product.</div>
       </footer>
+
+      <CookieConsentBanner onReadMore={() => goToLegal("privacy", "landing")} />
+      <SupportWidget topics={supportTopics} onEmail={() => { window.location.href = "mailto:hello@finbrainos.example"; }} />
     </div>
   );
 }
