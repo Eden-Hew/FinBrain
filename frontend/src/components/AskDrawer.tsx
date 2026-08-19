@@ -1,9 +1,6 @@
 import { useRef, useState } from "react";
 import { useAppState } from "../lib/appState";
-import { useI18n } from "../lib/i18n";
 import { useUiChrome } from "../lib/uiChrome";
-import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
-import { resolveChatReply } from "./embeds/ChatEmbeds";
 import { askQuestion, type QueryCitation } from "../api/client";
 
 interface DrawerMessage {
@@ -12,7 +9,7 @@ interface DrawerMessage {
   text: string;
   citations?: QueryCitation[];
   thinking?: boolean;
-  isFallback?: boolean;
+  isError?: boolean;
 }
 
 let drawerMsgId = 1;
@@ -20,7 +17,6 @@ let drawerMsgId = 1;
 export function AskDrawer() {
   const { askOpen, closeAsk } = useUiChrome();
   const { show } = useAppState();
-  const { lang } = useI18n();
   const [messages, setMessages] = useState<DrawerMessage[]>([
     { id: drawerMsgId++, from: "agent", text: "Ask a quick question about your finance data — I'll pull cited answers from your protected records." },
   ]);
@@ -45,19 +41,23 @@ export function AskDrawer() {
 
     let finalText: string;
     let citations: QueryCitation[] = [];
-    let isFallback = false;
+    let isError = false;
     try {
       const response = await askQuestion(trimmed, conversationId);
       setConversationId(response.conversation_id);
       finalText = response.answer;
       citations = response.citations;
-    } catch {
-      const fallback = resolveChatReply(trimmed, lang, FB_UNIFIED_FALLBACK[lang]);
-      finalText = fallback.text;
-      isFallback = true;
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "The request failed unexpectedly.";
+      finalText = `FinBrain could not answer this question: ${detail}`;
+      isError = true;
     }
 
-    setMessages((m) => m.map((msg) => (msg.id === thinkingId ? { ...msg, thinking: false, text: finalText, citations, isFallback } : msg)));
+    setMessages((m) => m.map((msg) => (
+      msg.id === thinkingId
+        ? { ...msg, thinking: false, text: finalText, citations, isError }
+        : msg
+    )));
     scrollToBottom();
   };
 
@@ -74,12 +74,15 @@ export function AskDrawer() {
         </div>
         <div className="fb-drawer-messages" ref={listRef}>
           {messages.map((msg) => (
-            <div key={msg.id} className={"fb-chat-bubble " + msg.from}>
+            <div
+              key={msg.id}
+              className={"fb-chat-bubble " + msg.from + (msg.isError ? " is-error" : "")}
+              role={msg.isError ? "alert" : undefined}
+            >
               {msg.thinking ? (
                 <div className="fb-thinking" role="status"><span></span><span></span><span></span></div>
               ) : (
                 <>
-                  {msg.isFallback && <div className="fb-intel-fallback" role="status">Sample response — the live backend is unavailable.</div>}
                   <span style={{ whiteSpace: "pre-wrap" }}>{msg.text}</span>
                   {!!msg.citations?.length && (
                     <div className="fb-fine" style={{ marginTop: ".5rem" }}>{msg.citations.length} cited source{msg.citations.length === 1 ? "" : "s"}</div>

@@ -551,12 +551,12 @@ export default function Ingestion() {
                     <div className="fb-detail-col">
                       <h2>User submitted</h2>
                       <div className="fb-rec-evidence fb-diff-text" style={{ margin: 0 }}><DiffText tokens={diff.rawTokens} mode="removed" /></div>
-                      <p className="fb-fine" style={{ margin: ".5rem 0 0" }}><mark className="fb-diff-mark is-removed">Highlighted</mark> text never reaches AI services or Supabase.</p>
+                      <p className="fb-fine" style={{ margin: ".5rem 0 0" }}><mark className="fb-diff-mark is-removed">Highlighted</mark> values do not reach AI services in raw form. Encrypted originals are stored separately in the Supabase token vault.</p>
                     </div>
                     <div className="fb-detail-col">
-                      <h2>AI services and Supabase receive</h2>
+                      <h2>Protected model and database view</h2>
                       <div className="fb-rec-evidence fb-diff-text" style={{ margin: 0, fontFamily: "'Courier New', monospace" }}><DiffText tokens={diff.protectedTokens} mode="added" /></div>
-                      <p className="fb-fine" style={{ margin: ".5rem 0 0" }}><mark className="fb-diff-mark is-added">Highlighted</mark> text was substituted by protection.</p>
+                      <p className="fb-fine" style={{ margin: ".5rem 0 0" }}><mark className="fb-diff-mark is-added">Highlighted</mark> tokens replace sensitive values in text sent to AI services and stored as protected content.</p>
                     </div>
                   </>
                 );
