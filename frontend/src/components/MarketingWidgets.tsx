@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const COOKIE_CONSENT_KEY = "fb_cookie_consent";
 
@@ -8,6 +8,16 @@ const COOKIE_CONSENT_KEY = "fb_cookie_consent";
  * neither one flips a real analytics switch that doesn't exist yet. */
 export function CookieConsentBanner({ onReadMore }: { onReadMore: () => void }) {
   const [choice, setChoice] = useState<string | null>(() => localStorage.getItem(COOKIE_CONSENT_KEY));
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    // Delayed on purpose: appearing instantly covers the hero's first stat
+    // before a visitor has even seen it. A short delay lets first paint land
+    // clean without weakening consent — nothing here is set until dismissed.
+    if (choice) return;
+    const timer = window.setTimeout(() => setShown(true), 900);
+    return () => window.clearTimeout(timer);
+  }, [choice]);
 
   if (choice) return null;
 
@@ -17,7 +27,7 @@ export function CookieConsentBanner({ onReadMore }: { onReadMore: () => void }) 
   };
 
   return (
-    <div className="fb-mkt-cookie-banner" role="dialog" aria-label="Cookie notice">
+    <div className={"fb-mkt-cookie-banner" + (shown ? " is-shown" : "")} role="dialog" aria-label="Cookie notice">
       <p>
         We use essential cookies to keep you signed in. This prototype doesn't set any tracking or advertising
         cookies. <span tabIndex={0} role="button" onClick={onReadMore}>Read our privacy policy</span>.

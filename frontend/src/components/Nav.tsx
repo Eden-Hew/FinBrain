@@ -30,11 +30,23 @@ export function LandingNav() {
   );
 }
 
+const MARKETING_NAV_ITEMS = [
+  { id: "landing-flow", label: "Product" },
+  { id: "landing-agents", label: "AI Agents" },
+  { id: "landing-proof", label: "Proof" },
+  { id: "landing-why", label: "Why Us" },
+  { id: "landing-pricing", label: "Pricing" },
+];
+
 export function MarketingNav() {
   const { show } = useAppState();
   const scrollY = useScrollY();
   const active = useActiveSection(MARKETING_SECTIONS);
-  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const scrollTo = (id: string) => {
+    setMenuOpen(false);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
   const linkClass = (id: string) => (active === id ? "is-current" : undefined);
   return (
     <nav className={"fb-mkt-nav" + (scrollY > 12 ? " is-scrolled" : "")}>
@@ -42,16 +54,30 @@ export function MarketingNav() {
         <LogoMark large />FINBRAIN OS
       </button>
       <div className="fb-mkt-nav-links">
-        <span className={linkClass("landing-flow")} tabIndex={0} role="button" onClick={() => scrollTo("landing-flow")}>Product</span>
-        <span className={linkClass("landing-agents")} tabIndex={0} role="button" onClick={() => scrollTo("landing-agents")}>AI Agents</span>
-        <span className={linkClass("landing-proof")} tabIndex={0} role="button" onClick={() => scrollTo("landing-proof")}>Proof</span>
-        <span className={linkClass("landing-why")} tabIndex={0} role="button" onClick={() => scrollTo("landing-why")}>Why Us</span>
-        <span className={linkClass("landing-pricing")} tabIndex={0} role="button" onClick={() => scrollTo("landing-pricing")}>Pricing</span>
+        {MARKETING_NAV_ITEMS.map((item) => (
+          <span key={item.id} className={linkClass(item.id)} tabIndex={0} role="button" onClick={() => scrollTo(item.id)}>{item.label}</span>
+        ))}
       </div>
       <div className="fb-mkt-nav-actions">
         <span tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
         <button className="fb-mkt-btn is-accent" onClick={() => show("signup")}>Get Started</button>
+        <button
+          className={"fb-mkt-nav-toggle" + (menuOpen ? " is-open" : "")}
+          type="button"
+          aria-expanded={menuOpen}
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          onClick={() => setMenuOpen((v) => !v)}
+        >
+          <span /><span /><span />
+        </button>
       </div>
+      {menuOpen && (
+        <div className="fb-mkt-nav-mobile-menu" role="menu">
+          {MARKETING_NAV_ITEMS.map((item) => (
+            <span key={item.id} className={linkClass(item.id)} tabIndex={0} role="menuitem" onClick={() => scrollTo(item.id)}>{item.label}</span>
+          ))}
+        </div>
+      )}
     </nav>
   );
 }
