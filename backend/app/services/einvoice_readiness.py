@@ -1,4 +1,3 @@
-import re
 import secrets
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -19,6 +18,7 @@ from app.schemas import (
     UserRole,
 )
 from app.services import storage
+from app.services.entity_resolution import normalize_business_name, resolve_customer
 from app.services.ingestion import ingest_canonical_record
 from app.services.workflow_audit import write_workflow_event
 
@@ -26,15 +26,6 @@ _DECISION_TRANSITIONS = {
     "approved": "draft",
     "rejected": "draft",
 }
-
-_CORPORATE_SUFFIXES = re.compile(
-    r"\b(SDN\.?\s*BHD\.?|BERHAD|ENTERPRISE|TRADING|PLT|LTD\.?|LLC)\b", re.IGNORECASE
-)
-
-
-def _normalize_name(name: str) -> str:
-    without_suffix = _CORPORATE_SUFFIXES.sub("", name)
-    return re.sub(r"[^A-Z0-9]", "", without_suffix.upper())
 
 
 def record_response(
@@ -45,6 +36,7 @@ def record_response(
         supplier_name=row.supplier_name,
         supplier_tin=row.supplier_tin,
         buyer_name=row.buyer_name,
+        buyer_customer_id=row.buyer_customer_id,
         invoice_no=row.invoice_no,
         issue_date=row.issue_date,
         currency=row.currency,
@@ -115,11 +107,15 @@ def sync_einvoice_tokenized_content(db: Session, record: EInvoiceRecord) -> None
 def create_record(
     db: Session, payload: EInvoiceCreatePayload, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:
+    buyer_customer = (
+        resolve_customer(db, tenant_id, payload.buyer_name) if payload.buyer_name else None
+    )
     record = EInvoiceRecord(
         tenant_id=tenant_id,
         supplier_name=payload.supplier_name,
         supplier_tin=payload.supplier_tin,
         buyer_name=payload.buyer_name,
+        buyer_customer_id=buyer_customer.id if buyer_customer else None,
         invoice_no=payload.invoice_no,
         issue_date=payload.issue_date,
         currency=payload.currency,
@@ -231,7 +227,7 @@ def _classify(row: EInvoiceRecord, name_groups: dict[str, set[str]]) -> tuple[st
             "invoice for submission without it."
         )
 
-    variants = name_groups[_normalize_name(row.supplier_name)]
+    variants = name_groups[normalize_business_name(row.supplier_name)]
     if len(variants) > 1:
         others = sorted(v for v in variants if v != row.supplier_name)
         issues.append(
@@ -270,7 +266,7 @@ def compute_readiness(
 
     name_groups: dict[str, set[str]] = defaultdict(set)
     for row in rows:
-        name_groups[_normalize_name(row.supplier_name)].add(row.supplier_name)
+        name_groups[normalize_business_name(row.supplier_name)].add(row.supplier_name)
 
     critical: list[EInvoiceRecordResponse] = []
     warning: list[EInvoiceRecordResponse] = []

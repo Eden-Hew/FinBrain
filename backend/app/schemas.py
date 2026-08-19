@@ -489,6 +489,7 @@ class EInvoiceRecordResponse(BaseModel):
     supplier_name: str
     supplier_tin: str | None
     buyer_name: str | None
+    buyer_customer_id: int | None = None
     invoice_no: str | None
     issue_date: date | None
     currency: str | None

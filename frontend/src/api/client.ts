@@ -486,6 +486,7 @@ export interface EInvoiceApiRecord {
   supplier_name: string;
   supplier_tin: string | null;
   buyer_name: string | null;
+  buyer_customer_id: number | null;
   invoice_no: string | null;
   issue_date: string | null;
   currency: string | null;

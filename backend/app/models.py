@@ -479,6 +479,28 @@ class WorkflowAuditEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Customer(Base):
+    """Canonical business identity resolved across sources by normalized name.
+
+    First cut of entity resolution: deterministic name normalization (corporate
+    suffix stripped, casing/punctuation collapsed) only. Embedding-similarity-based
+    fuzzy matching is a documented future step, not built here.
+    """
+
+    __tablename__ = "customers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "normalized_name", name="customers_tenant_normalized_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
+    canonical_name: Mapped[str] = mapped_column(String, nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class EInvoiceRecord(Base):
     __tablename__ = "einvoice_records"
 
@@ -489,6 +511,9 @@ class EInvoiceRecord(Base):
     supplier_name: Mapped[str] = mapped_column(String, nullable=False)
     supplier_tin: Mapped[str | None] = mapped_column(String)
     buyer_name: Mapped[str | None] = mapped_column(String)
+    buyer_customer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customers.id")
+    )
     invoice_no: Mapped[str | None] = mapped_column(String)
     issue_date: Mapped[date | None] = mapped_column(Date)
     currency: Mapped[str | None] = mapped_column(String)
