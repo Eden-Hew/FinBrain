@@ -213,12 +213,25 @@ GEMINI_API_KEY=your-gemini-key
 GEMINI_REASONING_MODEL=gemini-3.6-flash
 GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 ALLOW_OFFLINE_DEMO=true
+LOG_LEVEL=INFO
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=development
+SENTRY_TRACES_SAMPLE_RATE=0.0
 ```
 
+`LOG_LEVEL` controls the backend's structured JSON logging (stdout, one JSON object per line —
+no config needed for a log aggregator to ingest it). `SENTRY_DSN` is optional and off by default;
+set it to enable backend error tracking (`send_default_pii` stays `False` regardless, since
+FinBrain's whole design is keeping PII behind tokens — review Sentry's own scrubbing rules before
+relying on it in production). The frontend has an equivalent, independent gate:
+`VITE_SENTRY_DSN`/`VITE_SENTRY_ENVIRONMENT`/`VITE_SENTRY_TRACES_SAMPLE_RATE` in
+`frontend/.env`.
+
 Morpheus is preferred for protected summaries, cited answers, and recommendations. Gemini is the
-fallback reasoning provider and is currently required for 768-dimensional Supabase embeddings.
-With no API keys, SQLite can use deterministic offline summaries and 128-dimensional embeddings.
-Those offline embeddings are not compatible with Supabase's `vector(768)` column.
+preferred reasoning and embedding provider. With no API keys, SQLite (and Postgres, in offline
+demo mode) fall back to deterministic offline summaries and 768-dimensional offline embeddings,
+matching Supabase's `vector(768)` column width so semantic retrieval stays testable without a
+Gemini key.
 
 Verify Gemini from `backend`:
 

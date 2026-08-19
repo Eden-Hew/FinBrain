@@ -149,8 +149,21 @@ function AnimatedStat({ value, label, active }: { value: string; label: string; 
 
 export default function Landing() {
   const { show, goToSecurity, goToLegal } = useAppState();
-  const heroParallax = useParallax<HTMLElement>(20);
-  const previewTilt = useTilt<HTMLDivElement>(9);
+  // Destructured (rather than passed as `heroParallax.ref` etc.) because the
+  // react-hooks/refs compiler rule treats any member access on a hook-returned
+  // object holding a ref as a ref read, even for unrelated sibling fields.
+  const {
+    ref: heroParallaxRef,
+    offset: heroParallaxOffset,
+    onMouseMove: onHeroMouseMove,
+    onMouseLeave: onHeroMouseLeave,
+  } = useParallax<HTMLElement>(20);
+  const {
+    ref: previewTiltRef,
+    style: previewTiltStyle,
+    onMouseMove: onPreviewMouseMove,
+    onMouseLeave: onPreviewMouseLeave,
+  } = useTilt<HTMLDivElement>(9);
   const [statsRef, statsIn] = useInView<HTMLDivElement>({ threshold: 0.4 });
   const { demo, typed, phase } = useTypewriterDemo(HERO_DEMOS);
   const screenIndex = useCycle(HERO_SCREENS.length, 4500);
@@ -160,15 +173,15 @@ export default function Landing() {
     <div className="fb-root fb-mkt">
       <MarketingNav />
 
-      <section className="fb-mkt-hero" ref={heroParallax.ref} onMouseMove={heroParallax.onMouseMove} onMouseLeave={heroParallax.onMouseLeave}>
+      <section className="fb-mkt-hero" ref={heroParallaxRef} onMouseMove={onHeroMouseMove} onMouseLeave={onHeroMouseLeave}>
         <div
           className="fb-mkt-blob"
-          style={{ width: 460, height: 460, top: -160, left: -120, background: "var(--a-accent)", transform: `translate3d(${heroParallax.offset.x}px, ${heroParallax.offset.y}px, 0)` }}
+          style={{ width: 460, height: 460, top: -160, left: -120, background: "var(--a-accent)", transform: `translate3d(${heroParallaxOffset.x}px, ${heroParallaxOffset.y}px, 0)` }}
           aria-hidden="true"
         />
         <div
           className="fb-mkt-blob"
-          style={{ width: 360, height: 360, top: 60, right: -140, background: "var(--a-purple)", transform: `translate3d(${-heroParallax.offset.x * 1.3}px, ${-heroParallax.offset.y * 1.3}px, 0)` }}
+          style={{ width: 360, height: 360, top: 60, right: -140, background: "var(--a-purple)", transform: `translate3d(${-heroParallaxOffset.x * 1.3}px, ${-heroParallaxOffset.y * 1.3}px, 0)` }}
           aria-hidden="true"
         />
         <div className="fb-mkt-hero-copy">
@@ -183,10 +196,10 @@ export default function Landing() {
         <div className="fb-mkt-preview" aria-hidden="true">
           <div
             className="fb-mkt-preview-card"
-            ref={previewTilt.ref}
-            onMouseMove={previewTilt.onMouseMove}
-            onMouseLeave={previewTilt.onMouseLeave}
-            style={previewTilt.style}
+            ref={previewTiltRef}
+            onMouseMove={onPreviewMouseMove}
+            onMouseLeave={onPreviewMouseLeave}
+            style={previewTiltStyle}
           >
             <div className="fb-mkt-preview-chrome"><span /><span /><span /></div>
             <div className="fb-mkt-preview-shell">

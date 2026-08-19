@@ -23,6 +23,9 @@ export function useTypewriterDemo(demos: TypewriterDemoItem[], options?: { typeS
 
   useEffect(() => {
     if (reduced) {
+      // Genuinely syncs to demoIndex changing over time (advancing the demo carousel),
+      // not state derivable once at mount, so it can't move out of the effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTyped(demos[demoIndex].question);
       setPhase("answered");
       return;
@@ -63,15 +66,13 @@ export function useTypewriterDemo(demos: TypewriterDemoItem[], options?: { typeS
 /** True once the element has scrolled into view; stays true after (no re-hide on scroll-out). */
 export function useInView<T extends HTMLElement>(options?: IntersectionObserverInit): [RefObject<T | null>, boolean] {
   const ref = useRef<T | null>(null);
-  const [inView, setInView] = useState(false);
+  // Reduced motion doesn't depend on the DOM element, so it's decided once as the
+  // initial state instead of via a setState call inside the effect below.
+  const [inView, setInView] = useState(() => prefersReducedMotion());
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    if (prefersReducedMotion()) {
-      setInView(true);
-      return;
-    }
+    if (!el || prefersReducedMotion()) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -94,6 +95,9 @@ export function useCountUp(target: number, active: boolean, duration = 1100) {
 
   useEffect(() => {
     if (!active || prefersReducedMotion()) {
+      // Genuinely syncs to `active` flipping true later (e.g. scrolling into view),
+      // not state derivable once at mount, so it can't move out of the effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (active) setValue(target);
       return;
     }

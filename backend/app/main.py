@@ -1,10 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db import initialize_local_schema
+from app.db import get_db, initialize_local_schema
+from app.observability import configure_logging, init_sentry
 from app.routes import (
     audit_log,
     auth,
@@ -19,6 +23,11 @@ from app.routes import (
     uploads,
 )
 
+settings = get_settings()
+configure_logging(settings.log_level)
+init_sentry(settings)
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -26,7 +35,6 @@ async def lifespan(_: FastAPI):
     yield
 
 
-settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -56,9 +64,18 @@ app.include_router(health.router)
 
 
 @app.get("/health", tags=["system"])
-def health() -> dict[str, str | bool]:
+def health(response: Response, db: Session = Depends(get_db)) -> dict[str, str | bool]:
+    try:
+        db.execute(text("select 1"))
+        database_reachable = True
+    except Exception:
+        logger.exception("health_check_database_unreachable")
+        database_reachable = False
+    if not database_reachable:
+        response.status_code = 503
     return {
-        "status": "ok",
+        "status": "ok" if database_reachable else "degraded",
+        "database_reachable": database_reachable,
         "mode": (
             "morpheus"
             if settings.morpheus_api_key

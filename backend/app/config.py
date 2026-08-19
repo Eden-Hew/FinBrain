@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     supabase_jwt_algorithms: str = "RS256,ES256"
     supabase_service_role_key: str | None = None
     einvoice_document_bucket: str = "einvoice-documents"
+    log_level: str = "INFO"
+    sentry_dsn: str | None = None
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.0
 
     @field_validator(
         "telegram_draft_ttl_seconds",

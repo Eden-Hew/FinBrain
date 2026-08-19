@@ -197,7 +197,15 @@ export default function Audit() {
   const PAGE_SIZE = 10;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filter, actorSearch]);
+  // Reset pagination when the filter changes, computed during render (React's
+  // documented "adjusting state when a prop changes" pattern) rather than in an
+  // effect, so it doesn't cost an extra commit-then-reset render pass.
+  const pageResetKey = `${filter}:${actorSearch}`;
+  const [prevPageResetKey, setPrevPageResetKey] = useState(pageResetKey);
+  if (pageResetKey !== prevPageResetKey) {
+    setPrevPageResetKey(pageResetKey);
+    setVisibleCount(PAGE_SIZE);
+  }
 
   const visibleEntries = useMemo(() => entries.slice(0, visibleCount), [entries, visibleCount]);
   const remaining = entries.length - visibleEntries.length;

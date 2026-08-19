@@ -11,8 +11,17 @@ interface Command {
   run: () => void;
 }
 
+// Split so the search state lives only while the palette is open: mounting a fresh
+// PaletteBody on every open gives clean query/highlight defaults for free, instead of
+// an always-mounted component resetting its own state via an effect on every open.
 export function QuickActionsPalette() {
-  const { paletteOpen, closePalette, openAsk } = useUiChrome();
+  const { paletteOpen } = useUiChrome();
+  if (!paletteOpen) return null;
+  return <PaletteBody />;
+}
+
+function PaletteBody() {
+  const { closePalette, openAsk } = useUiChrome();
   const { show } = useAppState();
   const { signOut } = useAuth();
   const { toggle: toggleTheme } = useTheme();
@@ -45,16 +54,17 @@ export function QuickActionsPalette() {
   const filtered = commands.filter((c) => c.label.toLowerCase().includes(query.toLowerCase()));
 
   useEffect(() => {
-    if (paletteOpen) {
-      setQuery("");
-      setHighlight(0);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [paletteOpen]);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
 
-  useEffect(() => setHighlight(0), [query]);
-
-  if (!paletteOpen) return null;
+  // Reset the highlighted row when the query changes, computed during render (React's
+  // documented pattern for "adjusting state when a prop/state changes") rather than in
+  // an effect, so it doesn't cost an extra commit-then-reset render pass.
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setHighlight(0);
+  }
 
   const runCommand = (command: Command) => {
     command.run();
