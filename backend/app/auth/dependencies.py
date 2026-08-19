@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -18,15 +18,22 @@ bearer = HTTPBearer(auto_error=False)
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     db: Annotated[Session, Depends(get_db)],
+    token: Annotated[str | None, Query()] = None,
 ) -> AuthPrincipal:
-    if credentials is None or credentials.scheme.casefold() != "bearer":
+    raw_token = None
+    if credentials is not None and credentials.scheme.casefold() == "bearer":
+        raw_token = credentials.credentials
+    elif token:
+        raw_token = token
+
+    if raw_token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="authentication_required",
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        claims = verify_access_token(credentials.credentials)
+        claims = verify_access_token(raw_token)
         user_id = UUID(str(claims["sub"]))
     except (AccessTokenError, KeyError, TypeError, ValueError) as error:
         raise HTTPException(

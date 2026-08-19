@@ -124,7 +124,10 @@ def einvoice_record_pdf(
     record = db.get(EInvoiceRecord, record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="e-invoice record not found")
-    pdf_bytes = render_einvoice_pdf(record)
+    try:
+        pdf_bytes = render_einvoice_pdf(record)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Failed to generate invoice PDF: {error}") from error
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
