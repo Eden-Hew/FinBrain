@@ -30,6 +30,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 from reportlab.graphics.shapes import Drawing, Rect, String, Line, Group
+from reportlab.graphics.barcode.qr import QrCodeWidget
 
 # --- Style Tokens ---
 NAVY = HexColor("#1F3B57")
@@ -404,25 +405,30 @@ def normalize_einvoice_data(
     )
 
 
-def _build_qr_drawing() -> Drawing:
-    """Create a crisp vector QR code mock with targeting reticles."""
+def _build_qr_drawing(data_str: str = "https://myinvois.hasil.gov.my") -> Drawing:
+    """Create a real scannable QR code drawing encoding the MyInvois verification URL or UIN."""
     d = Drawing(44, 44)
-    # Background
     d.add(Rect(0, 0, 44, 44, fillColor=WHITE, strokeColor=BORDER_GREY, strokeWidth=0.5, rx=2, ry=2))
-    # Outer finder patterns (top-left, top-right, bottom-left)
+    try:
+        qr = QrCodeWidget(data_str)
+        bounds = qr.getBounds()
+        w = bounds[2] - bounds[0]
+        h = bounds[3] - bounds[1]
+        if w > 0 and h > 0:
+            g = Group()
+            g.scale(40.0 / w, 40.0 / h)
+            g.translate(2, 2)
+            g.add(qr)
+            d.add(g)
+            return d
+    except Exception:
+        pass
+
+    # Fallback mock if QR generation fails
     for ox, oy in [(4, 28), (28, 28), (4, 4)]:
         d.add(Rect(ox, oy, 12, 12, fillColor=NAVY_DARK, strokeColor=None))
         d.add(Rect(ox + 2, oy + 2, 8, 8, fillColor=WHITE, strokeColor=None))
         d.add(Rect(ox + 4, oy + 4, 4, 4, fillColor=NAVY_DARK, strokeColor=None))
-    # Simulated data matrix dots
-    coords = [
-        (20, 32), (24, 28), (20, 20), (24, 16), (28, 20),
-        (32, 12), (36, 16), (32, 4), (36, 8), (28, 8),
-        (20, 12), (24, 4), (16, 24), (16, 16), (16, 8),
-        (20, 4), (20, 28), (12, 20), (8, 20), (4, 20),
-    ]
-    for x, y in coords:
-        d.add(Rect(x, y, 3, 3, fillColor=NAVY_DARK, strokeColor=None))
     return d
 
 
@@ -639,7 +645,12 @@ def render_einvoice_pdf(
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
 
-    qr_drawing = _build_qr_drawing()
+    verification_url = (
+        f"https://myinvois.hasil.gov.my/{data.document.irbm_unique_id}"
+        if data.document.irbm_unique_id
+        else f"https://myinvois.hasil.gov.my/verify/{data.document.einvoice_code}"
+    )
+    qr_drawing = _build_qr_drawing(verification_url)
     irbm_strip_table = Table([[t_irbm_left, qr_drawing]], colWidths=[485, 53])
     irbm_strip_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), NAVY_DARK),
