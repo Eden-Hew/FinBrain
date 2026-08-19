@@ -4,6 +4,7 @@ import pytest
 
 from app.services.einvoice_pdf import (
     normalize_einvoice_data,
+    render_einvoice_pdf,
     EInvoicePdfData,
     DocumentInfo,
     SupplierInfo,
@@ -118,3 +119,97 @@ def test_normalize_legacy_kwargs_record():
     assert normalized.document.einvoice_code == "TNB-2026-88213"
     assert normalized.totals.total_payable == Decimal("1240.00")
     assert len(normalized.line_items) == 1
+
+
+def test_render_einvoice_pdf_valid_bytes():
+    pdf_bytes = render_einvoice_pdf(
+        supplier_name="Tenaga Nasional Berhad",
+        supplier_tin="C1234567890",
+        buyer_name="FINBRAIN Sdn Bhd",
+        invoice_no="TNB-2026-88213",
+        issue_date="2026-08-10",
+        currency="MYR",
+        tax_type="SST",
+        tax_rate="6%",
+        total_amount="1240.00",
+        status="validated",
+    )
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+
+
+def test_render_einvoice_pdf_from_full_schema(sample_full_invoice_payload):
+    pdf_bytes = render_einvoice_pdf(sample_full_invoice_payload)
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+
+
+def test_render_einvoice_pdf_missing_optional_fields():
+    pdf_bytes = render_einvoice_pdf(
+        supplier_name="Simple Vendor",
+        supplier_tin=None,
+        buyer_name=None,
+        invoice_no="SMP-001",
+        issue_date="2026-08-11",
+        currency="MYR",
+        tax_type=None,
+        tax_rate=None,
+        total_amount="500.00",
+        status="review",
+    )
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+
+
+def test_render_einvoice_pdf_multi_item_and_shipping(sample_full_invoice_payload):
+    payload = dict(sample_full_invoice_payload)
+    payload["shipping_recipient"] = {
+        "name": "FINBRAIN Logistics Center",
+        "address": "Port Klang Free Zone, 42000 Selangor",
+        "tin": "C9876543210",
+        "registration_no": "202401012345",
+    }
+    payload["document"]["currency_code"] = "USD"
+    payload["document"]["exchange_rate"] = 4.45
+    payload["document"]["original_einvoice_ref"] = "INV-2026-000"
+    payload["line_items"] = [
+        {
+            "description": "Server Hosting & Cloud Storage Q3",
+            "classification_code": "002",
+            "quantity": 2,
+            "unit_of_measure": "Month",
+            "unit_price": 500.00,
+            "discount_rate": 5,
+            "discount_amount": 50.00,
+            "tax_type": "SST",
+            "tax_rate": 6.0,
+            "tax_amount": 57.00,
+            "tax_exemption_details": None,
+            "amount_exempted": None,
+            "line_subtotal": 1007.00,
+        },
+        {
+            "description": "Premium 24/7 SLA Support Tier",
+            "classification_code": "003",
+            "quantity": 1,
+            "unit_of_measure": "Month",
+            "unit_price": 200.00,
+            "discount_rate": 0,
+            "discount_amount": 0.00,
+            "tax_type": "SST",
+            "tax_rate": 6.0,
+            "tax_amount": 12.00,
+            "tax_exemption_details": None,
+            "amount_exempted": None,
+            "line_subtotal": 212.00,
+        },
+    ]
+    pdf_bytes = render_einvoice_pdf(payload)
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes.startswith(b"%PDF-")
+    assert len(pdf_bytes) > 1000
+
+
