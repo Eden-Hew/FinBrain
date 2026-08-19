@@ -97,25 +97,14 @@ const NAV_GROUPS: { label: string | null; items: { screen: Screen; key: string }
 ];
 
 export function Sidebar({ current, backTo, backLabel }: { current?: Screen; backTo?: () => void; backLabel?: string }) {
-  const { show, askRole, approvalsCount } = useAppState();
-  const { identity, signOut } = useAuth();
-  const { lang, setLang, t } = useI18n();
-  const { openPalette } = useUiChrome();
-  const [accountOpen, setAccountOpen] = useState(false);
-  const activeRole = identity?.role ?? askRole;
-  const email = identity?.email ?? "Authenticated user";
+  const { show, approvalsCount } = useAppState();
+  const { t } = useI18n();
 
   return (
     <aside className="fb-sidebar">
       <div className="fb-sidebar-top">
         <Wordmark onClick={() => show("landing")} />
       </div>
-
-      <button className="fb-sidebar-quick-actions" type="button" onClick={openPalette}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-        <span>Quick Actions</span>
-        <span className="fb-sidebar-kbd">⌘K</span>
-      </button>
 
       {backTo ? (
         <button className="fb-sidebar-back" type="button" onClick={backTo}>
@@ -147,31 +136,6 @@ export function Sidebar({ current, backTo, backLabel }: { current?: Screen; back
           ))}
         </nav>
       )}
-
-      <div
-        className="fb-sidebar-bottom"
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node)) setAccountOpen(false);
-        }}
-      >
-        {accountOpen && (
-          <div className="fb-sidebar-account-menu" role="menu">
-            <div className="fb-sidebar-lang-row" role="tablist" aria-label="Language">
-              <button className={lang === "en" ? "is-current" : undefined} type="button" onClick={() => setLang("en")}>EN</button>
-              <button className={lang === "ms" ? "is-current" : undefined} type="button" onClick={() => setLang("ms")}>BM</button>
-              <button className={lang === "zh" ? "is-current" : undefined} type="button" onClick={() => setLang("zh")}>中文</button>
-            </div>
-            <button className="fb-sidebar-logout" type="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</button>
-          </div>
-        )}
-        <button className="fb-sidebar-account" type="button" onClick={() => setAccountOpen((v) => !v)} aria-haspopup="true" aria-expanded={accountOpen}>
-          <span className="fb-sidebar-avatar" aria-hidden="true">{email[0]?.toUpperCase() ?? "?"}</span>
-          <span className="fb-sidebar-account-text">
-            <span className="fb-sidebar-account-email">{email}</span>
-            <span className="fb-sidebar-account-role">{PERSONAS[activeRole].label}</span>
-          </span>
-        </button>
-      </div>
     </aside>
   );
 }
@@ -186,8 +150,14 @@ const SCREEN_TITLES: Partial<Record<Screen, string>> = {
 };
 
 export function AppTopBar({ current }: { current: Screen }) {
-  const { show } = useAppState();
-  const { openAsk } = useUiChrome();
+  const { show, askRole, approvalsCount } = useAppState();
+  const { openAsk, openPalette } = useUiChrome();
+  const { identity, signOut } = useAuth();
+  const { lang, setLang, t } = useI18n();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const activeRole = identity?.role ?? askRole;
+  const email = identity?.email ?? "Authenticated user";
+
   return (
     <div className="fb-topbar">
       <div className="fb-topbar-crumb">
@@ -195,10 +165,52 @@ export function AppTopBar({ current }: { current: Screen }) {
         <span className="fb-topbar-sep">/</span>
         <span className="fb-topbar-current">{SCREEN_TITLES[current] ?? current}</span>
       </div>
-      <button className="fb-topbar-ask" type="button" onClick={openAsk}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></svg>
-        Ask FinBrain
+
+      <button className="fb-topbar-search" type="button" onClick={openPalette}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+        <span>Search records, invoices, or ask FinBrain…</span>
+        <span className="fb-topbar-kbd">⌘K</span>
       </button>
+
+      <div className="fb-topbar-actions">
+        <button className="fb-topbar-icon-btn" type="button" onClick={() => show("finance")} title="Upcoming invoice due dates" aria-label="Upcoming invoice due dates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+        </button>
+        <button className="fb-topbar-icon-btn" type="button" onClick={() => show("approvals")} title="Pending approvals" aria-label="Pending approvals">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+          {approvalsCount > 0 && <span className="fb-nav-badge fb-topbar-badge">{approvalsCount}</span>}
+        </button>
+        <button className="fb-topbar-ask" type="button" onClick={openAsk}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></svg>
+          Ask FinBrain
+        </button>
+
+        <div
+          className="fb-topbar-profile"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node)) setProfileOpen(false);
+          }}
+        >
+          <button className="fb-topbar-profile-trigger" type="button" onClick={() => setProfileOpen((v) => !v)} aria-haspopup="true" aria-expanded={profileOpen}>
+            <span className="fb-topbar-avatar" aria-hidden="true">{email[0]?.toUpperCase() ?? "?"}</span>
+            <span className="fb-topbar-profile-text">
+              <span className="fb-topbar-profile-email">{email}</span>
+              <span className="fb-topbar-profile-role">{PERSONAS[activeRole].label}</span>
+            </span>
+            <svg className="fb-topbar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          {profileOpen && (
+            <div className="fb-topbar-profile-menu" role="menu">
+              <div className="fb-sidebar-lang-row" role="tablist" aria-label="Language">
+                <button className={lang === "en" ? "is-current" : undefined} type="button" onClick={() => setLang("en")}>EN</button>
+                <button className={lang === "ms" ? "is-current" : undefined} type="button" onClick={() => setLang("ms")}>BM</button>
+                <button className={lang === "zh" ? "is-current" : undefined} type="button" onClick={() => setLang("zh")}>中文</button>
+              </div>
+              <button className="fb-sidebar-logout" type="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
