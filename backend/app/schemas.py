@@ -344,6 +344,19 @@ class AuditResponse(BaseModel):
     chain_valid: bool
 
 
+class PrivacyTokenResponse(BaseModel):
+    token: str
+    entity_type: str
+    masked_value: str
+    decrypted_value: str | None = None
+    source_record_ids: list[str]
+
+
+class PrivacyEraseResponse(BaseModel):
+    token: str
+    erased: bool
+
+
 class TelegramIntegrationStatusResponse(BaseModel):
     configured: bool
     mode: str

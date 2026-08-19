@@ -149,11 +149,19 @@ Also corrected a misreading while scoping this: `supplier_name` is the tenant's 
 - No new UI surface — the plan describes this as "foundational for future CRM work," not a deliverable feature on its own, so scope stopped at the data model, the resolution function, and exposing the FK through the existing e-invoice API/TypeScript type (`buyer_customer_id` added to `frontend/src/api/client.ts`'s `EInvoiceRecordResponse`) for a future page to build on.
 - New tests in `tests/test_entity_resolution.py`: name normalization collapses casing/punctuation/suffix variants to the same key; `resolve_customer()` finds an existing row across name variants, stays isolated per tenant, and returns `None` for a name with nothing left after normalizing; `create_record()` links two records with buyer-name variants to the same customer and leaves `buyer_customer_id` null when no buyer name is given.
 
-135/135 backend tests passing, ruff clean. Frontend `tsc -b` passes.
+135/135 backend tests passing, ruff clean. Frontend `tsc -b` passes. Committed (`46bdb79`).
 
 ## Phase 7 — PDPA data-subject-rights endpoints
 
 The existing architecture makes this cheaper than a typical PDPA implementation: every piece of PII in the system is already isolated behind an opaque token in `token_vault` — no other table ever stores raw PII. That means **erasure doesn't require hunting down every mention of a person across every table** — it means crypto-shredding the vault entry for a given token (destroying the decryption key, or overwriting `encrypted_value`) makes it permanently unrecoverable everywhere that token is referenced, in one operation. Scoping "erase everything about person X" cleanly needs Phase 6's identity resolution (to know which tokens belong to which person); a narrower `POST /privacy/erase-token/{token}` (erase one specific PII value) doesn't.
+
+**Implementation status (code-level, verified locally)**: built exactly the narrower, buildable slice the plan called out, plus its read-side companion. Both endpoints are `compliance`-role-only (`app/routes/privacy.py`), matching the audit-log access model:
+- `GET /privacy/tokens/{token}` — the "right to access" counterpart the plan's text didn't spell out but PDPA requires alongside erasure. Returns `entity_type`, `masked_value`, the decrypted value (gated by the token's existing `allowed_roles`, same authorization the query-time detokenization path already uses — since compliance is in every entity type's `ACL_POLICY`, a compliance caller is always authorized), and every `source_record_id` currently containing that token (a tenant-scoped `LIKE` scan over `tokenized_content.content_text` — the only place "which records mention this token" can be reconstructed from, since `token_vault.source_record_id` only ever records the *first* record a deterministic token was minted from, not every later reuse). Revealing a value writes to the disclosure `audit_log` chain, same as a normal query-time disclosure.
+- `POST /privacy/tokens/{token}/erase` — crypto-shreds by deleting only the `token_vault` ciphertext row, keeping `protected_token_registry`'s non-secret metadata (`entity_type`, `masked_value`). No changes needed to `detokenize_response_with_trace` at all: it already treats a missing vault entry as unauthorized and falls back to the masked value, so every past and future reference to an erased token in already-protected text degrades gracefully instead of erroring or ever being decryptable again. Writes to `workflow_audit_log` (an operational event, not a disclosure).
+- No schema migration needed — both operations work entirely against tables Phase 2 already tenant-scoped.
+- New tests in `tests/test_privacy.py`, including one that exercises the full loop end-to-end: tokenize a value, erase it, then call `detokenize_response()` again and confirm the original value is gone and the standard masked placeholder appears instead.
+
+141/141 backend tests passing, ruff clean.
 
 ## Phase 8 — External audit-chain anchoring
 

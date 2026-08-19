@@ -17,6 +17,7 @@ from app.routes import (
     health,
     ingestion,
     integrations,
+    privacy,
     query,
     query_artifacts,
     recommendations,
@@ -60,6 +61,7 @@ app.include_router(recommendations.router)
 app.include_router(einvoice.router)
 app.include_router(uploads.router)
 app.include_router(conversations.router)
+app.include_router(privacy.router)
 app.include_router(health.router)
 
 
