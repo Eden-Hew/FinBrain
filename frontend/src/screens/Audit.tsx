@@ -4,6 +4,7 @@ import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
+import { EmptyState } from "../components/EmptyState";
 import {
   fetchAuditLog,
   fetchWorkflowAudit,
@@ -331,7 +332,12 @@ export default function Audit() {
 
           <div className="fb-audit-list">
             {entries.length === 0 && (
-              <div className="fb-audit-empty">{actorSearch.trim() ? "No events match that actor." : "No audit events are available for this stream."}</div>
+              <EmptyState
+                icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>}
+                title={actorSearch.trim() ? "No events match that actor" : "No audit events available"}
+                description={actorSearch.trim() ? "Try a different actor name, or clear the search." : "Events for this stream will appear here once they occur."}
+                action={actorSearch.trim() ? { label: "Clear search", onClick: () => setActorSearch("") } : undefined}
+              />
             )}
             {groupedEntries.map((group) => (
               <div key={group.label}>

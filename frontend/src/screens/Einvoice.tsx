@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
+import { EmptyState } from "../components/EmptyState";
 import { PERSONAS } from "../lib/personas";
 import { FB_EINVOICE_STATUS_LABEL, type EinvoiceStatus } from "../data/sampleData";
 import {
@@ -446,7 +447,26 @@ function AllInvoicesPanel() {
           </thead>
           <tbody>
             {order.length === 0 ? (
-              <tr><td colSpan={6} style={{ color: "var(--ink-soft)" }}>{records.length === 0 ? "No invoices on file yet." : "No suppliers match your search."}</td></tr>
+              <tr><td colSpan={6}>
+                <EmptyState
+                  icon={
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z" /><path d="M9 13h6M9 17h6" /></svg>
+                  }
+                  title={records.length === 0 ? "No invoices on file yet" : "No suppliers match your search"}
+                  description={
+                    records.length === 0
+                      ? "Add your first invoice to start tracking e-invoice readiness."
+                      : "Try a different supplier name, or clear the search to see all invoices."
+                  }
+                  action={
+                    records.length === 0 && canAdd
+                      ? { label: "+ Add invoice", onClick: () => setAddOpen(true) }
+                      : records.length > 0 && search.trim() !== ""
+                        ? { label: "Clear search", onClick: () => setSearch("") }
+                        : undefined
+                  }
+                />
+              </td></tr>
             ) : (
               order.map((record) => {
                 const pillClass = record.status === "review" ? "is-review" : record.status === "pending" ? "" : "is-active";

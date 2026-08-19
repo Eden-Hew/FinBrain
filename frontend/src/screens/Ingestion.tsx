@@ -4,6 +4,7 @@ import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
+import { EmptyState } from "../components/EmptyState";
 import {
   fetchEmailRecords,
   fetchEmailStatus,
@@ -271,7 +272,12 @@ function EmailCapturePanel() {
       </div>
       <div className="fb-eyebrow" style={{ marginBottom: ".7rem" }}>Recent email records</div>
       {records.length === 0 ? (
-        <div className="fb-callout">No protected email records yet. Configure IMAP and run a synchronization.</div>
+        <EmptyState
+          icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16v16H4z" /><path d="m4 6 8 7 8-7" /></svg>}
+          title="No protected email records yet"
+          description={status?.configured ? "Run a synchronization to pull in the latest inbox activity." : "Configure IMAP, then run a synchronization to see records here."}
+          action={status?.configured ? { label: syncing ? "Synchronizing…" : "Sync now", onClick: runSync } : undefined}
+        />
       ) : (
         <div style={{ display: "grid", gap: ".65rem" }}>
           {records.map((record) => (
@@ -354,7 +360,11 @@ function TelegramCapturePanel() {
 
       <div className="fb-eyebrow" style={{ marginBottom: ".7rem" }}>Recent Telegram records</div>
       {records.length === 0 ? (
-        <div className="fb-callout">No Telegram records yet. Open the bot, run /capture, and confirm a protected record.</div>
+        <EmptyState
+          icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>}
+          title="No Telegram records yet"
+          description="Open the bot, run /capture, and confirm a protected record to see it here."
+        />
       ) : (
         <div style={{ display: "grid", gap: ".65rem" }}>
           {records.map((record) => (

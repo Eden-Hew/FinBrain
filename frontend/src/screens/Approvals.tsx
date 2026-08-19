@@ -4,6 +4,7 @@ import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { PERSONAS } from "../lib/personas";
+import { EmptyState } from "../components/EmptyState";
 import {
   analyzeProcesses,
   decideEinvoiceOutreach,
@@ -235,7 +236,13 @@ export default function Approvals() {
         {recommendationError && <div className="fb-callout" role="alert">{recommendationError}</div>}
         {outreachError && <div className="fb-callout" role="alert">{outreachError}</div>}
         <div className="fb-card-list">
-          {isEmpty && <p className="fb-sans" style={{ color: "var(--ink-soft)", fontSize: ".8rem" }}>Nothing waiting on you right now — you're fully caught up.</p>}
+          {isEmpty && (
+            <EmptyState
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
+              title="You're fully caught up"
+              description="Nothing waiting on your review right now."
+            />
+          )}
 
           {openRecommendations.map((item) => (
             <article
