@@ -56,7 +56,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
 
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const showApproveBtn = record.status === "pending";
-  const showUinPanel = record.status === "validated";
+  const showUinPanel = record.status === "validated" && Boolean(record.uin);
 
   const fields: [string, string][] = [
     ["Supplier", record.supplier_name],
@@ -165,7 +165,7 @@ export default function EinvoiceDetail() {
   if (!inv) return null;
 
   const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
-  const showUinPanel = inv.status === "submitted" || inv.status === "validated";
+  const showUinPanel = inv.status === "validated" && Boolean(inv.uin);
 
   return (
     <div className="fb-root fb-shell">
