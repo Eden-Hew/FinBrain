@@ -6,6 +6,7 @@ import { FB_EINVOICE_STATUS_LABEL } from "../data/sampleData";
 import {
   approveEinvoiceRecord,
   fetchEinvoiceRecord,
+  friendlyLoadError,
   uploadEinvoiceDocument,
   type EInvoiceApiRecord,
 } from "../api/client";
@@ -36,7 +37,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
   useEffect(() => {
     fetchEinvoiceRecord(recordId)
       .then((res) => { setRecord(res); setLoading(false); })
-      .catch((err) => { setError(err instanceof Error ? err.message : "Failed to load invoice."); setLoading(false); });
+      .catch((err) => { setError(err instanceof Error ? friendlyLoadError(err.message) : "Failed to load invoice."); setLoading(false); });
   }, [recordId]);
 
   const approve = async () => {

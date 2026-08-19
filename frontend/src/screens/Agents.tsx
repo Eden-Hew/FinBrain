@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
-import { Sidebar } from "../components/Nav";
+import { Sidebar, AppTopBar } from "../components/Nav";
 import {
   IntelligenceExperience,
   StandaloneExposureReceipt,
@@ -292,6 +292,7 @@ export default function Agents() {
   return (
     <div className="fb-root fb-shell">
       <Sidebar current="agents" />
+      <AppTopBar current="agents" />
 
       {sampleBanner && (
         <div className="fb-callout fb-sample-banner">

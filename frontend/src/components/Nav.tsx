@@ -202,6 +202,7 @@ export function Sidebar({ current, backTo, backLabel }: { current?: Screen; back
 }
 
 const SCREEN_TITLES: Partial<Record<Screen, string>> = {
+  agents: "Customer Intelligence",
   einvoice: "e-Invoicing",
   "einvoice-detail": "e-Invoicing",
   finance: "Finance Dashboard",

@@ -311,6 +311,15 @@ async function parse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// Internal plumbing codes (thrown by accessToken() when there's no session)
+// leak straight into `Error.message` — translate the ones we know about
+// instead of showing a snake_case string on an initial page load.
+export function friendlyLoadError(message: string): string {
+  if (message === "authentication_required") return "Your session has expired — please log in again.";
+  if (message === "insufficient_role") return "Your role doesn't have access to this data.";
+  return "Couldn't load this page right now — try refreshing.";
+}
+
 async function authenticatedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await accessToken();
   const headers = new Headers(init.headers);

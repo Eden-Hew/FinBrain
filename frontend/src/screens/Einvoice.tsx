@@ -12,6 +12,7 @@ import {
   fetchEinvoicePdfBlob,
   fetchEinvoiceReadiness,
   fetchEinvoiceRecords,
+  friendlyLoadError,
   requestEinvoiceFix,
   uploadEinvoiceDocument,
   type EInvoiceApiRecord,
@@ -73,7 +74,7 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
     let active = true;
     fetchEinvoiceReadiness()
       .then((res) => { if (active) { setData(res); setLoading(false); } })
-      .catch((err) => { if (active) { setError(err instanceof Error ? err.message : "Failed to load readiness check."); setLoading(false); } });
+      .catch((err) => { if (active) { setError(err instanceof Error ? friendlyLoadError(err.message) : "Failed to load readiness check."); setLoading(false); } });
     return () => { active = false; };
   }, []);
 
@@ -343,7 +344,7 @@ function AllInvoicesPanel() {
     let active = true;
     fetchEinvoiceRecords()
       .then((res) => { if (active) { setRecords(res); setLoading(false); } })
-      .catch((err) => { if (active) { setError(err instanceof Error ? err.message : "Failed to load invoices."); setLoading(false); } });
+      .catch((err) => { if (active) { setError(err instanceof Error ? friendlyLoadError(err.message) : "Failed to load invoices."); setLoading(false); } });
     return () => { active = false; };
   }, []);
 
