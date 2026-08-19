@@ -368,18 +368,20 @@ def get_document_url(db: Session, record_id: int) -> EinvoiceDocumentUrlResponse
         raise LookupError(f"e-invoice record {record_id} not found")
 
     bucket = get_settings().einvoice_document_bucket
-    storage.ensure_bucket(bucket)
-
-    if not record.document_storage_path:
-        pdf_bytes = render_einvoice_pdf(record)
-        path = f"{record.id}.pdf"
-        storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
-        record.document_storage_path = path
-        db.commit()
-
     expires_in = 300
-    url = storage.create_signed_url(bucket, record.document_storage_path, expires_in=expires_in)
-    return EinvoiceDocumentUrlResponse(url=url, expires_in=expires_in)
+
+    try:
+        storage.ensure_bucket(bucket)
+        if not record.document_storage_path:
+            pdf_bytes = render_einvoice_pdf(record)
+            path = f"{record.id}.pdf"
+            storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
+            record.document_storage_path = path
+            db.commit()
+        url = storage.create_signed_url(bucket, record.document_storage_path, expires_in=expires_in)
+        return EinvoiceDocumentUrlResponse(url=url, expires_in=expires_in)
+    except Exception:
+        return EinvoiceDocumentUrlResponse(url=f"/einvoice-records/{record_id}/pdf", expires_in=expires_in)
 
 
 def list_outreach_drafts(db: Session) -> list[EinvoiceOutreachDraftResponse]:

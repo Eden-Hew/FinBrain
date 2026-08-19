@@ -232,4 +232,57 @@ def test_seed_module_reexport_compatibility():
     assert len(pdf_bytes) > 1000
 
 
+def test_einvoice_record_pdf_route():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from app.auth.dependencies import get_current_user
+    from app.db import get_db
+    from app.models import Base, EInvoiceRecord
+    from app.routes.einvoice import router
+    from tests.auth_support import principal
+    from app.schemas import UserRole
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    record = EInvoiceRecord(
+        supplier_name="Tenaga Nasional Berhad",
+        supplier_tin="C1234567890",
+        buyer_name="FINBRAIN Sdn Bhd",
+        invoice_no="TNB-2026-88213",
+        issue_date=date(2026, 8, 10),
+        currency="MYR",
+        tax_type="SST",
+        tax_rate="6%",
+        total_amount="1240.00",
+        status="validated",
+    )
+    db.add(record)
+    db.commit()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: principal(UserRole.FINANCE_OPS)
+
+    client = TestClient(app)
+    response = client.get(f"/einvoice-records/{record.id}/pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+
+    doc_response = client.get(f"/einvoice-readiness/{record.id}/document")
+    assert doc_response.status_code == 200
+    data = doc_response.json()
+    assert "url" in data
+
+
+
 

@@ -552,6 +552,15 @@ export async function fetchEinvoiceDocumentUrl(recordId: number): Promise<Einvoi
   );
 }
 
+export async function fetchEinvoicePdfBlob(recordId: number): Promise<Blob> {
+  const response = await authenticatedFetch(`/einvoice-records/${recordId}/pdf`);
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail ?? `Failed to load invoice PDF (${response.status})`);
+  }
+  return response.blob();
+}
+
 export async function fetchEinvoiceRecords(): Promise<EInvoiceApiRecord[]> {
   return parse<EInvoiceApiRecord[]>(await authenticatedFetch("/einvoice-records"));
 }
