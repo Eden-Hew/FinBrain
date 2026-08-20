@@ -5,6 +5,7 @@ import { PersonaSelector } from "../components/PersonaSelector";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
 import { EmptyState } from "../components/EmptyState";
+import { MaskedText } from "../components/MaskedText";
 import {
   fetchAuditLog,
   fetchWorkflowAudit,
@@ -50,6 +51,26 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 
 function humanize(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+// Every disclosure row otherwise carries the identical hardcoded title
+// ("Disclosure decision") — the one thing that actually varies per row is
+// what kind of masked value was at stake and whether it was allowed, so say
+// that in plain language instead of repeating a static label on every row.
+const DISCLOSURE_NOUNS: Record<string, string> = {
+  PERSON: "personal details",
+  NRIC: "an ID number",
+  PHONE: "a phone number",
+  EMAIL: "an email address",
+  BANKACC: "bank account details",
+  CARD: "card details",
+  ADDR: "an address",
+  ORG: "organization details",
+};
+
+function disclosureTitle(token: string, authorized: boolean) {
+  const noun = token.startsWith("AMOUNT_BAND") ? "a financial amount" : (DISCLOSURE_NOUNS[token.split("_")[0]] ?? "protected details");
+  return authorized ? `Viewed ${noun}` : `Blocked from ${noun}`;
 }
 
 function workflowReference(entry: WorkflowAuditEntry) {
@@ -162,7 +183,7 @@ export default function Audit() {
       key: `disclosure-${entry.id}`,
       stream: "disclosure",
       time: entry.ts,
-      title: "Disclosure decision",
+      title: disclosureTitle(entry.token, entry.authorized),
       actor: entry.role,
       resource: entry.token,
       status: entry.authorized ? "Allowed" : "Denied",
@@ -299,6 +320,10 @@ export default function Audit() {
             {verifying ? "Verifying…" : "Re-verify both chains"}
           </button>
         </section>
+        <p className="fb-fine" style={{ margin: "-1.4rem 0 2rem", maxWidth: "70ch" }}>
+          Each entry is cryptographically linked to the one before it — if any past record were ever edited or
+          deleted, the chain would break and this would turn red immediately.
+        </p>
 
         <section className="fb-audit-events" aria-labelledby="audit-events-title">
           <div className="fb-audit-events-head">
@@ -327,7 +352,7 @@ export default function Audit() {
 
           <div className="fb-table-search" style={{ margin: "0 0 1.2rem" }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-            <input type="text" placeholder="Search by actor…" value={actorSearch} onChange={(event) => setActorSearch(event.target.value)} />
+            <input type="text" placeholder="Search by role (e.g. owner_director)…" value={actorSearch} onChange={(event) => setActorSearch(event.target.value)} />
           </div>
 
           <div className="fb-audit-list">
@@ -351,7 +376,7 @@ export default function Audit() {
                         </span>
                         <div>
                           <h3>{entry.title}</h3>
-                          <p>{entry.actor} · {entry.resource}</p>
+                          <p>{humanize(entry.actor)} · <MaskedText text={entry.resource} /></p>
                         </div>
                       </div>
                       <div className="fb-audit-entry-state">
@@ -363,10 +388,6 @@ export default function Audit() {
                     </div>
 
                     <div className="fb-audit-identifiers">
-                      <div>
-                        <span>{entry.referenceLabel}</span>
-                        <code title={entry.reference}>{shortHash(entry.reference)}</code>
-                      </div>
                       <div>
                         <span>Entry hash</span>
                         <code title={entry.entryHash}>{shortHash(entry.entryHash)}</code>
