@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from email import policy
 from email.message import Message
@@ -9,6 +10,21 @@ from bs4 import BeautifulSoup
 from app.config import get_settings
 from app.integrations.telegram.extractors import ExtractionError, extract_document
 from app.integrations.telegram.types import ExtractedContent
+
+
+def extract_reply_references(data: bytes) -> tuple[str, ...]:
+    """Return transient RFC message references; callers must hash before persistence."""
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(data)
+    except Exception as error:
+        raise ExtractionError("malformed_email") from error
+    values: list[str] = []
+    for header in (message.get("in-reply-to"), message.get("references")):
+        if not header:
+            continue
+        matches = re.findall(r"<[^>]+>", str(header))
+        values.extend(matches or str(header).split())
+    return tuple(dict.fromkeys(value.strip() for value in values if value.strip()))
 
 
 def _text_part(part: Message) -> str:

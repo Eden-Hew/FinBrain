@@ -293,6 +293,40 @@ class EmailIngestionReceipt(Base):
     failure_code: Mapped[str | None] = mapped_column(String)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id"))
+    outreach_action_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("outreach_actions.id")
+    )
+    in_reply_to_ref_hash: Mapped[str | None] = mapped_column(String)
+    correlation_status: Mapped[str | None] = mapped_column(String)
+    correlated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EmailReplyCorrelation(Base):
+    __tablename__ = "email_reply_correlations"
+    __table_args__ = (
+        UniqueConstraint(
+            "email_receipt_ref_hash", "outreach_action_id",
+            name="email_reply_action_unique",
+        ),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    email_receipt_ref_hash: Mapped[str] = mapped_column(
+        String, ForeignKey("email_ingestion_receipts.message_ref_hash"), nullable=False
+    )
+    outreach_action_id: Mapped[str] = mapped_column(
+        String, ForeignKey("outreach_actions.id"), nullable=False
+    )
+    matched_reference_hash: Mapped[str] = mapped_column(String, nullable=False)
+    customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id"), nullable=False)
+    tokenized_content_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String, default="correlated", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class StructuredIngestionBatch(Base):
@@ -536,8 +570,8 @@ class CustomerRecordLink(Base):
     __tablename__ = "customer_record_links"
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "customer_id", "tokenized_content_id", "alias_id",
-            name="customer_record_alias_link_unique",
+            "tenant_id", "customer_id", "tokenized_content_id", "match_basis",
+            name="customer_record_link_unique",
         ),
     )
 
@@ -551,8 +585,8 @@ class CustomerRecordLink(Base):
     tokenized_content_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT"), nullable=False
     )
-    alias_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("customer_aliases.id", ondelete="RESTRICT"), nullable=False
+    alias_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customer_aliases.id", ondelete="RESTRICT")
     )
     match_status: Mapped[str] = mapped_column(String, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)

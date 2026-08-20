@@ -105,7 +105,7 @@ def link_record_from_known_aliases(
                 CustomerRecordLink.tenant_id == row.tenant_id,
                 CustomerRecordLink.customer_id == alias.customer_id,
                 CustomerRecordLink.tokenized_content_id == row.id,
-                CustomerRecordLink.alias_id == alias.id,
+                CustomerRecordLink.match_basis == "exact_protected_alias",
             )
         )
         if link is None:

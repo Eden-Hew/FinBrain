@@ -22,7 +22,7 @@ create table public.customer_record_links (
   tenant_id uuid not null references public.tenants(id),
   customer_id bigint not null references public.customers(id) on delete restrict,
   tokenized_content_id bigint not null references public.tokenized_content(id) on delete restrict,
-  alias_id bigint not null references public.customer_aliases(id) on delete restrict,
+  alias_id bigint references public.customer_aliases(id) on delete restrict,
   match_status text not null check (match_status in ('verified','probable','ambiguous','rejected')),
   confidence double precision not null check (confidence between 0 and 1),
   match_basis text not null,
@@ -30,8 +30,8 @@ create table public.customer_record_links (
   reviewed_by_user_id uuid,
   created_at timestamptz not null default now(),
   reviewed_at timestamptz,
-  constraint customer_record_alias_link_unique
-    unique (tenant_id, customer_id, tokenized_content_id, alias_id)
+  constraint customer_record_link_unique
+    unique (tenant_id, customer_id, tokenized_content_id, match_basis)
 );
 create index customer_record_links_customer_idx on public.customer_record_links
   (tenant_id, customer_id, match_status, created_at desc);

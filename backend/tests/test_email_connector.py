@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations.email_connector import service
 from app.integrations.email_connector.adapter import canonical_record, message_reference
-from app.integrations.email_connector.extractor import extract_email
+from app.integrations.email_connector.extractor import extract_email, extract_reply_references
 from app.models import Base, EmailSyncState
 
 
@@ -52,6 +52,19 @@ def test_email_reference_is_deterministic_and_hides_message_id():
     assert first == second
     assert "private" not in first
     assert len(first) == 64
+
+
+def test_reply_headers_are_extracted_only_for_immediate_hashing():
+    message = EmailMessage()
+    message["From"] = "customer@example.com"
+    message["To"] = "finance@example.com"
+    message["In-Reply-To"] = "<sent-1@finbrain.local>"
+    message["References"] = "<older@finbrain.local> <sent-1@finbrain.local>"
+    message.set_content("Reply")
+    assert extract_reply_references(message.as_bytes()) == (
+        "<sent-1@finbrain.local>",
+        "<older@finbrain.local>",
+    )
 
 
 def test_email_search_is_unread_and_incremental():

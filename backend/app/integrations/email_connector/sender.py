@@ -9,17 +9,17 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import CustomerEndpoint, OutreachAction, TokenVaultEntry
+from app.models import DEFAULT_TENANT_ID, CustomerEndpoint, OutreachAction, TokenVaultEntry
 from app.schemas import UserRole
 from app.security.detokenize import detokenize_response_with_trace, hash_query
 from app.security.keyring import decrypt_vault_entry
 from app.services.workflow_audit import write_workflow_event
 
 
-def message_reference_hash(value: str) -> str:
+def message_reference_hash(value: str, tenant_id: str = DEFAULT_TENANT_ID) -> str:
     return hmac.new(
         get_settings().token_identity_secret.encode(),
-        f"email-thread:{value.strip().casefold()}".encode(),
+        f"email-thread:{tenant_id}:{value.strip().casefold()}".encode(),
         hashlib.sha256,
     ).hexdigest()
 
@@ -75,7 +75,7 @@ def _claim(db: Session) -> tuple[OutreachAction, str] | None:
         .values(
             status="sending",
             send_started_at=datetime.now(UTC),
-            provider_message_ref_hash=message_reference_hash(message_id),
+            provider_message_ref_hash=message_reference_hash(message_id, row.tenant_id),
             attempt_count=OutreachAction.attempt_count + 1,
             updated_at=datetime.now(UTC),
         )
@@ -118,6 +118,12 @@ def dispatch_one(db: Session) -> OutreachAction | None:
         message["Subject"] = subject
         message["Message-ID"] = message_id
         message.set_content(body)
+    except Exception:
+        _set_result(db, row, "failed", "message_preparation_failed")
+        return row
+
+    delivery_started = False
+    try:
         with smtplib.SMTP(
             settings.email_smtp_host,
             settings.email_smtp_port,
@@ -126,11 +132,15 @@ def dispatch_one(db: Session) -> OutreachAction | None:
             if settings.email_smtp_use_starttls:
                 smtp.starttls()
             smtp.login(username, password)
+            delivery_started = True
             smtp.send_message(message)
     except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError):
         _set_result(db, row, "failed", "smtp_rejected")
     except Exception:
-        _set_result(db, row, "delivery_unknown", "smtp_delivery_uncertain")
+        if delivery_started:
+            _set_result(db, row, "delivery_unknown", "smtp_delivery_uncertain")
+        else:
+            _set_result(db, row, "failed", "smtp_connection_failed")
     else:
         _set_result(db, row, "sent", None)
     return row

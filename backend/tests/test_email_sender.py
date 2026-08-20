@@ -81,7 +81,7 @@ def test_dispatch_sends_once_and_records_sent(monkeypatch):
     db.close()
 
 
-def test_uncertain_network_failure_is_never_automatically_retried(monkeypatch):
+def test_connection_failure_is_failed_and_never_automatically_retried(monkeypatch):
     db, action = _approved_action()
 
     class SMTP:
@@ -89,6 +89,26 @@ def test_uncertain_network_failure_is_never_automatically_retried(monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *_args): return None
         def starttls(self): raise TimeoutError
+
+    monkeypatch.setattr(sender, "get_settings", _settings)
+    monkeypatch.setattr(sender.smtplib, "SMTP", SMTP)
+    result = sender.dispatch_one(db)
+    assert result is not None and result.status == "failed"
+    assert result.attempt_count == 1
+    assert sender.dispatch_one(db) is None
+    db.close()
+
+
+def test_uncertain_send_failure_is_never_automatically_retried(monkeypatch):
+    db, action = _approved_action()
+
+    class SMTP:
+        def __init__(self, *_args, **_kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def starttls(self): return None
+        def login(self, *_args): return None
+        def send_message(self, _message): raise TimeoutError
 
     monkeypatch.setattr(sender, "get_settings", _settings)
     monkeypatch.setattr(sender.smtplib, "SMTP", SMTP)
