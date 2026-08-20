@@ -29,6 +29,7 @@ export interface QueryResponse {
   protected_intelligence_brief: CustomerIntelligenceBrief | null;
   intelligence_brief: CustomerIntelligenceBrief | null;
   exposure_receipt: ExposureReceipt | null;
+  context_customer_id: number | null;
 }
 
 export interface QueryCitation {
@@ -367,14 +368,140 @@ async function authenticatedFetch(path: string, init: RequestInit = {}): Promise
 export async function askQuestion(
   question: string,
   conversationId?: string | null,
+  customerId?: number | null,
 ): Promise<QueryResponse> {
   return parse<QueryResponse>(
     await authenticatedFetch("/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, conversation_id: conversationId || null }),
+      body: JSON.stringify({
+        question,
+        conversation_id: conversationId || null,
+        customer_id: customerId || null,
+      }),
     }),
   );
+}
+
+export interface CustomerSummary {
+  id: number;
+  name: string;
+  attention_score: number;
+  priority: "urgent" | "high" | "monitoring" | "healthy";
+  outstanding_total: string;
+  overdue_total: string;
+  invoice_count: number;
+  linked_source_count: number;
+}
+
+export interface CustomerAttentionSignal {
+  signal_type: string;
+  points: number;
+  label: string;
+  freshness: string;
+  confidence: number;
+  tokenized_content_id: number | null;
+  einvoice_record_id: number | null;
+}
+
+export interface CustomerTimelineItem {
+  event_id: string;
+  event_type: string;
+  source_system: string;
+  occurred_at: string | null;
+  protected_summary: string;
+  tokenized_content_id: number | null;
+  einvoice_record_id: number | null;
+  identity_status: string;
+}
+
+export interface CustomerDetail extends CustomerSummary {
+  attention_version: string | null;
+  attention_signals: CustomerAttentionSignal[];
+  timeline: CustomerTimelineItem[];
+}
+
+export interface CustomerEndpoint {
+  id: number;
+  customer_id: number;
+  channel: "email";
+  masked_value: string;
+  verification_status: "observed" | "verified" | "revoked";
+  created_at: string;
+}
+
+export interface OutreachAction {
+  id: string;
+  customer_id: number;
+  customer_endpoint_id: number;
+  channel: "email";
+  protected_subject: string;
+  protected_body: string;
+  status: "draft" | "pending_approval" | "approved" | "sending" | "sent" | "failed" | "delivery_unknown" | "replied" | "rejected" | "cancelled";
+  idempotency_key: string;
+  attempt_count: number;
+  failure_code: string | null;
+  created_at: string;
+  approved_at: string | null;
+  sent_at: string | null;
+  replied_at: string | null;
+}
+
+export async function fetchCustomers(): Promise<CustomerSummary[]> {
+  return parse<CustomerSummary[]>(await authenticatedFetch("/customers"));
+}
+
+export async function fetchCustomer(id: number): Promise<CustomerDetail> {
+  return parse<CustomerDetail>(await authenticatedFetch(`/customers/${id}`));
+}
+
+export async function fetchCustomerEndpoints(id: number): Promise<CustomerEndpoint[]> {
+  return parse<CustomerEndpoint[]>(await authenticatedFetch(`/customers/${id}/endpoints`));
+}
+
+export async function createCustomerEndpoint(id: number, value: string): Promise<CustomerEndpoint> {
+  return parse<CustomerEndpoint>(await authenticatedFetch(`/customers/${id}/endpoints`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ channel: "email", value }),
+  }));
+}
+
+export async function verifyCustomerEndpoint(id: number): Promise<CustomerEndpoint> {
+  return parse<CustomerEndpoint>(await authenticatedFetch(`/customer-endpoints/${id}/verify`, {
+    method: "POST",
+  }));
+}
+
+export async function fetchOutreachActions(): Promise<OutreachAction[]> {
+  return parse<OutreachAction[]>(await authenticatedFetch("/outreach"));
+}
+
+export async function createOutreachAction(
+  customerId: number,
+  input: { customerEndpointId: number; subject: string; body: string; evidenceContentIds: number[] },
+): Promise<OutreachAction> {
+  const idempotencyKey = `web-${customerId}-${crypto.randomUUID()}`;
+  return parse<OutreachAction>(await authenticatedFetch(`/customers/${customerId}/outreach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_endpoint_id: input.customerEndpointId,
+      subject: input.subject,
+      body: input.body,
+      idempotency_key: idempotencyKey,
+      evidence_content_ids: input.evidenceContentIds,
+    }),
+  }));
+}
+
+export async function transitionOutreachAction(
+  id: string,
+  operation: "submit" | "approve" | "reject" | "cancel",
+): Promise<OutreachAction> {
+  return parse<OutreachAction>(await authenticatedFetch(`/outreach/${id}/${operation}`, {
+    method: "POST",
+  }));
 }
 
 export async function fetchCitationDetail(

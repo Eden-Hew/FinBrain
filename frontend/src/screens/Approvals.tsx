@@ -10,8 +10,11 @@ import {
   decideEinvoiceOutreach,
   decideRecommendation,
   fetchEinvoiceOutreachDrafts,
+  fetchOutreachActions,
   fetchRecommendations,
+  transitionOutreachAction,
   type EinvoiceOutreachDraft,
+  type OutreachAction,
   type ProcessRecommendation,
 } from "../api/client";
 
@@ -91,6 +94,7 @@ export default function Approvals() {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
   const [outreachDrafts, setOutreachDrafts] = useState<EinvoiceOutreachDraft[]>([]);
+  const [customerOutreach, setCustomerOutreach] = useState<OutreachAction[]>([]);
   const [outreachError, setOutreachError] = useState("");
   const [activeFilter, setActiveFilter] = useState<CardType | null>(null);
 
@@ -136,6 +140,17 @@ export default function Approvals() {
   }, [askRole, capabilities.manageEinvoiceReadiness]);
 
   useEffect(() => {
+    let active = true;
+    if (askRole !== "finance_ops" && askRole !== "owner_director" && askRole !== "compliance") {
+      return () => { active = false; };
+    }
+    void fetchOutreachActions().then((rows) => {
+      if (active) setCustomerOutreach(rows.filter((row) => row.status === "pending_approval"));
+    }).catch(() => { if (active) setCustomerOutreach([]); });
+    return () => { active = false; };
+  }, [askRole]);
+
+  useEffect(() => {
     if (focusedRecommendationId == null) return;
     const target = document.getElementById(`recommendation-${focusedRecommendationId}`);
     if (!target) return;
@@ -179,9 +194,22 @@ export default function Approvals() {
     }
   };
 
+  const decideCustomerOutreach = async (id: string, decision: "approve" | "reject") => {
+    setOutreachError("");
+    try {
+      await transitionOutreachAction(id, decision);
+      setCustomerOutreach((rows) => rows.filter((row) => row.id !== id));
+    } catch (error) {
+      setOutreachError(error instanceof Error ? error.message : "Outreach decision failed.");
+    }
+  };
+
   const pendingInvoices = Object.values(einvoices).filter((inv) => inv.status === "pending");
   const draftSops = sops.filter((s) => s.status === "draft");
   const activeActions = pendingActions.filter((a) => a.active);
+  const visibleCustomerOutreach = askRole === "finance_ops" || askRole === "owner_director" || askRole === "compliance"
+    ? customerOutreach
+    : [];
 
   const openRecommendations = recommendations.filter((item) => (
     item.status === "proposed" || item.status === "approved"
@@ -190,14 +218,15 @@ export default function Approvals() {
     && draftSops.length === 0
     && activeActions.length === 0
     && openRecommendations.length === 0
-    && outreachDrafts.length === 0;
+    && outreachDrafts.length === 0
+    && visibleCustomerOutreach.length === 0;
 
   const summary: { type: CardType; tone: string; count: number }[] = [
     { type: "invoice" as const, tone: "is-blue", count: pendingInvoices.length },
     { type: "sop" as const, tone: "is-purple", count: draftSops.length },
     { type: "action" as const, tone: "is-orange", count: activeActions.length },
     { type: "recommendation" as const, tone: "is-green", count: openRecommendations.length },
-    { type: "outreach" as const, tone: "is-teal", count: outreachDrafts.length },
+    { type: "outreach" as const, tone: "is-teal", count: outreachDrafts.length + visibleCustomerOutreach.length },
   ].filter((item) => item.count > 0);
 
   return (
@@ -379,6 +408,24 @@ export default function Approvals() {
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
                 <ConfirmApproveButton label="Approve & send" onConfirm={() => decideOutreach(draft.id, "approve")} />
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => decideOutreach(draft.id, "reject")}>Discard</button>
+              </div>
+            </div>
+          ))}
+          {(activeFilter === null || activeFilter === "outreach") && visibleCustomerOutreach.map((action) => (
+            <div className="fb-rec-card is-type-outreach" key={`customer-outreach-${action.id}`}>
+              <TypeBadge type="outreach" />
+              <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>Customer intelligence · protected email · waiting for approval</div>
+              <h3>{action.protected_subject}</h3>
+              <div className="fb-rec-evidence">{action.protected_body}</div>
+              <div className="fb-fine" style={{ marginTop: ".5rem" }}>Customer #{action.customer_id} · {action.attempt_count} delivery attempt(s)</div>
+              <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
+                <ConfirmApproveButton
+                  label="Approve & queue"
+                  disabled={askRole !== "owner_director"}
+                  disabledReason="Owner / director role required"
+                  onConfirm={() => void decideCustomerOutreach(action.id, "approve")}
+                />
+                <button className="fb-btn fb-btn-outline" type="button" disabled={askRole !== "owner_director"} onClick={() => void decideCustomerOutreach(action.id, "reject")}>Reject</button>
               </div>
             </div>
           ))}

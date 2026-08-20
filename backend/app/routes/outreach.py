@@ -57,6 +57,23 @@ def create_endpoint(
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
+@router.get(
+    "/customers/{customer_id}/endpoints",
+    response_model=list[CustomerEndpointResponse],
+)
+def list_endpoints(
+    customer_id: int,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    rows = db.scalars(select(CustomerEndpoint).where(
+        CustomerEndpoint.tenant_id == str(principal.tenant_id),
+        CustomerEndpoint.customer_id == customer_id,
+    ).order_by(CustomerEndpoint.created_at.desc())).all()
+    return [_endpoint_response(db, row) for row in rows]
+
+
 @router.post("/customer-endpoints/{endpoint_id}/verify", response_model=CustomerEndpointResponse)
 def confirm_endpoint(
     endpoint_id: int,

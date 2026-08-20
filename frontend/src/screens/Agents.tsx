@@ -87,6 +87,7 @@ export default function Agents() {
     openApprovalRecommendation,
     pendingAskPrompt,
     clearPendingAskPrompt,
+    currentCustomerKey,
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
@@ -158,7 +159,10 @@ export default function Agents() {
       let turnId: number | undefined;
       let isFallback = false;
       try {
-        const response = await askQuestion(trimmed, conversationId);
+        const scopedCustomerId = currentCustomerKey?.startsWith("id:")
+          ? Number(currentCustomerKey.slice(3))
+          : null;
+        const response = await askQuestion(trimmed, conversationId, scopedCustomerId);
         setConversationId(response.conversation_id);
         setProtectedTurnCount((count) => count + 1);
         finalText = response.answer;
