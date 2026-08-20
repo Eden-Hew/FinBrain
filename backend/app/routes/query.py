@@ -65,6 +65,7 @@ def query(
         [source for source, _count in inventory],
         tenant_id=str(principal.tenant_id),
     )
+    deterministic_intent = plan.intent
     try:
         conversation = get_or_create_conversation(
             db, payload.conversation_id, str(principal.tenant_id), str(principal.user_id)
@@ -100,21 +101,39 @@ def query(
     explicit_entity = any(
         span.label.casefold() in {"person", "company name"} for span in query_spans
     )
+    ordinal_reference = bool(payload.conversation_id) and is_ordinal_reference_question(
+        payload.question
+    )
     planning_history = (
         protected_planning_history(db, conversation.id, str(principal.tenant_id))
         if payload.conversation_id
         and not explicit_entity
-        and not is_ordinal_reference_question(payload.question)
+        and not ordinal_reference
         else []
     )
-    conversational_plan = plan_conversation(
-        history=planning_history,
-        protected_question=sanitized_question,
-        current_intent=plan.intent,
-        available_sources=[source for source, _count in inventory],
+    conversational_plan = (
+        plan_conversation(
+            history=planning_history,
+            protected_question=sanitized_question,
+            current_intent=plan.intent,
+            available_sources=[source for source, _count in inventory],
+        )
+        if planning_history
+        else None
     )
-    if conversational_plan is not None:
-        plan = QueryPlan(conversational_plan.query_intent, plan.filters)
+    if ordinal_reference:
+        # Ordinals already select exact prior evidence. They are direct inspections,
+        # even when the user misspells "describe" and the lexical planner says semantic.
+        plan = QueryPlan(QueryIntent.LOOKUP, plan.filters)
+    elif conversational_plan is not None:
+        # The model may upgrade an ambiguous semantic phrase into a direct lookup,
+        # but it must not turn an explicit reply/contact lookup into an analytical card.
+        resolved_intent = (
+            QueryIntent.LOOKUP
+            if QueryIntent.LOOKUP in {plan.intent, conversational_plan.query_intent}
+            else QueryIntent.SEMANTIC
+        )
+        plan = QueryPlan(resolved_intent, plan.filters)
 
     if conversational_plan is not None and conversational_plan.referenced_turn is not None:
         reference_requested = True
@@ -241,7 +260,9 @@ def query(
                     reasoning_question,
                     hits,
                     response_style=(
-                        conversational_plan.response_style
+                        "compact"
+                        if ordinal_reference or deterministic_intent is QueryIntent.LOOKUP
+                        else conversational_plan.response_style
                         if conversational_plan is not None
                         else "compact"
                     ),

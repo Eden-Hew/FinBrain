@@ -46,7 +46,7 @@ REFERENCE_PATTERN = re.compile(
     rf"(?:source|email|result|record)[\s-]*(?:number\s*)?\d{{1,2}}|"
     rf"(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\s+{_REFERENCE_NOUNS}|"
     rf"about\s+(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)?(?:\s+{_REFERENCE_NOUNS})?|"
-    r"suggest(?: a)? (?:response|reply)|draft(?: a)? (?:response|reply)|"
+    r"suggest(?: an?| the)? (?:response|reply|action)|draft(?: a)? (?:response|reply)|"
     r"write(?: a)? (?:response|reply)|how should (?:i|we) (?:respond|reply))\b",
     re.IGNORECASE,
 )

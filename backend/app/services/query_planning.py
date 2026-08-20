@@ -66,6 +66,7 @@ def _source_aliases(source_system: str) -> set[str]:
 
 def _mentioned_sources(question: str, available_sources: list[str]) -> tuple[str, ...]:
     lowered = question.casefold()
+    source_text = re.sub(r"\bemail addresses?\b", "", lowered)
     matches: list[str] = []
     # Known connector names remain plan-able when their searchable inventory is
     # temporarily empty. This makes "show all einvoice" a deterministic zero-row
@@ -73,7 +74,7 @@ def _mentioned_sources(question: str, available_sources: list[str]) -> tuple[str
     candidate_sources = list(dict.fromkeys([*available_sources, "einvoice"]))
     for source in candidate_sources:
         if any(
-            re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", lowered)
+            re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", source_text)
             for alias in _source_aliases(source)
         ):
             matches.append(source)
@@ -84,7 +85,7 @@ def _mentioned_sources(question: str, available_sources: list[str]) -> tuple[str
     without_bank_phrases = re.sub(
         r"\bbank(?:[ _-]+csv| records?| transactions?)\b",
         "",
-        lowered,
+        source_text,
     )
     if (
         "spreadsheet" in available_sources
@@ -263,6 +264,17 @@ def plan_query(
     )
     if exhaustive_scope and analytical_request:
         return QueryPlan(QueryIntent.ANALYZE_ALL, filters)
+    contact_lookup_request = bool(
+        re.search(
+            r"\b(?:contacts?|phone numbers?|email addresses?|"
+            r"how (?:can|do) i contact)\b",
+            lowered,
+        )
+    )
+    # "Email address" describes a contact field, not the email connector. Resolve
+    # this before source-list routing so combined phone/email requests stay lookups.
+    if contact_lookup_request:
+        return QueryPlan(QueryIntent.LOOKUP, filters)
     if sources and (explicit_column_filter or (enumeration_verb and enumeration_scope)):
         return QueryPlan(QueryIntent.LIST_RECORDS, filters)
     if enumeration_verb and enumeration_scope and filters.record_types:
@@ -276,7 +288,7 @@ def plan_query(
         re.search(
             r"\b(?:find|look for|who (?:is|are)|contact(?: details?| information)?|"
             r"phone numbers?|email addresses?|how (?:can|do) i contact|"
-            r"tell me about|describe|inspect|suggest(?: a)? (?:response|reply)|"
+            r"tell me about|describe|inspect|suggest(?: an?| the)? (?:response|reply|action)|"
             r"draft(?: a)? (?:response|reply)|write(?: a)? (?:response|reply)|"
             r"how should (?:i|we) (?:respond|reply))\b",
             lowered,

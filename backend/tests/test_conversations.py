@@ -597,3 +597,118 @@ def test_model_planner_can_follow_topic_to_an_older_cited_turn(monkeypatch):
     finally:
         db.close()
         engine.dispose()
+
+
+def test_model_planner_cannot_downgrade_explicit_reply_lookup_to_analysis(monkeypatch):
+    engine, db = _database()
+    email = _ready_record(db, "email:reply-target", "email")
+    try:
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Describe the selected email",
+            protected_answer="The customer requested invoice allocation.",
+            query_intent="lookup",
+            source_systems=["email"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(email)],
+        )
+        monkeypatch.setattr(
+            "app.routes.query.plan_conversation",
+            lambda **_kwargs: ConversationalPlan(
+                intent="semantic",
+                referenced_turn=1,
+                response_style="analysis",
+                needs_clarification=False,
+            ),
+        )
+        captured = {}
+
+        def answer_follow_up(_question, hits, *, response_style="analysis"):
+            captured["style"] = response_style
+            return (
+                CitedAnswer(answer="Ready-to-send protected reply.", citations=["SOURCE-1"]),
+                "test",
+            )
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_follow_up,
+        )
+
+        response = query(
+            QueryRequest(question="suggest response", conversation_id=conversation.id),
+            principal(),
+            db,
+        )
+
+        assert response.query_intent == "lookup"
+        assert response.intelligence_brief is None
+        assert response.protected_intelligence_brief is None
+        assert captured["style"] == "compact"
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_misspelled_ordinal_description_stays_a_compact_lookup(monkeypatch):
+    engine, db = _database()
+    first = _ready_record(db, "email:first", "email")
+    second = _ready_record(db, "email:second", "email")
+    try:
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Show all emails",
+            protected_answer="Two protected emails.",
+            query_intent="list_records",
+            source_systems=["email"],
+            reasoning_mode="structured-filter",
+            insufficient_evidence=False,
+            cited_hits=[_hit(first), _hit(second)],
+        )
+        monkeypatch.setattr(
+            "app.routes.query.plan_conversation",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("ordinal lookup must bypass planner")
+            ),
+        )
+        captured = {}
+
+        def answer_follow_up(_question, hits, *, response_style="analysis"):
+            captured["ids"] = [hit.source_record_id for hit in hits]
+            captured["style"] = response_style
+            return CitedAnswer(answer="The first protected email.", citations=["SOURCE-1"]), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_follow_up,
+        )
+
+        response = query(
+            QueryRequest(question="descride first one", conversation_id=conversation.id),
+            principal(),
+            db,
+        )
+
+        assert response.query_intent == "lookup"
+        assert response.intelligence_brief is None
+        assert response.protected_intelligence_brief is None
+        assert captured["ids"] == ["email:first"]
+        assert captured["style"] == "compact"
+    finally:
+        db.close()
+        engine.dispose()

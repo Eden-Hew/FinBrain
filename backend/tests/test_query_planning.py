@@ -65,12 +65,17 @@ def test_planner_uses_compact_lookup_and_sql_invoice_listing_intents():
         "contact for Sheng Kai",
         "how do I contact him",
         "show all phone numbers",
+        "show all phone numbers and email addresses",
         "describe the first email",
         "who are they for respectively",
         "suggest response",
+        "suggest action for that email",
         "draft a reply",
     ):
         assert plan_query(question, available).intent is QueryIntent.LOOKUP
+
+    combined_contacts = plan_query("show all phone numbers and email addresses", available)
+    assert combined_contacts.source_systems == ()
 
     assert plan_query("show all invoice", available).intent is QueryIntent.LIST_RECORDS
 

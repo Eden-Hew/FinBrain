@@ -225,6 +225,7 @@ def test_compact_lookup_instruction_requests_a_natural_short_answer(monkeypatch)
     assert answer.citations == ["SOURCE-1"]
     assert "one or two sentences" in captured["system"]
     assert "Do not recommend actions" in captured["system"]
+    assert "ready-to-send" in captured["system"]
 
 
 def test_structured_contact_lookup_pairs_summary_customer_and_contact():
