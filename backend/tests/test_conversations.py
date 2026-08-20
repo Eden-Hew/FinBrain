@@ -3,12 +3,15 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import (
     DEFAULT_TENANT_ID,
     Base,
     Conversation,
     ConversationTurn,
     ConversationTurnCitation,
+    Customer,
+    CustomerRecordLink,
     TokenizedContent,
 )
 from app.routes.query import query
@@ -465,6 +468,100 @@ def test_ambiguous_person_pronoun_requests_a_name_without_calling_model(monkeypa
         assert response.mode == "conversation-clarification"
         assert response.citations == []
         assert "which person" in response.answer.casefold()
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_explicit_customer_context_overrides_generic_person_clarification(monkeypatch):
+    engine, db = _database()
+    first = _ready_record(db, "email:selected-customer", "email")
+    second = _ready_record(db, "telegram:selected-customer", "telegram")
+    try:
+        customer = Customer(
+            tenant_id=DEFAULT_TENANT_ID,
+            canonical_name="Selected Customer",
+            normalized_name="SELECTEDCUSTOMER",
+        )
+        db.add(customer)
+        db.flush()
+        db.add_all([
+            CustomerRecordLink(
+                tenant_id=DEFAULT_TENANT_ID,
+                customer_id=customer.id,
+                tokenized_content_id=row.id,
+                match_status="verified",
+                confidence=1.0,
+                match_basis="test",
+            )
+            for row in (first, second)
+        ])
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Summarize this customer",
+            protected_answer="Two records support this customer.",
+            query_intent="lookup",
+            source_systems=[],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(first), _hit(second)],
+        )
+        captured: dict[str, object] = {}
+
+        monkeypatch.setattr(
+            "app.routes.query.plan_conversation",
+            lambda **_kwargs: ConversationalPlan(
+                intent="lookup",
+                referenced_turn=1,
+                response_style="compact",
+                needs_clarification=True,
+            ),
+        )
+        monkeypatch.setattr(
+            "app.routes.query.structured_contact_lookup",
+            lambda *_args, **_kwargs: None,
+        )
+
+        def answer_scoped(question, hits, *, response_style="analysis"):
+            captured["question"] = question
+            captured["hits"] = hits
+            return CitedAnswer(
+                answer="The selected customer has protected contact evidence.",
+                citations=["SOURCE-1", "SOURCE-2"],
+            ), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_scoped,
+        )
+        settings = get_settings()
+        scoped_settings = settings.model_copy(
+            update={"customer_intelligence_enabled": True}
+        )
+        monkeypatch.setattr("app.routes.query.get_settings", lambda: scoped_settings)
+
+        response = query(
+            QueryRequest(
+                question="What contact information is available?",
+                conversation_id=conversation.id,
+                customer_id=customer.id,
+            ),
+            principal(),
+            db,
+        )
+
+        assert response.mode == "test"
+        assert response.context_customer_id == customer.id
+        assert len(response.citations) == 2
+        assert len(captured["hits"]) == 2
+        assert "explicitly selected customer" in str(captured["question"])
     finally:
         db.close()
         engine.dispose()

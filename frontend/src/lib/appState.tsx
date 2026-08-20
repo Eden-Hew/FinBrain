@@ -50,9 +50,10 @@ interface AppStateValue {
   currentCustomerKey: string | null;
   showCustomerDetail: (key: string) => void;
 
-  pendingAskPrompt: string | null;
+  pendingAskPrompt: { id: number; prompt: string } | null;
   askAbout: (prompt: string) => void;
   clearPendingAskPrompt: () => void;
+  clearCustomerContext: () => void;
 
   einvoiceFilterMine: boolean;
   setEinvoiceFilterMine: (mine: boolean) => void;
@@ -79,6 +80,7 @@ interface AppStateValue {
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
+let askHandoffId = 0;
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<Screen>("landing");
@@ -91,7 +93,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [einvoices, setEinvoices] = useState<Record<string, EinvoiceRecord>>(() => initialEinvoices());
   const [currentEinvoiceId, setCurrentEinvoiceId] = useState<string | null>(null);
   const [currentCustomerKey, setCurrentCustomerKey] = useState<string | null>(null);
-  const [pendingAskPrompt, setPendingAskPrompt] = useState<string | null>(null);
+  const [pendingAskPrompt, setPendingAskPrompt] = useState<{ id: number; prompt: string } | null>(null);
   const [einvoiceFilterMine, setEinvoiceFilterMine] = useState(false);
   const [sops, setSops] = useState<Sop[]>(() => initialSops());
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() => initialRecommendations());
@@ -181,11 +183,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [show]);
 
   const askAbout = useCallback((prompt: string) => {
-    setPendingAskPrompt(prompt);
+    setPendingAskPrompt({ id: ++askHandoffId, prompt });
     show("agents");
   }, [show]);
 
   const clearPendingAskPrompt = useCallback(() => setPendingAskPrompt(null), []);
+  const clearCustomerContext = useCallback(() => setCurrentCustomerKey(null), []);
 
   const approveEinvoiceById = useCallback((id: string) => {
     setEinvoices((prev) => {
@@ -316,7 +319,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     askRole, setAskRole,
     einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById,
     currentCustomerKey, showCustomerDetail,
-    pendingAskPrompt, askAbout, clearPendingAskPrompt,
+    pendingAskPrompt, askAbout, clearPendingAskPrompt, clearCustomerContext,
     einvoiceFilterMine, setEinvoiceFilterMine,
     sops, approveSop, rejectSop, draftSop,
     recommendations,

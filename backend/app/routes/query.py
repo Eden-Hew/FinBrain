@@ -193,17 +193,27 @@ def query(
         )
     referential = reference_requested and bool(prior_hits)
     ambiguous_person_reference = bool(
-        (conversational_plan is not None and conversational_plan.needs_clarification)
-        or (
-            referential
-            and is_person_reference_question(payload.question)
-            and len(prior_hits or []) != 1
+        conversation.context_customer_id is None
+        and (
+            (conversational_plan is not None and conversational_plan.needs_clarification)
+            or (
+                referential
+                and is_person_reference_question(payload.question)
+                and len(prior_hits or []) != 1
+            )
         )
     )
     # Referential scope is resolved deterministically to current hits above.
     # Do not expose historical SOURCE-n labels to the model after those hits
     # have been remapped to the current turn's SOURCE-n namespace.
-    reasoning_question = (
+    customer_scope_instruction = (
+        "The backend has restricted this request to the explicitly selected customer. "
+        "Treat references such as this customer, they, their issue, and their contact as "
+        "referring to that selected customer. Use only the supplied protected evidence.\n\n"
+        if conversation.context_customer_id is not None
+        else ""
+    )
+    reasoning_question = customer_scope_instruction + (
         (
             "FinBrain's deterministic conversation resolver has already selected the "
             "protected evidence supplied with this request as the user's intended referent. "

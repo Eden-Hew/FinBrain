@@ -88,6 +88,7 @@ export default function Agents() {
     pendingAskPrompt,
     clearPendingAskPrompt,
     currentCustomerKey,
+    clearCustomerContext,
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
@@ -109,6 +110,10 @@ export default function Agents() {
   const lastMessageRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceTranscriptRef = useRef("");
+  const consumedHandoffRef = useRef<number | null>(null);
+  const scopedCustomerId = currentCustomerKey?.startsWith("id:")
+    ? Number(currentCustomerKey.slice(3))
+    : null;
   const voiceSupported = typeof window !== "undefined"
     && Boolean((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
       || (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition);
@@ -159,9 +164,6 @@ export default function Agents() {
       let turnId: number | undefined;
       let isFallback = false;
       try {
-        const scopedCustomerId = currentCustomerKey?.startsWith("id:")
-          ? Number(currentCustomerKey.slice(3))
-          : null;
         const response = await askQuestion(trimmed, conversationId, scopedCustomerId);
         setConversationId(response.conversation_id);
         setProtectedTurnCount((count) => count + 1);
@@ -209,21 +211,18 @@ export default function Agents() {
 
   const handleSuggestion = (text: string) => send(text);
 
-  // A screen elsewhere (e.g. "Ask FinBrain about this" on Financial
-  // Intelligence) can hand off a question via askAbout() — consume it once
-  // on arrival so the conversation starts immediately instead of leaving
-  // the visitor to retype what they already asked to see answered.
+  // Generic handoffs may still opt into immediate sending. Each handoff has a
+  // unique ID so React Strict Mode's development effect replay cannot submit
+  // the same request twice.
   useEffect(() => {
-    if (pendingAskPrompt) {
-      const prompt = pendingAskPrompt;
+    if (pendingAskPrompt && consumedHandoffRef.current !== pendingAskPrompt.id) {
+      consumedHandoffRef.current = pendingAskPrompt.id;
+      const prompt = pendingAskPrompt.prompt;
       clearPendingAskPrompt();
-      // send()'s own setMessages calls are the intended immediate UI update
-      // (showing the handed-off question right away), not an unwanted cascade.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       void send(prompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pendingAskPrompt, clearPendingAskPrompt]);
 
   const startNewConversation = () => {
     setConversationId(null);
@@ -531,6 +530,21 @@ export default function Agents() {
               ))}
             </div>
           )}
+          {scopedCustomerId !== null && (
+            <div className="fb-composer-chips">
+              <span className="fb-composer-chip">
+                ◎ Customer #{scopedCustomerId} context
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearCustomerContext();
+                    startNewConversation();
+                  }}
+                  aria-label="Clear customer context"
+                >✕</button>
+              </span>
+            </div>
+          )}
           {voiceError && <div className="fb-fine" role="alert" style={{ padding: "0 1.1rem", color: "var(--chart-attn)" }}>{voiceError}</div>}
 
           <div className="fb-composer2">
@@ -538,7 +552,7 @@ export default function Agents() {
               <input
                 className="fb-composer2-input"
                 type="text"
-                placeholder={FB_UI_STRINGS[lang].placeholder}
+                placeholder={scopedCustomerId !== null ? `Ask about customer #${scopedCustomerId}…` : FB_UI_STRINGS[lang].placeholder}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") send(input); }}

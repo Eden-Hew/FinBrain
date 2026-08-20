@@ -21,7 +21,7 @@ import { formatRm } from "../lib/customerAggregation";
 type LoadState = "loading" | "loaded" | "error";
 
 function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onBack: () => void }) {
-  const { askAbout, askRole } = useAppState();
+  const { show, askRole } = useAppState();
   const [endpoints, setEndpoints] = useState<CustomerEndpoint[]>([]);
   const [actions, setActions] = useState<OutreachAction[]>([]);
   const [email, setEmail] = useState("");
@@ -98,7 +98,7 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
       <div className="fb-kpi-tile"><div className="fb-kpi-label">Invoices</div><div className="fb-kpi-value">{customer.invoice_count}</div></div>
       <div className="fb-kpi-tile"><div className="fb-kpi-label">Linked sources</div><div className="fb-kpi-value">{customer.linked_source_count}</div></div>
     </div>
-    <button className="fb-btn fb-btn-solid" type="button" onClick={() => askAbout("What needs attention for this customer, and why?")}>Ask about this customer</button>
+    <button className="fb-btn fb-btn-solid" type="button" onClick={() => show("agents")}>Ask about this customer</button>
     <h3 style={{ marginTop: "1.5rem" }}>Why this customer needs attention</h3>
     {customer.attention_signals.length ? customer.attention_signals.map((signal, index) =>
       <div className="fb-callout" key={`${signal.signal_type}-${index}`}><strong>+{signal.points}</strong> · {signal.label}<div className="fb-fine">{signal.freshness} · {Math.round(signal.confidence * 100)}% confidence</div></div>
