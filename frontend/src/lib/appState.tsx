@@ -46,6 +46,7 @@ interface AppStateValue {
   showEinvoiceDetail: (id: string) => void;
   approveEinvoiceById: (id: string) => void;
   rejectEinvoiceById: (id: string) => void;
+  markEinvoicePaidById: (id: string, paidAt?: string) => void;
 
   currentCustomerKey: string | null;
   showCustomerDetail: (key: string) => void;
@@ -224,6 +225,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }, [pushAuditRow]);
 
+  const markEinvoicePaidById = useCallback((id: string, paidAt?: string) => {
+    setEinvoices((prev) => {
+      const inv = prev[id];
+      if (!inv) return prev;
+      const paymentDate = paidAt || new Date().toISOString().slice(0, 10);
+      const updated: EinvoiceRecord = {
+        ...inv,
+        paid_at: paymentDate,
+        compliance: [
+          ...inv.compliance,
+          ["Paid & Settled", `Payment settled on ${paymentDate}.`],
+        ],
+      };
+      pushAuditRow("chloe@finbrain.my", "e-Invoice Paid", inv.supplier + " · " + inv.amount, "owner_director", "Allowed");
+      return { ...prev, [id]: updated };
+    });
+  }, [pushAuditRow]);
+
   const approveSop = useCallback((id: string) => {
     setSops((prev) => {
       const sop = prev.find((s) => s.id === id);
@@ -317,7 +336,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     signupName, signupCompany, setSignupInfo,
     sampleBanner, enterSampleWorkspace, dismissSampleBanner,
     askRole, setAskRole,
-    einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById,
+    einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById, markEinvoicePaidById,
     currentCustomerKey, showCustomerDetail,
     pendingAskPrompt, askAbout, clearPendingAskPrompt, clearCustomerContext,
     einvoiceFilterMine, setEinvoiceFilterMine,

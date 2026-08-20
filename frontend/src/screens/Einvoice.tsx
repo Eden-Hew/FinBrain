@@ -10,6 +10,7 @@ import {
   extractEinvoiceFields,
   fetchEinvoiceDocumentUrl,
   fetchEinvoicePdfBlob,
+  fetchEinvoiceReceiptBlob,
   fetchEinvoiceReadiness,
   fetchEinvoiceRecords,
   friendlyLoadError,
@@ -80,6 +81,26 @@ export async function openEinvoiceDocument(
       tab?.close();
       setDocumentState((s) => ({ ...s, [recordId]: "failed" }));
     }
+  }
+}
+
+export async function openEinvoiceReceipt(
+  recordId: number,
+  setReceiptState: (updater: (s: Record<number, DocumentState>) => Record<number, DocumentState>) => void,
+) {
+  const tab = window.open("", "_blank");
+  setReceiptState((s) => ({ ...s, [recordId]: "loading" }));
+  try {
+    const blob = await fetchEinvoiceReceiptBlob(recordId);
+    const blobUrl = URL.createObjectURL(blob);
+    setReceiptState((s) => ({ ...s, [recordId]: "idle" }));
+    if (tab) {
+      tab.location.href = blobUrl;
+    }
+  } catch (err) {
+    console.error("fetchEinvoiceReceiptBlob failed:", err);
+    tab?.close();
+    setReceiptState((s) => ({ ...s, [recordId]: "failed" }));
   }
 }
 
@@ -354,7 +375,33 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
   );
 }
 
-type InvoiceStatusFilter = "all" | "review" | "pending" | "processed";
+type PaymentCategory = "all" | "overdue" | "unpaid" | "paid" | "review";
+
+function isOverdue(r: EInvoiceApiRecord): boolean {
+  if (r.paid_at !== null) return false;
+  if (!r.due_date) return false;
+  const due = new Date(r.due_date);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return due < now;
+}
+
+function isUnpaid(r: EInvoiceApiRecord): boolean {
+  if (r.paid_at !== null) return false;
+  if (!r.due_date) return true;
+  const due = new Date(r.due_date);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return due >= now;
+}
+
+function isPaid(r: EInvoiceApiRecord): boolean {
+  return r.paid_at !== null;
+}
+
+function needsReview(r: EInvoiceApiRecord): boolean {
+  return r.status === "review" || r.status === "pending";
+}
 
 function AllInvoicesPanel() {
   const { showEinvoiceDetail, askRole } = useAppState();
@@ -362,7 +409,7 @@ function AllInvoicesPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatusFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<PaymentCategory>("all");
   const [legendOpen, setLegendOpen] = useState(false);
   const [pdpaOpen, setPdpaOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -377,24 +424,44 @@ function AllInvoicesPanel() {
     return () => { active = false; };
   }, []);
 
-  const matchesStatusFilter = (r: EInvoiceApiRecord) => {
-    if (statusFilter === "all") return true;
-    if (statusFilter === "processed") return r.status === "submitted" || r.status === "validated";
-    return r.status === statusFilter;
+  const matchesCategory = (r: EInvoiceApiRecord) => {
+    if (categoryFilter === "overdue") return isOverdue(r);
+    if (categoryFilter === "unpaid") return isUnpaid(r);
+    if (categoryFilter === "paid") return isPaid(r);
+    if (categoryFilter === "review") return needsReview(r);
+    return true;
   };
 
   const order = records
-    .filter((r) => r.supplier_name.toLowerCase().includes(search.trim().toLowerCase()))
-    .filter(matchesStatusFilter);
+    .filter((r) => {
+      const term = search.trim().toLowerCase();
+      if (!term) return true;
+      const supplierMatch = r.supplier_name.toLowerCase().includes(term);
+      const buyerMatch = r.buyer_name ? r.buyer_name.toLowerCase().includes(term) : false;
+      const invoiceNoMatch = r.invoice_no ? r.invoice_no.toLowerCase().includes(term) : false;
+      return supplierMatch || buyerMatch || invoiceNoMatch;
+    })
+    .filter(matchesCategory);
 
-  const stats = useMemo(() => ({
-    review: records.filter((r) => r.status === "review").length,
-    pending: records.filter((r) => r.status === "pending").length,
-    processed: records.filter((r) => r.status === "submitted" || r.status === "validated").length,
-    total: formatRm(records.reduce((sum, r) => sum + Number(r.total_amount), 0)),
-  }), [records]);
+  const stats = useMemo(() => {
+    const overdueList = records.filter(isOverdue);
+    const unpaidList = records.filter(isUnpaid);
+    const paidList = records.filter(isPaid);
+    const reviewList = records.filter(needsReview);
+    return {
+      allCount: records.length,
+      allAmount: formatRm(records.reduce((sum, r) => sum + Number(r.total_amount), 0)),
+      overdueCount: overdueList.length,
+      overdueAmount: formatRm(overdueList.reduce((sum, r) => sum + Number(r.total_amount), 0)),
+      unpaidCount: unpaidList.length,
+      unpaidAmount: formatRm(unpaidList.reduce((sum, r) => sum + Number(r.total_amount), 0)),
+      paidCount: paidList.length,
+      paidAmount: formatRm(paidList.reduce((sum, r) => sum + Number(r.total_amount), 0)),
+      reviewCount: reviewList.length,
+    };
+  }, [records]);
 
-  const toggleFilter = (key: InvoiceStatusFilter) => setStatusFilter((current) => (current === key ? "all" : key));
+  const toggleFilter = (key: PaymentCategory) => setCategoryFilter((current) => (current === key ? "all" : key));
 
   if (loading) return <div className="fb-callout">Loading invoices…</div>;
   if (error) return <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>{error}</div>;
@@ -403,41 +470,61 @@ function AllInvoicesPanel() {
     <>
       <div className="fb-kpi-row" style={{ paddingBottom: "1.4rem" }}>
         <button
-          className={"fb-kpi-tile fb-readiness-cat" + (statusFilter === "review" ? " is-open" : "")}
+          className={"fb-kpi-tile fb-readiness-cat" + (categoryFilter === "overdue" ? " is-open" : "")}
+          type="button"
+          onClick={() => toggleFilter("overdue")}
+          aria-pressed={categoryFilter === "overdue"}
+        >
+          <div className="fb-kpi-label">🔴 Overdue</div>
+          <div className="fb-kpi-value" style={{ color: stats.overdueCount > 0 ? "var(--chart-attn)" : undefined }}>
+            {stats.overdueCount} ({stats.overdueAmount})
+          </div>
+        </button>
+        <button
+          className={"fb-kpi-tile fb-readiness-cat" + (categoryFilter === "unpaid" ? " is-open" : "")}
+          type="button"
+          onClick={() => toggleFilter("unpaid")}
+          aria-pressed={categoryFilter === "unpaid"}
+        >
+          <div className="fb-kpi-label">🟡 Unpaid / Current</div>
+          <div className="fb-kpi-value">
+            {stats.unpaidCount} ({stats.unpaidAmount})
+          </div>
+        </button>
+        <button
+          className={"fb-kpi-tile fb-readiness-cat" + (categoryFilter === "paid" ? " is-open" : "")}
+          type="button"
+          onClick={() => toggleFilter("paid")}
+          aria-pressed={categoryFilter === "paid"}
+        >
+          <div className="fb-kpi-label">🟢 Paid / Settled</div>
+          <div className="fb-kpi-value" style={{ color: "var(--chart-good)" }}>
+            {stats.paidCount} ({stats.paidAmount})
+          </div>
+        </button>
+        <button
+          className={"fb-kpi-tile fb-readiness-cat" + (categoryFilter === "review" ? " is-open" : "")}
           type="button"
           onClick={() => toggleFilter("review")}
-          aria-pressed={statusFilter === "review"}
+          aria-pressed={categoryFilter === "review"}
         >
-          <div className="fb-kpi-label">Needs review</div>
-          <div className="fb-kpi-value" style={{ color: stats.review > 0 ? "var(--chart-attn)" : undefined }}>{stats.review}</div>
+          <div className="fb-kpi-label">⚠️ Needs Review</div>
+          <div className="fb-kpi-value">{stats.reviewCount}</div>
         </button>
         <button
-          className={"fb-kpi-tile fb-readiness-cat" + (statusFilter === "pending" ? " is-open" : "")}
+          className={"fb-kpi-tile fb-readiness-cat" + (categoryFilter === "all" ? " is-open" : "")}
           type="button"
-          onClick={() => toggleFilter("pending")}
-          aria-pressed={statusFilter === "pending"}
+          onClick={() => setCategoryFilter("all")}
+          aria-pressed={categoryFilter === "all"}
         >
-          <div className="fb-kpi-label">Pending approval</div>
-          <div className="fb-kpi-value">{stats.pending}</div>
+          <div className="fb-kpi-label">📋 Total ({stats.allCount})</div>
+          <div className="fb-kpi-value">{stats.allAmount}</div>
         </button>
-        <button
-          className={"fb-kpi-tile fb-readiness-cat" + (statusFilter === "processed" ? " is-open" : "")}
-          type="button"
-          onClick={() => toggleFilter("processed")}
-          aria-pressed={statusFilter === "processed"}
-        >
-          <div className="fb-kpi-label">Submitted / validated</div>
-          <div className="fb-kpi-value" style={{ color: "var(--chart-good)" }}>{stats.processed}</div>
-        </button>
-        <div className="fb-kpi-tile">
-          <div className="fb-kpi-label">Total in view</div>
-          <div className="fb-kpi-value">{stats.total}</div>
-        </div>
       </div>
-      {statusFilter !== "all" && (
+      {categoryFilter !== "all" && (
         <div style={{ padding: "0 1.5rem", margin: "-1rem 0 1rem" }}>
-          <button className="fb-link-toggle" type="button" onClick={() => setStatusFilter("all")}>
-            Showing {statusFilter === "processed" ? "submitted / validated" : statusFilter === "review" ? "needs review" : "pending approval"} only — clear filter
+          <button className="fb-link-toggle" type="button" onClick={() => setCategoryFilter("all")}>
+            Showing {categoryFilter === "overdue" ? "overdue" : categoryFilter === "unpaid" ? "unpaid / current" : categoryFilter === "paid" ? "paid / settled" : "needs review"} only — clear filter
           </button>
         </div>
       )}
@@ -475,7 +562,7 @@ function AllInvoicesPanel() {
       <div className="fb-table-toolbar">
         <div className="fb-table-search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-          <input type="text" placeholder="Search by supplier…" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input type="text" placeholder="Search by supplier, buyer, invoice no…" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <div
           className="fb-table-legend"
@@ -505,11 +592,19 @@ function AllInvoicesPanel() {
       <div className="fb-table-wrap">
         <table className="fb-table">
           <thead>
-            <tr><th>Date</th><th>Supplier</th><th>Amount</th><th>Status</th><th>UIN</th><th aria-hidden="true"></th></tr>
+            <tr>
+              <th>Date</th>
+              <th>Supplier / Buyer</th>
+              <th>Amount</th>
+              <th>Tax Status</th>
+              <th>Payment Status</th>
+              <th>UIN</th>
+              <th aria-hidden="true"></th>
+            </tr>
           </thead>
           <tbody>
             {order.length === 0 ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={7}>
                 <EmptyState
                   icon={
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z" /><path d="M9 13h6M9 17h6" /></svg>
@@ -518,13 +613,13 @@ function AllInvoicesPanel() {
                   description={
                     records.length === 0
                       ? "Add your first invoice to start tracking e-invoice readiness."
-                      : "Try a different supplier name, or clear the search/status filter to see all invoices."
+                      : "Try a different supplier/buyer name, or clear the category/search filter to see all invoices."
                   }
                   action={
                     records.length === 0 && canAdd
                       ? { label: "+ Add invoice", onClick: () => setAddOpen(true) }
-                      : records.length > 0 && (search.trim() !== "" || statusFilter !== "all")
-                        ? { label: "Clear filters", onClick: () => { setSearch(""); setStatusFilter("all"); } }
+                      : records.length > 0 && (search.trim() !== "" || categoryFilter !== "all")
+                        ? { label: "Clear filters", onClick: () => { setSearch(""); setCategoryFilter("all"); } }
                         : undefined
                   }
                 />
@@ -542,9 +637,27 @@ function AllInvoicesPanel() {
                     onKeyDown={(e) => { if (e.key === "Enter") showEinvoiceDetail(`real-${record.id}`); }}
                   >
                     <td>{record.issue_date ?? "—"}</td>
-                    <td>{record.supplier_name}</td>
+                    <td>
+                      <div><strong>{record.supplier_name}</strong></div>
+                      {record.buyer_name && <div className="fb-fine" style={{ opacity: 0.85 }}>Buyer: {record.buyer_name}</div>}
+                    </td>
                     <td className="fb-num-left">RM {record.total_amount}</td>
                     <td><span className={"fb-status-pill " + pillClass}><span className="fb-status-dot"></span>{FB_EINVOICE_STATUS_LABEL[record.status]}</span></td>
+                    <td>
+                      {record.paid_at ? (
+                        <span className="fb-status-pill is-active" title={`Paid on ${record.paid_at}`}>
+                          <span className="fb-status-dot"></span>Paid
+                        </span>
+                      ) : isOverdue(record) ? (
+                        <span className="fb-status-pill is-review" style={{ borderColor: "var(--chart-attn, #ef4444)", color: "var(--chart-attn, #ef4444)" }} title={record.due_date ? `Due date was ${record.due_date}` : undefined}>
+                          <span className="fb-status-dot" style={{ background: "var(--chart-attn, #ef4444)" }}></span>Overdue
+                        </span>
+                      ) : (
+                        <span className="fb-status-pill" title={record.due_date ? `Due ${record.due_date}` : undefined}>
+                          <span className="fb-status-dot"></span>Unpaid
+                        </span>
+                      )}
+                    </td>
                     <td>{record.uin || "—"}</td>
                     <td className="fb-table-row-chevron" aria-hidden="true">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>

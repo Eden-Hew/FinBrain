@@ -819,6 +819,15 @@ export async function fetchEinvoicePdfBlob(recordId: number): Promise<Blob> {
   return response.blob();
 }
 
+export async function fetchEinvoiceReceiptBlob(recordId: number): Promise<Blob> {
+  const response = await authenticatedFetch(`/einvoice-records/${recordId}/receipt/pdf`);
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail ?? `Failed to load payment receipt PDF (${response.status})`);
+  }
+  return response.blob();
+}
+
 export async function fetchEinvoiceRecords(): Promise<EInvoiceApiRecord[]> {
   return parse<EInvoiceApiRecord[]>(await authenticatedFetch("/einvoice-records"));
 }

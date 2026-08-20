@@ -224,6 +224,7 @@ export interface EinvoiceRecord {
   amount: string;
   status: EinvoiceStatus;
   uin: string | null;
+  paid_at?: string | null;
   submitter: string;
   description: string;
   fields: [string, string][];
