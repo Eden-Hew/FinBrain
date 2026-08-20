@@ -18,7 +18,7 @@ import { fetchEinvoiceOutreachDrafts, fetchRecommendations } from "../api/client
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
-  | "home" | "agents" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
+  | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
 
 interface AppStateValue {
   screen: Screen;
@@ -46,6 +46,9 @@ interface AppStateValue {
   showEinvoiceDetail: (id: string) => void;
   approveEinvoiceById: (id: string) => void;
   rejectEinvoiceById: (id: string) => void;
+
+  currentCustomerKey: string | null;
+  showCustomerDetail: (key: string) => void;
 
   einvoiceFilterMine: boolean;
   setEinvoiceFilterMine: (mine: boolean) => void;
@@ -83,6 +86,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [askRole, setAskRoleState] = useState<AskRole>("general_employee");
   const [einvoices, setEinvoices] = useState<Record<string, EinvoiceRecord>>(() => initialEinvoices());
   const [currentEinvoiceId, setCurrentEinvoiceId] = useState<string | null>(null);
+  const [currentCustomerKey, setCurrentCustomerKey] = useState<string | null>(null);
   const [einvoiceFilterMine, setEinvoiceFilterMine] = useState(false);
   const [sops, setSops] = useState<Sop[]>(() => initialSops());
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() => initialRecommendations());
@@ -106,7 +110,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const pathname = window.location.pathname.replace(/^\//, "");
         const matchedScreen: Screen = pathname && [
           "landing", "login", "signup", "onboarding", "security", "legal",
-          "home", "agents", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
+          "home", "agents", "customers", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
         ].includes(pathname) ? (pathname as Screen) : "landing";
         setScreen(matchedScreen);
       }
@@ -164,6 +168,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const showEinvoiceDetail = useCallback((id: string) => {
     setCurrentEinvoiceId(id);
     show("einvoice-detail");
+  }, [show]);
+
+  const showCustomerDetail = useCallback((key: string) => {
+    setCurrentCustomerKey(key);
+    show("customers");
   }, [show]);
 
   const approveEinvoiceById = useCallback((id: string) => {
@@ -294,6 +303,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     sampleBanner, enterSampleWorkspace, dismissSampleBanner,
     askRole, setAskRole,
     einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById,
+    currentCustomerKey, showCustomerDetail,
     einvoiceFilterMine, setEinvoiceFilterMine,
     sops, approveSop, rejectSop, draftSop,
     recommendations,

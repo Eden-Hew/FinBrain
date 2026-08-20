@@ -114,6 +114,7 @@ export function ContextNav() {
 const NAV_ICONS: Record<string, ReactNode> = {
   home: <><path d="M3 11l9-7 9 7" /><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" /></>,
   agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
+  customers: <><circle cx="9" cy="7" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><circle cx="17.5" cy="8.5" r="2.4" /><path d="M15.3 12.3A5.2 5.2 0 0 1 21.5 17" /></>,
   einvoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
   finance: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
   audit: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
@@ -121,16 +122,19 @@ const NAV_ICONS: Record<string, ReactNode> = {
   ingestion: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />,
 };
 
+// Primary application navigation — Briefing, Ask, Customers, Financial
+// Intelligence, Workflows, Sources, Audit & Access. e-Invoicing is
+// intentionally not a top-level item: it's a governed workflow that
+// surfaces contextually from Customers and Workflows instead.
 const NAV_GROUPS: { label: string | null; items: { screen: Screen; key: string }[] }[] = [
-  { label: null, items: [{ screen: "home", key: "nav.home" }, { screen: "agents", key: "nav.aiAgents" }] },
-  { label: "Records", items: [
-    { screen: "einvoice", key: "nav.einvoicing" },
+  { label: null, items: [
+    { screen: "home", key: "nav.home" },
+    { screen: "agents", key: "nav.aiAgents" },
+    { screen: "customers", key: "nav.customers" },
     { screen: "finance", key: "nav.financeDashboard" },
-  ] },
-  { label: "Oversight", items: [
-    { screen: "audit", key: "nav.audit" },
     { screen: "approvals", key: "nav.approvals" },
     { screen: "ingestion", key: "nav.ingestion" },
+    { screen: "audit", key: "nav.audit" },
   ] },
 ];
 
@@ -203,14 +207,15 @@ export function Sidebar({ current, backTo, backLabel }: { current?: Screen; back
 }
 
 const SCREEN_TITLES: Partial<Record<Screen, string>> = {
-  home: "Home",
-  agents: "Customer Intelligence",
+  home: "Briefing",
+  agents: "Ask",
+  customers: "Customers",
   einvoice: "e-Invoicing",
   "einvoice-detail": "e-Invoicing",
-  finance: "Finance Dashboard",
-  audit: "Audit Trail",
-  approvals: "Approvals",
-  ingestion: "Message Capture",
+  finance: "Financial Intelligence",
+  audit: "Audit & Access",
+  approvals: "Workflows",
+  ingestion: "Sources",
 };
 
 export function AppTopBar({ current }: { current: Screen }) {
@@ -226,10 +231,10 @@ export function AppTopBar({ current }: { current: Screen }) {
     <div className="fb-topbar">
       <div className="fb-topbar-crumb">
         {current === "home" ? (
-          <span className="fb-topbar-current">Home</span>
+          <span className="fb-topbar-current">{SCREEN_TITLES.home}</span>
         ) : (
           <>
-            <span tabIndex={0} role="button" onClick={() => show("home")}>Home</span>
+            <span tabIndex={0} role="button" onClick={() => show("home")}>{SCREEN_TITLES.home}</span>
             <span className="fb-topbar-sep">/</span>
             <span className="fb-topbar-current">{SCREEN_TITLES[current] ?? current}</span>
           </>

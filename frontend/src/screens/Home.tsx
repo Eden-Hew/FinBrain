@@ -1,22 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
+import { EmptyState } from "../components/EmptyState";
 import { PERSONAS } from "../lib/personas";
+import { buildCustomers, formatRm } from "../lib/customerAggregation";
 import {
   fetchAuditLog,
   fetchEinvoiceOutreachDrafts,
   fetchEinvoiceReadiness,
+  fetchEinvoiceRecords,
   fetchEmailRecords,
   fetchEmailStatus,
+  fetchFinanceSummary,
   fetchRecommendations,
   fetchTelegramRecords,
   fetchTelegramStatus,
   fetchWorkflowAudit,
   type EinvoiceReadinessResponse,
+  type EInvoiceApiRecord,
+  type FinanceSummaryResponse,
 } from "../api/client";
 
 type LoadState = "loading" | "loaded" | "error";
+
+const TIER_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", monitoring: "Monitoring", healthy: "Healthy" };
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -289,21 +297,86 @@ function CaptureCard() {
   );
 }
 
-function FinanceBanner() {
+function FinanceCard() {
   const { show } = useAppState();
+  const [data, setData] = useState<FinanceSummaryResponse | null>(null);
+  const [state, setState] = useState<LoadState>("loading");
+
+  useEffect(() => {
+    let active = true;
+    fetchFinanceSummary("month", 0)
+      .then((res) => { if (active) { setData(res); setState("loaded"); } })
+      .catch(() => { if (active) setState("error"); });
+    return () => { active = false; };
+  }, []);
+
   return (
-    <button className="fb-home-finance-banner" type="button" onClick={() => show("finance")}>
-      <span className="fb-home-card-icon is-finance">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" /></svg>
-      </span>
-      <div className="fb-home-finance-banner-text">
-        <strong>Finance Dashboard</strong>
-        <span>Revenue and AR tracking will appear here once the finance module is wired to real data.</span>
-      </div>
-      <span className="fb-home-not-connected">
-        <span className="fb-home-dot attn"></span>Not connected yet
-      </span>
-    </button>
+    <CardShell
+      tone="finance"
+      label="Financial Intelligence"
+      onClick={() => show("finance")}
+      icon={<path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />}
+    >
+      {state === "loading" && <div className="fb-fine">Loading…</div>}
+      {state === "error" && <div className="fb-fine">Couldn't load financial data.</div>}
+      {state === "loaded" && data && (
+        <>
+          <div className="fb-home-card-headline"><span className="num">{formatRm(Number(data.outstanding_ar) || 0)}</span></div>
+          <div className="fb-home-card-sub">Outstanding receivables</div>
+          <div className="fb-home-card-foot">
+            {data.revenue_change_pct != null && (
+              <span className={"fb-home-delta-badge" + (data.revenue_change_pct >= 0 ? " is-active" : "")}>
+                {data.revenue_change_pct >= 0 ? "+" : ""}{data.revenue_change_pct.toFixed(1)}% revenue vs. last period
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </CardShell>
+  );
+}
+
+function AttentionSection() {
+  const { showCustomerDetail } = useAppState();
+  const [records, setRecords] = useState<EInvoiceApiRecord[]>([]);
+  const [state, setState] = useState<LoadState>("loading");
+
+  useEffect(() => {
+    let active = true;
+    fetchEinvoiceRecords()
+      .then((res) => { if (active) { setRecords(res); setState("loaded"); } })
+      .catch(() => { if (active) setState("error"); });
+    return () => { active = false; };
+  }, []);
+
+  const customers = useMemo(() => buildCustomers(records, new Set()), [records]);
+  const needsAttention = customers.filter((c) => c.overdueTotal > 0).slice(0, 5);
+
+  return (
+    <section style={{ marginBottom: "1.6rem" }}>
+      <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Attention — from invoicing data</div>
+      {state === "loading" && <div className="fb-callout">Loading customer attention…</div>}
+      {state === "error" && <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>Couldn't load customer data.</div>}
+      {state === "loaded" && needsAttention.length === 0 && (
+        <EmptyState
+          icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
+          title="No customers need attention right now"
+          description="Nobody has an overdue invoice today."
+        />
+      )}
+      {state === "loaded" && needsAttention.length > 0 && (
+        <div className="fb-briefing-list">
+          {needsAttention.map((c) => (
+            <button key={c.key} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(c.key)}>
+              <span className={"fb-briefing-tier is-" + c.tier}>{TIER_LABEL[c.tier]}</span>
+              <span className="fb-briefing-name">{c.name}</span>
+              <span className="fb-briefing-detail">{formatRm(c.overdueTotal)} overdue · {c.oldestOverdueDays} day{c.oldestOverdueDays === 1 ? "" : "s"}</span>
+              <span className="fb-home-card-arrow" aria-hidden="true">→</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -322,14 +395,16 @@ export default function Home() {
       </header>
 
       <div className="fb-page-body">
+        <AttentionSection />
+
+        <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Workspace signals</div>
         <div className="fb-home-grid">
           <EinvoiceCard />
           <AuditCard />
           <ApprovalsCard />
           <CaptureCard />
+          <FinanceCard />
         </div>
-
-        <FinanceBanner />
 
         <div className="fb-home-ask-cta">
           <div className="fb-home-ask-cta-copy">

@@ -313,7 +313,7 @@ export default function Agents() {
         {!hasConversation && (
           <div className="fb-chat-welcome">
             <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
-              <h1>{t("nav.aiAgents")}</h1>
+              <h1>{t("agents.title")}</h1>
               <p>{t("agents.desc")}</p>
             </header>
           </div>
