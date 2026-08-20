@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import (
+    CustomerEndpoint,
     CustomerRecordLink,
     EmailIngestionReceipt,
     EmailReplyCorrelation,
@@ -39,6 +40,46 @@ def correlate_reply(
     matched = next(
         value for value in reference_hashes if value == action.provider_message_ref_hash
     )
+    endpoint = db.get(CustomerEndpoint, action.customer_endpoint_id)
+    sender_token = protected_row.safe_metadata.get("sender_email")
+    if (
+        endpoint is None
+        or not isinstance(sender_token, str)
+        or sender_token != endpoint.endpoint_token
+    ):
+        receipt.outreach_action_id = action.id
+        receipt.in_reply_to_ref_hash = reference_hashes[0]
+        receipt.correlation_status = "identity_conflict"
+        existing = db.scalar(
+            select(EmailReplyCorrelation).where(
+                EmailReplyCorrelation.email_receipt_ref_hash == receipt.message_ref_hash,
+                EmailReplyCorrelation.outreach_action_id == action.id,
+            )
+        )
+        if existing is None:
+            db.add(
+                EmailReplyCorrelation(
+                    tenant_id=action.tenant_id,
+                    email_receipt_ref_hash=receipt.message_ref_hash,
+                    outreach_action_id=action.id,
+                    matched_reference_hash=matched,
+                    customer_id=action.customer_id,
+                    tokenized_content_id=protected_row.id,
+                    status="identity_conflict",
+                )
+            )
+        write_workflow_event(
+            db,
+            event_type="email_reply_identity_conflict",
+            actor_role="system_worker",
+            actor_ref="email-worker",
+            resource_type="outreach_action",
+            resource_id=action.id,
+            tenant_id=action.tenant_id,
+            event_payload={"tokenized_content_id": protected_row.id},
+        )
+        db.commit()
+        return None
     receipt.customer_id = action.customer_id
     receipt.outreach_action_id = action.id
     receipt.in_reply_to_ref_hash = reference_hashes[0]

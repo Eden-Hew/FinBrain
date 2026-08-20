@@ -1,5 +1,6 @@
 from uuid import UUID
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -185,5 +186,40 @@ def test_outreach_creation_is_idempotent_and_owner_controls_approval():
         )
         assert approved.status == "approved"
         assert db.query(OutreachAction).count() == 1
+    finally:
+        db.close()
+
+
+def test_provisional_or_conflicted_customer_cannot_enter_outreach_queue():
+    db, customer = _session()
+    try:
+        endpoint = CustomerEndpoint(
+            tenant_id=TENANT, customer_id=customer.id, channel="email",
+            endpoint_token="EMAIL_0123456789", verification_status="verified",
+            origin="inbound_email",
+        )
+        db.add(endpoint)
+        db.commit()
+        action = create_action(
+            db, tenant_id=TENANT, customer_id=customer.id, endpoint_id=endpoint.id,
+            subject="Subject", body="Body", idempotency_key="identity-gate-test",
+            evidence_ids=[], created_by_user_id=USER,
+            actor_role=UserRole.FINANCE_OPS.value, actor_ref="actor",
+        )
+        customer.profile_status = "provisional"
+        db.commit()
+        with pytest.raises(ValueError, match="confirmed_customer_required"):
+            transition_action(
+                db, action.id, "submit", tenant_id=TENANT,
+                role=UserRole.FINANCE_OPS, user_id=USER, actor_ref="actor",
+            )
+        customer.profile_status = "confirmed"
+        customer.identity_review_status = "review_required"
+        db.commit()
+        with pytest.raises(ValueError, match="customer_identity_review_required"):
+            transition_action(
+                db, action.id, "submit", tenant_id=TENANT,
+                role=UserRole.FINANCE_OPS, user_id=USER, actor_ref="actor",
+            )
     finally:
         db.close()

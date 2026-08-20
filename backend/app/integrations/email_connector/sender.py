@@ -9,7 +9,13 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import DEFAULT_TENANT_ID, CustomerEndpoint, OutreachAction, TokenVaultEntry
+from app.models import (
+    DEFAULT_TENANT_ID,
+    Customer,
+    CustomerEndpoint,
+    OutreachAction,
+    TokenVaultEntry,
+)
 from app.schemas import UserRole
 from app.security.detokenize import detokenize_response_with_trace, hash_query
 from app.security.keyring import decrypt_vault_entry
@@ -94,8 +100,16 @@ def dispatch_one(db: Session) -> OutreachAction | None:
     row, message_id = claimed
     settings = get_settings()
     endpoint = db.get(CustomerEndpoint, row.customer_endpoint_id)
+    customer = db.get(Customer, row.customer_id)
     entry = db.get(TokenVaultEntry, endpoint.endpoint_token) if endpoint else None
-    if endpoint is None or endpoint.verification_status != "verified" or entry is None:
+    if (
+        endpoint is None
+        or endpoint.verification_status != "verified"
+        or entry is None
+        or customer is None
+        or customer.profile_status != "confirmed"
+        or customer.identity_review_status != "clear"
+    ):
         _set_result(db, row, "failed", "verified_endpoint_unavailable")
         return row
     try:

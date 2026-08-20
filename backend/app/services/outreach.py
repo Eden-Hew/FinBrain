@@ -57,12 +57,13 @@ def register_email_endpoint(
     existing = db.scalar(
         select(CustomerEndpoint).where(
             CustomerEndpoint.tenant_id == tenant_id,
-            CustomerEndpoint.customer_id == customer_id,
             CustomerEndpoint.channel == "email",
             CustomerEndpoint.endpoint_token == tokens[0],
         )
     )
     if existing:
+        if existing.customer_id != customer_id:
+            raise ValueError("email_endpoint_already_owned")
         if existing.verification_status == "revoked":
             existing.verification_status = "observed"
             existing.verified_by_user_id = None
@@ -214,6 +215,11 @@ def transition_action(
         endpoint = db.get(CustomerEndpoint, row.customer_endpoint_id)
         if endpoint is None or endpoint.verification_status != "verified":
             raise ValueError("verified_email_endpoint_required")
+        customer = db.get(Customer, row.customer_id)
+        if customer is None or customer.profile_status != "confirmed":
+            raise ValueError("confirmed_customer_required")
+        if customer.identity_review_status != "clear":
+            raise ValueError("customer_identity_review_required")
     values = {"status": target, "updated_at": datetime.now(UTC)}
     if operation == "approve":
         values.update({"approved_by_user_id": user_id, "approved_at": datetime.now(UTC)})
