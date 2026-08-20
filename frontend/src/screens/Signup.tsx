@@ -1,14 +1,24 @@
 import { LogoMark } from "../components/Logo";
 import { useAppState } from "../lib/appState";
+import { useParallax } from "../lib/interactivity";
 
 export default function Signup() {
   const { show, goToSecurity } = useAppState();
+  const { ref: storyRef, offset: storyOffset, onMouseMove: onStoryMouseMove, onMouseLeave: onStoryMouseLeave } = useParallax<HTMLDivElement>(16);
   return (
     <div className="fb-root fb-mkt">
       <div className="fb-mkt-auth-wrap">
-        <div className="fb-mkt-auth-story">
-          <div className="fb-mkt-blob" style={{ width: 340, height: 340, top: -120, left: -100, background: "var(--a-accent)" }} aria-hidden="true" />
-          <div className="fb-mkt-blob" style={{ width: 260, height: 260, bottom: -100, right: -80, background: "var(--a-purple)" }} aria-hidden="true" />
+        <div className="fb-mkt-auth-story" ref={storyRef} onMouseMove={onStoryMouseMove} onMouseLeave={onStoryMouseLeave}>
+          <div
+            className="fb-mkt-blob"
+            style={{ width: 340, height: 340, top: -120, left: -100, background: "var(--a-accent)", transform: `translate3d(${storyOffset.x}px, ${storyOffset.y}px, 0)` }}
+            aria-hidden="true"
+          />
+          <div
+            className="fb-mkt-blob"
+            style={{ width: 260, height: 260, bottom: -100, right: -80, background: "var(--a-purple)", transform: `translate3d(${-storyOffset.x * 1.2}px, ${-storyOffset.y * 1.2}px, 0)` }}
+            aria-hidden="true"
+          />
           <button className="fb-mkt-wordmark" style={{ position: "relative", zIndex: 1 }} onClick={() => show("landing")}>
             <LogoMark large />FINBRAIN OS
           </button>

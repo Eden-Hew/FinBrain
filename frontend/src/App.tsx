@@ -7,6 +7,7 @@ import { UiChromeProvider } from "./lib/uiChrome";
 import { AskDrawer } from "./components/AskDrawer";
 import { QuickActionsPalette } from "./components/QuickActionsPalette";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { LogoMark } from "./components/Logo";
 
 // Route-level code splitting: a visitor to the marketing landing page
 // shouldn't have to download the chat interface, invoice forms, and
@@ -65,7 +66,12 @@ function Screens() {
   }
 }
 
-const RouteFallback = <div className="fb-root"><div className="fb-callout">Loading…</div></div>;
+const RouteFallback = (
+  <div className="fb-route-loading">
+    <div className="fb-route-loading-mark"><LogoMark large /></div>
+    <div className="fb-route-loading-spinner" aria-hidden="true" />
+  </div>
+);
 
 export default function App() {
   return (
