@@ -275,7 +275,10 @@ img{max-width:100%}
 .fb-suggest-chip:hover{background:var(--bg-alt);border-color:var(--ink-soft);transform:translateY(-1px);}
 .fb-suggest-chip:focus-visible{outline:2px solid var(--ink-soft);outline-offset:2px;}
 .fb-unified-chat-panel{border:1px solid var(--line);border-radius:14px;background:var(--card);display:flex;flex-direction:column;overflow:hidden;flex:1;min-height:0;}
-.fb-unified-messages{overflow-y:auto;padding:1.3rem;flex:1;min-height:0;}
+/* .fb-chat-messages (shared with AskDrawer) caps max-height:280px at equal
+   specificity — scope one level deeper so this panel's messages area always
+   wins and can actually grow to fill the enlarged panel. */
+.fb-unified-chat-panel .fb-unified-messages{overflow-y:auto;padding:1.3rem;flex:1;min-height:0;max-height:none;}
 
 /* Full-height chat layout: the panel always fills whatever vertical space
    the shell has, whether or not a conversation has started — the only
