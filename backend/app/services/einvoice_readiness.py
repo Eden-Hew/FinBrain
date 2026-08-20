@@ -107,6 +107,14 @@ def sync_einvoice_tokenized_content(db: Session, record: EInvoiceRecord) -> None
     db.commit()
 
 
+def sync_all_einvoice_tokenized_content(db: Session) -> int:
+    """Idempotently mirror every operational e-invoice into protected search."""
+    records = db.scalars(select(EInvoiceRecord).order_by(EInvoiceRecord.id)).all()
+    for record in records:
+        sync_einvoice_tokenized_content(db, record)
+    return len(records)
+
+
 def create_record(
     db: Session, payload: EInvoiceCreatePayload, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:

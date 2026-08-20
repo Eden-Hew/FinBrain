@@ -143,35 +143,37 @@ def _generate_seed_uin() -> str:
 
 
 def seed_einvoice_records(db) -> None:
-    """Seed EInvoiceRecord rows directly — no ingestion/LLM pipeline needed."""
+    """Seed operational e-invoices and mirror them into protected chat search."""
     from sqlalchemy import select
 
     from app.services import storage
     from app.services.einvoice_pdf import render_einvoice_pdf
+    from app.services.einvoice_readiness import sync_all_einvoice_tokenized_content
 
-    if db.scalar(select(EInvoiceRecord.id).limit(1)) is not None:
-        return
-    bucket = get_settings().einvoice_document_bucket
-    try:
-        storage.ensure_bucket(bucket)
-    except Exception:
-        pass
-    for fields in EINVOICE_SEED_RECORDS:
-        record_data = dict(fields)
-        if record_data.get("status") == "validated" and not record_data.get("uin"):
-            record_data["uin"] = _generate_seed_uin()
-        record = EInvoiceRecord(**record_data)
-        db.add(record)
-        db.flush()
+    if db.scalar(select(EInvoiceRecord.id).limit(1)) is None:
+        bucket = get_settings().einvoice_document_bucket
         try:
-            pdf_bytes = render_einvoice_pdf(record)
-            path = f"{record.id}.pdf"
-            storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
-            record.document_storage_path = path
+            storage.ensure_bucket(bucket)
         except Exception:
             pass
-    db.commit()
-    print(f"seeded {len(EINVOICE_SEED_RECORDS)} einvoice_records")
+        for fields in EINVOICE_SEED_RECORDS:
+            record_data = dict(fields)
+            if record_data.get("status") == "validated" and not record_data.get("uin"):
+                record_data["uin"] = _generate_seed_uin()
+            record = EInvoiceRecord(**record_data)
+            db.add(record)
+            db.flush()
+            try:
+                pdf_bytes = render_einvoice_pdf(record)
+                path = f"{record.id}.pdf"
+                storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
+                record.document_storage_path = path
+            except Exception:
+                pass
+        db.commit()
+        print(f"seeded {len(EINVOICE_SEED_RECORDS)} einvoice_records")
+    synced = sync_all_einvoice_tokenized_content(db)
+    print(f"synced {synced} einvoice_records into protected search")
 
 
 def adapt_seed_record(record: dict) -> CanonicalIngestionRecord:
