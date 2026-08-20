@@ -265,7 +265,7 @@ def generate_protected_brief(
         if f"SOURCE-{index}" in cited_ids
     )
     if contains_known_pii(question) or contains_known_pii(context):
-        raise ValueError("Refusing to generate a brief from recognizable sensitive data")
+        return fallback()
     schema = CustomerIntelligenceBrief.model_json_schema()
     instruction = (
         "Return only a CustomerIntelligenceBrief JSON object. Use only supplied SOURCE-n "
@@ -282,16 +282,7 @@ def generate_protected_brief(
     )
     settings = get_settings()
     try:
-        if reasoning_mode == "morpheus" and settings.morpheus_api_key:
-            response = morpheus_chat(
-                [
-                    {"role": "system", "content": instruction},
-                    {"role": "user", "content": prompt},
-                ]
-            )
-            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
-            return CustomerIntelligenceBrief.model_validate_json(cleaned)
-        if reasoning_mode == "gemini" and settings.gemini_api_key:
+        if settings.gemini_api_key:
             from google import genai
 
             response = genai.Client(api_key=settings.gemini_api_key).models.generate_content(
@@ -311,6 +302,19 @@ def generate_protected_brief(
                 if response.parsed is not None
                 else CustomerIntelligenceBrief.model_validate_json(response.text or "")
             )
+        if reasoning_mode == "morpheus" and settings.morpheus_api_key:
+            response = morpheus_chat(
+                [
+                    {"role": "system", "content": instruction},
+                    {"role": "user", "content": prompt},
+                ]
+            )
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
+            try:
+                parsed = json.loads(cleaned, strict=False)
+                return CustomerIntelligenceBrief.model_validate(parsed)
+            except Exception:
+                return CustomerIntelligenceBrief.model_validate_json(cleaned)
     except Exception as error:
         logger.warning(
             "intelligence_brief_provider_failed mode=%s error_type=%s",
