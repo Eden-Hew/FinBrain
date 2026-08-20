@@ -5,6 +5,7 @@ import { PersonaSelector } from "../components/PersonaSelector";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
 import { EmptyState } from "../components/EmptyState";
+import { MaskedText } from "../components/MaskedText";
 import {
   fetchEmailRecords,
   fetchEmailStatus,
@@ -180,12 +181,61 @@ function shortReference(sourceRecordId: string) {
   return `${prefix}-${sourceRecordId.split(":").at(-1)?.slice(0, 6).toUpperCase() ?? "RECORD"}`;
 }
 
+function friendlyLabel(value?: string | null): string | null {
+  if (!value) return null;
+  const spaced = value.replaceAll("_", " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function isUrgent(priority?: string | null): boolean {
+  const p = priority?.toLowerCase();
+  return p === "high" || p === "urgent" || p === "critical";
+}
+
+function RecordCard({ record, kind, onAskFinBrain }: { record: ProtectedIngestionRecord; kind: "telegram" | "email"; onAskFinBrain: () => void }) {
+  const title = friendlyLabel(record.structured_summary?.category) ?? (kind === "telegram" ? "Message" : "Email");
+  const priority = record.structured_summary?.priority;
+  const actionRequired = record.structured_summary?.action_required;
+
+  return (
+    <article className="fb-answer-card">
+      <div className="fb-record-card-head">
+        <strong className="fb-sans" style={{ fontSize: ".88rem" }}>{title}</strong>
+        <span className={"fb-status-pill " + STATUS_PILL_CLASS[record.processing_status]}>
+          <span className="fb-status-dot"></span>{record.processing_status.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p className="fb-fine" style={{ margin: ".65rem 0 0", overflowWrap: "anywhere" }}>
+        <MaskedText text={record.summary ?? record.content_excerpt} />
+      </p>
+      {(priority || actionRequired) && (
+        <div className="fb-record-card-tags">
+          {priority && (
+            <span className={"fb-status-pill " + (isUrgent(priority) ? "is-review" : "")}>
+              <span className="fb-status-dot"></span>{friendlyLabel(priority)} priority
+            </span>
+          )}
+          {actionRequired && (
+            <span className="fb-status-pill is-review"><span className="fb-status-dot"></span>Action needed</span>
+          )}
+        </div>
+      )}
+      <div className="fb-record-card-ref" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".8rem" }}>
+        <span>{shortReference(record.source_record_id)}</span>
+        <button className="fb-link-toggle" type="button" onClick={onAskFinBrain} style={{ fontSize: ".68rem" }}>Ask FinBrain about this →</button>
+      </div>
+    </article>
+  );
+}
+
 function EmailCapturePanel() {
+  const { show } = useAppState();
   const [status, setStatus] = useState<EmailIntegrationStatus | null>(null);
   const [records, setRecords] = useState<ProtectedIngestionRecord[]>([]);
   const [error, setError] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [howOpen, setHowOpen] = useState(false);
 
   const refresh = async () => {
     const [nextStatus, nextRecords] = await Promise.all([
@@ -243,7 +293,7 @@ function EmailCapturePanel() {
             <div className="fb-eyebrow">Connected source</div>
             <h2 id="email-capture-title" style={{ margin: ".35rem 0" }}>Email integration</h2>
             <p className="fb-fine" style={{ maxWidth: "650px" }}>
-              Read-only IMAP synchronization converts email and supported attachments into protected records.
+              New messages in your team's inbox are picked up automatically and turned into protected records.
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -251,11 +301,7 @@ function EmailCapturePanel() {
               <span className="fb-status-dot"></span>{status?.status.replaceAll("_", " ") ?? "checking"}
             </span>
             <div className="fb-fine" style={{ marginTop: ".5rem" }}>
-              {status?.folder_name ?? "INBOX"} · UID {status?.last_uid ?? 0}
-            </div>
-            <div className="fb-live-indicator">
-              <span className="fb-live-dot" aria-hidden="true" />
-              Polling every 5s · synced {lastSync ? lastSync.toLocaleTimeString() : "—"}
+              Synced {lastSync ? lastSync.toLocaleTimeString() : "—"}
             </div>
             <button
               type="button"
@@ -269,6 +315,17 @@ function EmailCapturePanel() {
           </div>
         </div>
         {error && <div role="status" className="fb-fine" style={{ color: "var(--chart-attn)", marginTop: ".7rem" }}>{error}</div>}
+        <button className="fb-link-toggle" type="button" onClick={() => setHowOpen((v) => !v)} aria-expanded={howOpen} style={{ marginTop: "1rem" }}>
+          <span className={"fb-link-toggle-caret" + (howOpen ? " is-open" : "")}>▸</span>
+          How does this work?
+        </button>
+        {howOpen && (
+          <div className="fb-callout" style={{ marginTop: ".6rem" }}>
+            Once your administrator connects your team's inbox, nothing needs to be sent manually — new email just
+            shows up here. Personal details (names, phone numbers, IC numbers) are masked before anything is stored,
+            and only the masked version is ever sent to an AI model.
+          </div>
+        )}
       </div>
       <div className="fb-eyebrow" style={{ marginBottom: ".7rem" }}>Recent email records</div>
       {records.length === 0 ? (
@@ -281,17 +338,7 @@ function EmailCapturePanel() {
       ) : (
         <div style={{ display: "grid", gap: ".65rem" }}>
           {records.map((record) => (
-            <article className="fb-answer-card" key={record.source_record_id} style={{ padding: "1rem 1.1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", flexWrap: "wrap" }}>
-                <strong className="fb-sans">{shortReference(record.source_record_id)} · email</strong>
-                <span className={"fb-status-pill " + STATUS_PILL_CLASS[record.processing_status]}>
-                  <span className="fb-status-dot"></span>{record.processing_status.replaceAll("_", " ")}
-                </span>
-              </div>
-              <p className="fb-fine" style={{ margin: ".65rem 0 0", overflowWrap: "anywhere" }}>
-                {record.summary ?? record.content_excerpt}
-              </p>
-            </article>
+            <RecordCard key={record.source_record_id} record={record} kind="email" onAskFinBrain={() => show("agents")} />
           ))}
         </div>
       )}
@@ -300,10 +347,12 @@ function EmailCapturePanel() {
 }
 
 function TelegramCapturePanel() {
+  const { show } = useAppState();
   const [status, setStatus] = useState<TelegramIntegrationStatus | null>(null);
   const [records, setRecords] = useState<ProtectedIngestionRecord[]>([]);
   const [error, setError] = useState("");
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [howOpen, setHowOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -330,7 +379,6 @@ function TelegramCapturePanel() {
     };
   }, []);
 
-  const statusLabel = status?.status.replaceAll("_", " ") ?? "checking";
   return (
     <section style={{ marginBottom: "2rem" }} aria-labelledby="telegram-capture-title">
       <div className="fb-answer-card" style={{ marginBottom: "1rem" }}>
@@ -339,23 +387,30 @@ function TelegramCapturePanel() {
             <div className="fb-eyebrow">Remote capture</div>
             <h2 id="telegram-capture-title" style={{ margin: ".35rem 0" }}>Telegram integration</h2>
             <p className="fb-fine" style={{ maxWidth: "650px" }}>
-              Capture records from a private Telegram chat. FinBrain stores and enriches only protected content.
+              Forward a message to your workspace's Telegram bot and it shows up here automatically.
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
             <span className={"fb-status-pill " + (status?.status === "healthy" ? "is-active" : "is-review")}>
-              <span className="fb-status-dot"></span>{statusLabel}
+              <span className="fb-status-dot"></span>{status?.status.replaceAll("_", " ") ?? "checking"}
             </span>
             <div className="fb-fine" style={{ marginTop: ".5rem" }}>
-              {status?.mode ?? "polling"} · detector {status?.detector_ready ? "ready" : "not ready"}
-            </div>
-            <div className="fb-live-indicator">
-              <span className="fb-live-dot" aria-hidden="true" />
-              Polling every 3s · synced {lastSync ? lastSync.toLocaleTimeString() : "—"}
+              Synced {lastSync ? lastSync.toLocaleTimeString() : "—"}
             </div>
           </div>
         </div>
         {error && <div role="status" className="fb-fine" style={{ color: "var(--chart-attn)", marginTop: ".7rem" }}>{error}</div>}
+        <button className="fb-link-toggle" type="button" onClick={() => setHowOpen((v) => !v)} aria-expanded={howOpen} style={{ marginTop: "1rem" }}>
+          <span className={"fb-link-toggle-caret" + (howOpen ? " is-open" : "")}>▸</span>
+          How do I send something here?
+        </button>
+        {howOpen && (
+          <div className="fb-callout" style={{ marginTop: ".6rem" }}>
+            Message your workspace's FinBrain Telegram bot and send <code>/capture</code> followed by your note —
+            ask your administrator for the bot link if you don't have it yet. Personal details (names, phone
+            numbers, IC numbers) are masked automatically before anything is stored.
+          </div>
+        )}
       </div>
 
       <div className="fb-eyebrow" style={{ marginBottom: ".7rem" }}>Recent Telegram records</div>
@@ -368,23 +423,7 @@ function TelegramCapturePanel() {
       ) : (
         <div style={{ display: "grid", gap: ".65rem" }}>
           {records.map((record) => (
-            <article className="fb-answer-card" key={record.source_record_id} style={{ padding: "1rem 1.1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: ".8rem", flexWrap: "wrap" }}>
-                <strong className="fb-sans">{shortReference(record.source_record_id)} · {(record.record_type ?? "record").replaceAll("_", " ")}</strong>
-                <span className={"fb-status-pill " + STATUS_PILL_CLASS[record.processing_status]}>
-                  <span className="fb-status-dot"></span>{record.processing_status.replaceAll("_", " ")}
-                </span>
-              </div>
-              <p className="fb-fine" style={{ margin: ".65rem 0 0", overflowWrap: "anywhere" }}>
-                {record.summary ?? record.content_excerpt}
-              </p>
-              {record.structured_summary && (
-                <div className="fb-fine" style={{ marginTop: ".55rem" }}>
-                  {record.structured_summary.category ?? "uncategorized"} · {record.structured_summary.priority ?? "unknown"} priority
-                  {record.structured_summary.action_required ? " · action required" : ""}
-                </div>
-              )}
-            </article>
+            <RecordCard key={record.source_record_id} record={record} kind="telegram" onAskFinBrain={() => show("agents")} />
           ))}
         </div>
       )}

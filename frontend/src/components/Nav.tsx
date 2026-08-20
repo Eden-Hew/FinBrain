@@ -208,7 +208,7 @@ const SCREEN_TITLES: Partial<Record<Screen, string>> = {
   finance: "Finance Dashboard",
   audit: "Audit Trail",
   approvals: "Approvals",
-  ingestion: "Ingestion",
+  ingestion: "Message Capture",
 };
 
 export function AppTopBar({ current }: { current: Screen }) {

@@ -42,12 +42,12 @@ const FB_I18N: Record<string, Record<Lang, string>> = {
     zh: "跨受保护企业记录的循证答案，并提供权限感知操作。",
   },
   "agents.viewingAs": { en: "Viewing as", ms: "Melihat sebagai", zh: "查看身份：" },
-  "nav.ingestion": { en: "Ingestion", ms: "Pengambilan", zh: "数据接入" },
-  "ingestion.title": { en: "Protected Ingestion", ms: "Pengambilan Terlindung", zh: "受保护的数据接入" },
+  "nav.ingestion": { en: "Message Capture", ms: "Tangkapan Mesej", zh: "消息捕获" },
+  "ingestion.title": { en: "Message Capture", ms: "Tangkapan Mesej", zh: "消息捕获" },
   "ingestion.desc": {
-    en: "Add a business record — raw text stays on FinBrain's backend, only the tokenized version reaches Gemini.",
-    ms: "Tambah rekod perniagaan — teks mentah kekal di bahagian belakang FinBrain, hanya versi bertokencapai Gemini.",
-    zh: "添加业务记录——原始文本保留在 FinBrain 后端，仅令牌化版本会发送给 Gemini。",
+    en: "Messages forwarded from Telegram or email are captured here automatically — personal details are masked before any AI model ever sees them.",
+    ms: "Mesej yang dihantar dari Telegram atau e-mel akan diambil di sini secara automatik — butiran peribadi disamarkan sebelum sebarang model AI melihatnya.",
+    zh: "从 Telegram 或电子邮件转发的消息会在此自动捕获——个人信息会在任何 AI 模型读取之前先被遮蔽。",
   },
 };
 

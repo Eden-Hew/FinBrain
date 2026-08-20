@@ -490,6 +490,11 @@ img{max-width:100%}
 .fb-ask-question p{margin:.4rem 0 0;font-style:italic;font-family:'Inter Tight','Inter',-apple-system,sans-serif;font-size:1rem;}
 
 .fb-answer-card{border:1px solid var(--line);border-radius:14px;padding:1.3rem;background:var(--card);}
+.fb-mask-badge{display:inline-flex;align-items:center;gap:.25rem;background:var(--bg-alt);color:var(--ink-soft);border-radius:6px;padding:.05rem .4rem;font-size:.72em;font-weight:600;white-space:nowrap;vertical-align:baseline;}
+.fb-mask-badge svg{width:10px;height:10px;flex:0 0 auto;}
+.fb-record-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.8rem;flex-wrap:wrap;}
+.fb-record-card-tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.6rem;}
+.fb-record-card-ref{font-size:.66rem;color:var(--ink-soft);margin-top:.6rem;}
 .fb-answer-text{font-size:.85rem;line-height:1.7;margin:0 0 1rem;}
 .fb-answer-text sup{color:var(--ink-soft);font-weight:700;}
 .fb-citation-list{display:flex;flex-direction:column;gap:.5rem;border-top:1px solid var(--line);padding-top:.9rem;}
