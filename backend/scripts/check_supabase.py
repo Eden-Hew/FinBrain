@@ -26,6 +26,14 @@ REQUIRED_TABLES = (
     "customers",
     "einvoice_records",
     "einvoice_outreach_drafts",
+    "customer_aliases",
+    "customer_record_links",
+    "customer_attention_snapshots",
+    "customer_attention_signals",
+    "customer_endpoints",
+    "outreach_actions",
+    "outreach_evidence",
+    "email_reply_correlations",
 )
 REQUIRED_INGESTION_COLUMNS = {
     "source_system",
@@ -50,6 +58,18 @@ REQUIRED_CURRENT_COLUMNS = {
     },
     "einvoice_outreach_drafts": {
         "tenant_id", "einvoice_record_id", "channel", "draft_text", "status"
+    },
+    "conversations": {"context_customer_id", "context_updated_at"},
+    "customer_record_links": {
+        "tenant_id", "customer_id", "tokenized_content_id", "alias_id", "match_basis"
+    },
+    "outreach_actions": {
+        "tenant_id", "customer_id", "customer_endpoint_id", "protected_subject",
+        "protected_body", "status", "provider_message_ref_hash", "replied_at"
+    },
+    "email_ingestion_receipts": {
+        "customer_id", "outreach_action_id", "in_reply_to_ref_hash",
+        "correlation_status", "correlated_at"
     },
 }
 
@@ -191,6 +211,13 @@ def main() -> None:
                 "einvoice_records_buyer_customer_idx",
                 "einvoice_records_tenant_idx",
                 "einvoice_outreach_drafts_tenant_idx",
+                "customer_alias_lookup_idx",
+                "customer_record_links_customer_idx",
+                "customer_attention_latest_idx",
+                "conversations_customer_context_idx",
+                "customer_endpoints_customer_idx",
+                "outreach_queue_idx",
+                "email_reply_customer_idx",
             )
         }
 
@@ -272,7 +299,7 @@ def main() -> None:
     print("Supabase Auth role and ownership schema: present")
     print("Versioned vault schema and role-enforced ciphertext RLS: present")
     print("Append-only audit triggers: present")
-    print("Customer, e-invoice, and outreach baseline schema: present")
+    print("Customer identity, attention, governed outreach, and reply correlation: present")
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 

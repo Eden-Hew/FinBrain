@@ -688,6 +688,30 @@ proposed -> approved -> implemented
 
 Decision events are appended to a separate hash-chained workflow audit log.
 
+## Unified customer intelligence and governed outreach
+
+When `CUSTOMER_INTELLIGENCE_ENABLED=true`, FinBrain exposes a tenant-scoped customer workspace
+that joins only verified identity links across protected sources. Optional deterministic attention
+scoring is enabled with `CUSTOMER_ATTENTION_ENABLED=true`. Selecting **Ask about this customer**
+binds the protected conversation to that customer instead of relying on a name-only follow-up.
+
+Finance or an owner can register a customer email endpoint, but its plaintext value is immediately
+tokenized and stored only in the encrypted vault. An owner must verify the endpoint before a draft
+can move to `pending_approval`, and only an owner can approve delivery:
+
+```text
+draft -> pending_approval -> approved -> sending -> sent -> replied
+                         \-> rejected          \-> failed / delivery_unknown
+```
+
+Set `OUTBOUND_EMAIL_ENABLED=true` and configure the `EMAIL_SMTP_*` variables to let the existing
+email worker deliver approved messages. Automated tests use a fake SMTP transport and never send
+real mail. A network failure before delivery begins is recorded as `failed`; an interruption during
+SMTP delivery is `delivery_unknown` and is never retried automatically. With
+`EMAIL_REPLY_CORRELATION_ENABLED=true`, incoming `In-Reply-To` and `References` identifiers are
+HMAC-hashed in memory and matched exactly to the outbound hash. A unique match links the protected
+reply to the customer and marks the action `replied`; it never changes invoice or payment state.
+
 ## Reset and verify demonstration data
 
 Refresh known seed records after changing detection or enrichment behavior:
