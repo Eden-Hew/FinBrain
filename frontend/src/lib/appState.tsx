@@ -16,7 +16,7 @@ import {
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
-  | "agents" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
+  | "home" | "agents" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
 
 interface AppStateValue {
   screen: Screen;
@@ -104,7 +104,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const pathname = window.location.pathname.replace(/^\//, "");
         const matchedScreen: Screen = pathname && [
           "landing", "login", "signup", "onboarding", "security", "legal",
-          "agents", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
+          "home", "agents", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
         ].includes(pathname) ? (pathname as Screen) : "landing";
         setScreen(matchedScreen);
       }
@@ -141,7 +141,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const enterSampleWorkspace = useCallback(() => {
     setSampleBanner(true);
-    show("agents");
+    show("home");
   }, [show]);
 
   const dismissSampleBanner = useCallback(() => setSampleBanner(false), []);

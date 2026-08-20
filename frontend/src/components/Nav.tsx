@@ -112,6 +112,7 @@ export function ContextNav() {
 }
 
 const NAV_ICONS: Record<string, ReactNode> = {
+  home: <><path d="M3 11l9-7 9 7" /><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" /></>,
   agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
   einvoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
   finance: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
@@ -121,7 +122,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
 };
 
 const NAV_GROUPS: { label: string | null; items: { screen: Screen; key: string }[] }[] = [
-  { label: null, items: [{ screen: "agents", key: "nav.aiAgents" }] },
+  { label: null, items: [{ screen: "home", key: "nav.home" }, { screen: "agents", key: "nav.aiAgents" }] },
   { label: "Records", items: [
     { screen: "einvoice", key: "nav.einvoicing" },
     { screen: "finance", key: "nav.financeDashboard" },
@@ -202,6 +203,7 @@ export function Sidebar({ current, backTo, backLabel }: { current?: Screen; back
 }
 
 const SCREEN_TITLES: Partial<Record<Screen, string>> = {
+  home: "Home",
   agents: "Customer Intelligence",
   einvoice: "e-Invoicing",
   "einvoice-detail": "e-Invoicing",
@@ -223,9 +225,15 @@ export function AppTopBar({ current }: { current: Screen }) {
   return (
     <div className="fb-topbar">
       <div className="fb-topbar-crumb">
-        <span tabIndex={0} role="button" onClick={() => show("agents")}>Home</span>
-        <span className="fb-topbar-sep">/</span>
-        <span className="fb-topbar-current">{SCREEN_TITLES[current] ?? current}</span>
+        {current === "home" ? (
+          <span className="fb-topbar-current">Home</span>
+        ) : (
+          <>
+            <span tabIndex={0} role="button" onClick={() => show("home")}>Home</span>
+            <span className="fb-topbar-sep">/</span>
+            <span className="fb-topbar-current">{SCREEN_TITLES[current] ?? current}</span>
+          </>
+        )}
       </div>
 
       <button className="fb-topbar-search" type="button" onClick={openPalette}>

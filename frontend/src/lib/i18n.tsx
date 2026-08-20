@@ -3,6 +3,13 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 export type Lang = "en" | "ms" | "zh";
 
 const FB_I18N: Record<string, Record<Lang, string>> = {
+  "nav.home": { en: "Home", ms: "Laman Utama", zh: "主页" },
+  "home.title": { en: "Home", ms: "Laman Utama", zh: "主页" },
+  "home.desc": {
+    en: "Everything across your workspace, at a glance. Each card reflects live data — nothing shown here is invented.",
+    ms: "Semua yang berlaku dalam ruang kerja anda, secara ringkas. Setiap kad memaparkan data sebenar — tiada apa-apa di sini direka-reka.",
+    zh: "工作区的所有情况，一目了然。每张卡片都反映实时数据——这里显示的内容绝无捏造。",
+  },
   "nav.aiAgents": { en: "Customer Intelligence", ms: "Risikan Pelanggan", zh: "客户情报" },
   "nav.einvoicing": { en: "e-Invoicing", ms: "e-Invois", zh: "电子发票" },
   "nav.financeDashboard": { en: "Finance Dashboard", ms: "Papan Pemuka Kewangan", zh: "财务仪表板" },

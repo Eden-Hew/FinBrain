@@ -17,7 +17,7 @@ export default function Login() {
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
-      show("agents");
+      show("home");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sign in failed.");
     } finally {

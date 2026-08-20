@@ -84,9 +84,6 @@ export default function Agents() {
     sampleBanner,
     dismissSampleBanner,
     openApprovalRecommendation,
-    show,
-    approvalsCount,
-    einvoices,
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
@@ -287,7 +284,6 @@ export default function Agents() {
     recognitionRef.current?.stop();
   };
 
-  const einvoicesPending = Object.values(einvoices).filter((inv) => inv.status === "pending").length;
   const hasConversation = messages.length > 1;
 
   return (
@@ -309,24 +305,6 @@ export default function Agents() {
               <h1>{t("nav.aiAgents")}</h1>
               <p>{t("agents.desc")}</p>
             </header>
-
-            <div className="fb-agents-overview">
-              <button className="fb-overview-stat" type="button" onClick={() => show("approvals")}>
-                <span className="fb-overview-value">{approvalsCount}</span>
-                <span className="fb-overview-label">Pending approvals</span>
-                <span className="fb-overview-arrow" aria-hidden="true">→</span>
-              </button>
-              <button className="fb-overview-stat" type="button" onClick={() => show("einvoice")}>
-                <span className="fb-overview-value">{einvoicesPending}</span>
-                <span className="fb-overview-label">e-Invoices to review</span>
-                <span className="fb-overview-arrow" aria-hidden="true">→</span>
-              </button>
-              <button className="fb-overview-stat" type="button" onClick={() => show("finance")}>
-                <span className="fb-overview-value">RM 94K</span>
-                <span className="fb-overview-label">Outstanding AR</span>
-                <span className="fb-overview-arrow" aria-hidden="true">→</span>
-              </button>
-            </div>
           </div>
         )}
 
