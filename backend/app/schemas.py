@@ -544,6 +544,7 @@ class InvoiceExtraction(BaseModel):
 class EInvoiceCreatePayload(BaseModel):
     supplier_name: str = Field(min_length=1, max_length=255)
     supplier_tin: str | None = Field(default=None, max_length=64)
+    supplier_email: str | None = Field(default=None, max_length=255)
     buyer_name: str | None = Field(default=None, max_length=255)
     buyer_email: str | None = Field(default=None, max_length=255)
     invoice_no: str | None = Field(default=None, max_length=64)

@@ -835,6 +835,7 @@ export async function fetchEinvoiceRecords(): Promise<EInvoiceApiRecord[]> {
 export interface EInvoiceCreatePayload {
   supplier_name: string;
   supplier_tin?: string | null;
+  supplier_email?: string | null;
   buyer_name?: string | null;
   buyer_email?: string | null;
   invoice_no?: string | null;

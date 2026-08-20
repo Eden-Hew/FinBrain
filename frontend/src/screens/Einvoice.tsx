@@ -234,6 +234,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
   const [form, setForm] = useState({
     supplier_name: "",
     supplier_tin: "",
+    supplier_email: "",
     buyer_name: "",
     buyer_email: "",
     invoice_no: "",
@@ -265,6 +266,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
       setForm((f) => ({
         supplier_name: extracted.supplier_name ?? f.supplier_name,
         supplier_tin: extracted.supplier_tin ?? f.supplier_tin,
+        supplier_email: f.supplier_email,
         buyer_name: extracted.buyer_name ?? f.buyer_name,
         buyer_email: f.buyer_email,
         invoice_no: extracted.invoice_no ?? f.invoice_no,
@@ -294,6 +296,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
       const payload: EInvoiceCreatePayload = {
         supplier_name: form.supplier_name.trim(),
         supplier_tin: form.supplier_tin.trim() || null,
+        supplier_email: form.supplier_email.trim() || null,
         buyer_name: form.buyer_name.trim() || null,
         buyer_email: form.buyer_email.trim() || null,
         invoice_no: form.invoice_no.trim() || null,
@@ -339,8 +342,11 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
       {extracting && <div className="fb-fine">Reading the PDF and extracting fields…</div>}
       {extractNotice && !extracting && <div className="fb-fine">{extractNotice}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
-        <label className="fb-field-label" style={{ gridColumn: "1 / -1" }}>Supplier name
+        <label className="fb-field-label">Supplier / Seller name
           <input className="fb-field-mock" {...field("supplier_name")} required />
+        </label>
+        <label className="fb-field-label">Seller email
+          <input className="fb-field-mock" type="email" {...field("supplier_email")} placeholder="e.g. billing@seller.com" />
         </label>
         <label className="fb-field-label">Supplier TIN
           <input className="fb-field-mock" {...field("supplier_tin")} placeholder="Leave blank if unknown" />

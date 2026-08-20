@@ -180,6 +180,19 @@ def create_record(
             "total_amount": str(record.total_amount),
         },
     )
+    try:
+        pdf_bytes = render_einvoice_pdf(
+            record,
+            supplier_email=payload.supplier_email,
+            buyer_email=payload.buyer_email,
+        )
+        bucket = get_settings().einvoice_document_bucket
+        storage.ensure_bucket(bucket)
+        path = f"{record.id}.pdf"
+        storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
+        record.document_storage_path = path
+    except Exception:
+        pass
     db.commit()
     sync_einvoice_tokenized_content(db, record)
     _recalculate_attention_if_enabled(db, record)

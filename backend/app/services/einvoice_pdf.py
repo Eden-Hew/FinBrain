@@ -360,6 +360,12 @@ def normalize_einvoice_data(
         status=status,
     )
 
+    supplier_email_val = str(
+        raw.get("supplier_email")
+        or f"billing@{re.sub(r'[^a-zA-Z0-9]', '', supplier_name.lower())[:10]}.com.my"
+    )
+    buyer_email_val = str(raw.get("buyer_email") or "finance@finbrain.os")
+
     supplier = SupplierInfo(
         name=supplier_name,
         tin=supplier_tin,
@@ -367,7 +373,7 @@ def normalize_einvoice_data(
         sst_registration_no="W10-1808-32000018" if tax_type == "SST" else None,
         address="Bangsar Corporate Tower, No. 129 Jalan Bangsar, 59200 Kuala Lumpur",
         contact="+603-2296 5566",
-        email=f"billing@{re.sub(r'[^a-zA-Z0-9]', '', supplier_name.lower())[:10]}.com.my",
+        email=supplier_email_val,
         msic_code="35101",
         business_activity="Commercial Supply & Services",
     )
@@ -379,7 +385,7 @@ def normalize_einvoice_data(
         sst_registration_no=None,
         address="Level 20, Menara FinTech, 50450 Kuala Lumpur, Malaysia",
         contact="+603-2111 2222",
-        email="finance@finbrain.os",
+        email=buyer_email_val,
     )
 
     line_items = [
