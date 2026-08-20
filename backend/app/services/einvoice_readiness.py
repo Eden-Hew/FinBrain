@@ -119,6 +119,14 @@ def sync_all_einvoice_tokenized_content(db: Session) -> int:
     return len(records)
 
 
+def _recalculate_attention_if_enabled(db: Session, record: EInvoiceRecord) -> None:
+    if not get_settings().customer_attention_enabled or record.buyer_customer_id is None:
+        return
+    from app.services.customer_attention import recalculate_customer_attention
+
+    recalculate_customer_attention(db, record.tenant_id, record.buyer_customer_id)
+
+
 def create_record(
     db: Session, payload: EInvoiceCreatePayload, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:
@@ -170,6 +178,7 @@ def create_record(
     )
     db.commit()
     sync_einvoice_tokenized_content(db, record)
+    _recalculate_attention_if_enabled(db, record)
     return record_response(record)
 
 
@@ -242,6 +251,7 @@ def approve_record(
     )
     db.commit()
     sync_einvoice_tokenized_content(db, record)
+    _recalculate_attention_if_enabled(db, record)
     return record_response(record)
 
 
@@ -279,6 +289,7 @@ def mark_invoice_paid(
         event_payload={"paid_at": record.paid_at.isoformat()},
     )
     db.commit()
+    _recalculate_attention_if_enabled(db, record)
     return record_response(record)
 
 

@@ -559,6 +559,54 @@ class CustomerRecordLink(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class CustomerAttentionSnapshot(Base):
+    __tablename__ = "customer_attention_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "customer_id", "input_fingerprint",
+            name="customer_attention_input_unique",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
+    customer_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    priority: Mapped[str] = mapped_column(String, nullable=False)
+    calculation_version: Mapped[str] = mapped_column(String, nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CustomerAttentionSignal(Base):
+    __tablename__ = "customer_attention_signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
+    snapshot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customer_attention_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    signal_type: Mapped[str] = mapped_column(String, nullable=False)
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    freshness: Mapped[str] = mapped_column(String, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    tokenized_content_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT")
+    )
+    einvoice_record_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("einvoice_records.id", ondelete="RESTRICT")
+    )
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    details: Mapped[dict[str, Any]] = mapped_column(ObjectType(), default=dict, nullable=False)
+
+
 class EInvoiceRecord(Base):
     __tablename__ = "einvoice_records"
 
