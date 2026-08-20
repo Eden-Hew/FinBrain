@@ -37,6 +37,8 @@ alter table public.customer_attention_signals force row level security;
 revoke all on public.customer_attention_snapshots, public.customer_attention_signals from anon, authenticated;
 grant select, insert on public.customer_attention_snapshots, public.customer_attention_signals to finbrain_app;
 grant select, insert on public.customer_attention_snapshots, public.customer_attention_signals to finbrain_worker;
+grant usage, select on sequence public.customer_attention_snapshots_id_seq,
+  public.customer_attention_signals_id_seq to finbrain_app, finbrain_worker;
 create policy finbrain_attention_snapshots on public.customer_attention_snapshots to finbrain_app
   using (tenant_id = public.finbrain_tenant_id() and public.finbrain_role() <> '')
   with check (tenant_id = public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director','compliance'));

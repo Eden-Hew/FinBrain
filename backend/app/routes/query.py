@@ -82,6 +82,10 @@ def query(
             status_code=410 if code == "conversation_expired" else 404,
             detail=code,
         ) from error
+    if (payload.customer_id is not None or payload.clear_customer_context) and not (
+        get_settings().customer_intelligence_enabled
+    ):
+        raise HTTPException(status_code=503, detail="customer_intelligence_disabled")
     if payload.clear_customer_context:
         conversation.context_customer_id = None
         conversation.context_updated_at = utcnow()

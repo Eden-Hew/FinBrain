@@ -154,7 +154,11 @@ def create_record(
     )
     db.add(record)
     db.flush()
-    if buyer_customer and payload.buyer_name:
+    if (
+        get_settings().customer_intelligence_enabled
+        and buyer_customer
+        and payload.buyer_name
+    ):
         register_structured_customer_aliases(
             db,
             buyer_customer,

@@ -45,6 +45,9 @@ alter table public.customer_record_links force row level security;
 revoke all on public.customer_aliases, public.customer_record_links from anon, authenticated;
 grant select, insert, update on public.customer_aliases, public.customer_record_links to finbrain_app;
 grant select, insert, update on public.customer_aliases, public.customer_record_links to finbrain_worker;
+grant usage, select on sequence public.customers_id_seq,
+  public.customer_aliases_id_seq, public.customer_record_links_id_seq
+  to finbrain_app, finbrain_worker;
 
 create policy finbrain_customer_aliases on public.customer_aliases to finbrain_app
   using (tenant_id = public.finbrain_tenant_id() and public.finbrain_role() <> '')

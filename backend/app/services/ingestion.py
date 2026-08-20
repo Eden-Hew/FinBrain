@@ -9,20 +9,36 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import TokenizedContent
 from app.schemas import CanonicalIngestionRecord, IngestionResult, ProcessingStatus
-from app.security.detect import contains_known_pii
+from app.security.detect import contains_known_pii, detect_spans
 from app.security.protection import protect_metadata, protect_text
-from app.security.tokenize import persist_vault_entries
+from app.security.tokenize import persist_vault_entries, tokenize_record
 from app.services.embeddings import embed_text
 from app.services.summarization import summarize_protected_text
 
 logger = logging.getLogger(__name__)
 
 
+def _protect_text(
+    text: str, source_record_id: str, tenant_id: str, db: Session | None = None
+):
+    """Compatibility seam for tests and connector-specific detector injection."""
+    return protect_text(
+        text,
+        source_record_id,
+        tenant_id,
+        db,
+        spans=detect_spans(text),
+        tokenizer=tokenize_record,
+    )
+
+
 def preview_canonical_record(record: CanonicalIngestionRecord) -> str:
     """Return protected text without persistence or external model calls."""
     if contains_known_pii(record.source_record_id):
         raise ValueError("source_record_id must be an opaque identifier without recognizable PII")
-    protected_text, _entries = protect_text(record.text, record.source_record_id, record.tenant_id)
+    protected_text, _entries = _protect_text(
+        record.text, record.source_record_id, record.tenant_id
+    )
     protect_metadata(record.metadata, record.source_record_id, record.tenant_id)
     return protected_text
 
@@ -107,7 +123,7 @@ def protect_canonical_record(
     ):
         return _result(existing, created=False, refreshed=False)
 
-    protected_text, content_entries = protect_text(
+    protected_text, content_entries = _protect_text(
         record.text, record.source_record_id, record.tenant_id, db
     )
     protected_metadata, metadata_entries = protect_metadata(
