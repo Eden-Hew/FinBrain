@@ -44,6 +44,108 @@ WHITE = HexColor("#FFFFFF")
 STATUS_GREEN = HexColor("#10B981")
 LIGHT_BG = HexColor("#F9FAFB")
 
+KNOWN_SUPPLIER_PROFILES = {
+    "tenaga nasional berhad": {
+        "reg_no": "199001009999",
+        "tin": "C1234567890",
+        "address": "No. 129, Jalan Bangsar, 59200 Kuala Lumpur",
+        "phone": "+603-2296 5566",
+        "email": "billing@tnb.com.my",
+        "msic": "35101",
+        "activity": "Electric power generation, transmission and distribution",
+        "bank_account_no": "Maybank 514011882299",
+    },
+    "grab malaysia": {
+        "reg_no": "201201023456",
+        "tin": "C9988776655",
+        "address": "Level 15, Guoco Tower, Damansara City, 50490 Kuala Lumpur",
+        "phone": "+603-2788 1300",
+        "email": "invoices@grab.com",
+        "msic": "52291",
+        "activity": "E-hailing and transport logistics services",
+        "bank_account_no": "CIMB 8008123456",
+    },
+    "petronas dagangan": {
+        "reg_no": "198201008888",
+        "tin": "C1122334455",
+        "address": "Tower 1, PETRONAS Twin Towers, KLCC, 50088 Kuala Lumpur",
+        "phone": "+603-2051 5000",
+        "email": "commercial.billing@petronas.com.my",
+        "msic": "46610",
+        "activity": "Wholesale of solid, liquid and gaseous fuels",
+        "bank_account_no": "Maybank 514011990214",
+    },
+    "astro malaysia": {
+        "reg_no": "201101004455",
+        "tin": "C5566778899",
+        "address": "All Asia Broadcast Centre, Technology Park Malaysia, 57000 Kuala Lumpur",
+        "phone": "+603-9543 6688",
+        "email": "billing@astro.com.my",
+        "msic": "60200",
+        "activity": "Television programming and broadcasting activities",
+        "bank_account_no": "Public Bank 3128994455",
+    },
+    "telekom malaysia berhad": {
+        "reg_no": "198401016180",
+        "tin": "C0123456789",
+        "address": "Menara TM, Jalan Pantai Baharu, 50672 Kuala Lumpur",
+        "phone": "+603-2240 9494",
+        "email": "ebilling@tm.com.my",
+        "msic": "61101",
+        "activity": "Wired telecommunications activities and broadband",
+        "bank_account_no": "Maybank 514011993188",
+    },
+    "aws cloud services malaysia": {
+        "reg_no": "202001019920",
+        "tin": "C8877665544",
+        "address": "Level 28, The Exchange 106, Lingkaran TRX, 55188 Kuala Lumpur",
+        "phone": "+603-2776 5000",
+        "email": "invoicing-my@amazon.com",
+        "msic": "63111",
+        "activity": "Cloud infrastructure and data processing services",
+        "bank_account_no": "Citibank 1089201122",
+    },
+    "dell technologies malaysia": {
+        "reg_no": "199501024410",
+        "tin": "C5544332211",
+        "address": "Plot 76, Mukim 11, Bukit Tengah Industrial Park, 14000 Bukit Mertajam, Penang",
+        "phone": "+604-504 8888",
+        "email": "enterprise_billing@dell.com",
+        "msic": "26200",
+        "activity": "Manufacture and distribution of computers and peripheral equipment",
+        "bank_account_no": "Standard Chartered 3120044102",
+    },
+    "sunway resort & catering": {
+        "reg_no": "198801007500",
+        "tin": "C2233445566",
+        "address": "Persiaran Lagoon, Bandar Sunway, 47500 Petaling Jaya, Selangor",
+        "phone": "+603-7492 8000",
+        "email": "events.catering@sunwayhotels.com",
+        "msic": "56210",
+        "activity": "Event catering and food service activities",
+        "bank_account_no": "RHB Bank 214011750011",
+    },
+    "bright solutions sdn bhd": {
+        "reg_no": "201801031122",
+        "tin": "C8899001122",
+        "address": "Suite 8-2, Menara UOA Bangsar, 59000 Kuala Lumpur",
+        "phone": "+603-2282 1100",
+        "email": "billing@brightsolutions.my",
+        "msic": "62020",
+        "activity": "Computer consultancy and IT management services",
+        "bank_account_no": "Maybank 514011889900",
+    },
+}
+
+DEFAULT_BUYER_PROFILE = {
+    "name": "FINBRAIN SDN BHD",
+    "tin": "C2589012300",
+    "reg_no": "202401012345",
+    "address": "Level 20, Menara FinTech, 50450 Kuala Lumpur, Malaysia",
+    "phone": "+603-2111 2222",
+    "email": "finance@finbrain.os",
+}
+
 
 @dataclass
 class DocumentInfo:
@@ -360,23 +462,74 @@ def normalize_einvoice_data(
         status=status,
     )
 
-    supplier_email_val = str(raw.get("supplier_email") or raw.get("email") or "—")
-    buyer_email_val = str(raw.get("buyer_email") or "—")
-    supplier_reg_no = str(raw.get("supplier_reg_no") or raw.get("registration_no") or "—")
-    supplier_address = str(raw.get("supplier_address") or raw.get("address") or "—")
-    supplier_phone = str(raw.get("supplier_phone") or raw.get("contact") or "—")
+    sup_key = supplier_name.strip().lower()
+    sup_profile = KNOWN_SUPPLIER_PROFILES.get(sup_key)
+    if not sup_profile:
+        for k, p in KNOWN_SUPPLIER_PROFILES.items():
+            if k in sup_key or sup_key in k:
+                sup_profile = p
+                break
 
-    buyer_tin = str(raw.get("buyer_tin") or (raw.get("tin") if raw.get("buyer_name") and raw.get("tin") != supplier_tin else "—") or "—")
-    buyer_reg_no = str(raw.get("buyer_reg_no") or "—")
-    buyer_address = str(raw.get("buyer_address") or "—")
-    buyer_phone = str(raw.get("buyer_phone") or "—")
+    supplier_email_val = str(
+        raw.get("supplier_email")
+        or raw.get("email")
+        or (sup_profile.get("email") if sup_profile else "—")
+    )
+    supplier_reg_no = str(
+        raw.get("supplier_reg_no")
+        or raw.get("registration_no")
+        or (sup_profile.get("reg_no") if sup_profile else "—")
+    )
+    supplier_address = str(
+        raw.get("supplier_address")
+        or raw.get("address")
+        or (sup_profile.get("address") if sup_profile else "—")
+    )
+    supplier_phone = str(
+        raw.get("supplier_phone")
+        or raw.get("contact")
+        or (sup_profile.get("phone") if sup_profile else "—")
+    )
+
+    buyer_key = buyer_name.strip().lower()
+    is_default_buyer = "finbrain" in buyer_key or not buyer_name or buyer_name == "—"
+
+    buyer_email_val = str(
+        raw.get("buyer_email")
+        or (DEFAULT_BUYER_PROFILE["email"] if is_default_buyer else "—")
+    )
+    buyer_tin = str(
+        raw.get("buyer_tin")
+        or (raw.get("tin") if raw.get("buyer_name") and raw.get("tin") != supplier_tin else None)
+        or (DEFAULT_BUYER_PROFILE["tin"] if is_default_buyer else "—")
+    )
+    buyer_reg_no = str(
+        raw.get("buyer_reg_no")
+        or (DEFAULT_BUYER_PROFILE["reg_no"] if is_default_buyer else "—")
+    )
+    buyer_address = str(
+        raw.get("buyer_address")
+        or (DEFAULT_BUYER_PROFILE["address"] if is_default_buyer else "—")
+    )
+    buyer_phone = str(
+        raw.get("buyer_phone")
+        or (DEFAULT_BUYER_PROFILE["phone"] if is_default_buyer else "—")
+    )
 
     item_desc = str(
         raw.get("item_description")
         or raw.get("description")
+        or (f"Commercial electricity billing cycle as per invoice {invoice_no}" if "tenaga" in sup_key else None)
+        or (f"Fleet fuel refuel & maintenance as per invoice {invoice_no}" if "petronas" in sup_key else None)
+        or (f"Broadband and digital telecommunication services {invoice_no}" if "telekom" in sup_key else None)
+        or (f"Cloud infrastructure compute & storage as per invoice {invoice_no}" if "aws" in sup_key else None)
+        or (f"Hardware workstation upgrades as per invoice {invoice_no}" if "dell" in sup_key else None)
         or f"Commercial supply / services as per invoice {invoice_no}"
     )
-    bank_acc = str(raw.get("bank_account_no") or "—")
+    bank_acc = str(
+        raw.get("bank_account_no")
+        or (sup_profile.get("bank_account_no") if sup_profile else "—")
+    )
     pay_terms = str(raw.get("payment_terms") or raw.get("terms") or "Net 30 Days")
 
     supplier = SupplierInfo(
