@@ -221,6 +221,18 @@ export default function Approvals() {
     && outreachDrafts.length === 0
     && visibleCustomerOutreach.length === 0;
 
+  // Workflows groups by what happens next: some cards are an internal
+  // decision (approve/reject a document or recommendation), others end in
+  // an external message. Splitting them keeps "am I sending something to a
+  // customer" visually distinct from "am I approving something internal."
+  const showRec = (activeFilter === null || activeFilter === "recommendation") && openRecommendations.length > 0;
+  const showInv = (activeFilter === null || activeFilter === "invoice") && pendingInvoices.length > 0;
+  const showSop = (activeFilter === null || activeFilter === "sop") && draftSops.length > 0;
+  const showAction = (activeFilter === null || activeFilter === "action") && activeActions.length > 0;
+  const showOutreach = (activeFilter === null || activeFilter === "outreach") && outreachDrafts.length > 0;
+  const showDecisionSection = showRec || showInv || showSop;
+  const showSendSection = showAction || showOutreach;
+
   const summary: { type: CardType; tone: string; count: number }[] = [
     { type: "invoice" as const, tone: "is-blue", count: pendingInvoices.length },
     { type: "sop" as const, tone: "is-purple", count: draftSops.length },
@@ -296,7 +308,9 @@ export default function Approvals() {
             />
           )}
 
-          {(activeFilter === null || activeFilter === "recommendation") && openRecommendations.map((item) => (
+          {showDecisionSection && <div className="fb-eyebrow" style={{ margin: "0 0 .6rem" }}>Needs your decision</div>}
+
+          {showRec && openRecommendations.map((item) => (
             <article
               id={`recommendation-${item.id}`}
               className={`fb-rec-card is-type-recommendation${focusedRecommendationId === item.id ? " is-focused" : ""}`}
@@ -347,7 +361,7 @@ export default function Approvals() {
             </article>
           ))}
 
-          {(activeFilter === null || activeFilter === "invoice") && pendingInvoices.map((inv) => (
+          {showInv && pendingInvoices.map((inv) => (
             <div className="fb-rec-card is-type-invoice" key={inv.id}>
               <TypeBadge type="invoice" />
               {needsAttention(inv.description) && (
@@ -365,7 +379,7 @@ export default function Approvals() {
             </div>
           ))}
 
-          {(activeFilter === null || activeFilter === "sop") && draftSops.map((sop) => (
+          {showSop && draftSops.map((sop) => (
             <div className="fb-rec-card is-type-sop" key={sop.id}>
               <TypeBadge type="sop" />
               <h3>{sop.title}</h3>
@@ -377,7 +391,9 @@ export default function Approvals() {
             </div>
           ))}
 
-          {(activeFilter === null || activeFilter === "action") && activeActions.map((act) => (
+          {showSendSection && <div className="fb-eyebrow" style={{ margin: showDecisionSection ? "1.6rem 0 .6rem" : "0 0 .6rem" }}>Ready to send</div>}
+
+          {showAction && activeActions.map((act) => (
             <div className="fb-rec-card is-type-action" key={act.id}>
               <TypeBadge type="action" />
               {needsAttention(act.detail) && (
@@ -392,10 +408,15 @@ export default function Approvals() {
                 <ConfirmApproveButton label={act.approveLabel} onConfirm={() => approveAction(act.id)} />
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => rejectAction(act.id)}>Discard</button>
               </div>
+              {/send/i.test(act.approveLabel) && (
+                <div className="fb-fine" style={{ marginTop: ".6rem" }}>
+                  Approving marks this ready — actual delivery needs an email or Telegram send provider connected, which isn't set up yet.
+                </div>
+              )}
             </div>
           ))}
 
-          {(activeFilter === null || activeFilter === "outreach") && outreachDrafts.map((draft) => (
+          {showOutreach && outreachDrafts.map((draft) => (
             <div className="fb-rec-card is-type-outreach" key={`outreach-${draft.id}`}>
               <TypeBadge type="outreach" />
               {needsAttention(draft.draft_text) && (
@@ -408,6 +429,9 @@ export default function Approvals() {
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
                 <ConfirmApproveButton label="Approve & send" onConfirm={() => decideOutreach(draft.id, "approve")} />
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => decideOutreach(draft.id, "reject")}>Discard</button>
+              </div>
+              <div className="fb-fine" style={{ marginTop: ".6rem" }}>
+                Approving marks this ready — actual delivery needs an email or Telegram send provider connected, which isn't set up yet.
               </div>
             </div>
           ))}
