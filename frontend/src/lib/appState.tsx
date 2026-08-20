@@ -47,6 +47,7 @@ interface AppStateValue {
   approveEinvoiceById: (id: string) => void;
   rejectEinvoiceById: (id: string) => void;
   markEinvoicePaidById: (id: string, paidAt?: string) => void;
+  updateEinvoiceById: (id: string, updates: Partial<EinvoiceRecord>) => void;
 
   currentCustomerKey: string | null;
   showCustomerDetail: (key: string) => void;
@@ -243,6 +244,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }, [pushAuditRow]);
 
+  const updateEinvoiceById = useCallback((id: string, updates: Partial<EinvoiceRecord>) => {
+    setEinvoices((prev) => {
+      const inv = prev[id];
+      if (!inv) return prev;
+      const updated: EinvoiceRecord = {
+        ...inv,
+        ...updates,
+      };
+      pushAuditRow("farah@finbrain.my", "e-Invoice Updated", (updates.supplier || inv.supplier) + " · " + (updates.amount || inv.amount), "finance_ops", "Allowed");
+      return { ...prev, [id]: updated };
+    });
+  }, [pushAuditRow]);
+
   const approveSop = useCallback((id: string) => {
     setSops((prev) => {
       const sop = prev.find((s) => s.id === id);
@@ -336,7 +350,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     signupName, signupCompany, setSignupInfo,
     sampleBanner, enterSampleWorkspace, dismissSampleBanner,
     askRole, setAskRole,
-    einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById, markEinvoicePaidById,
+    einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById, markEinvoicePaidById, updateEinvoiceById,
     currentCustomerKey, showCustomerDetail,
     pendingAskPrompt, askAbout, clearPendingAskPrompt, clearCustomerContext,
     einvoiceFilterMine, setEinvoiceFilterMine,

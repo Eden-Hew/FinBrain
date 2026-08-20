@@ -45,7 +45,7 @@ function statusPillClass(status: EinvoiceStatus): string {
 // The backend returns readiness_reason as one joined string (each issue is a
 // complete sentence). Split it back into individual issues so a reviewer can
 // scan them as a list instead of parsing a run-on paragraph.
-function splitReadinessIssues(reason: string): string[] {
+export function splitReadinessIssues(reason: string): string[] {
   return reason
     .split(/\.\s+/)
     .map((s) => s.trim())
@@ -725,6 +725,16 @@ function AllInvoicesPanel() {
                     <td>
                       <div><strong>{record.supplier_name}</strong></div>
                       {record.buyer_name && <div className="fb-fine" style={{ opacity: 0.85 }}>Buyer: {record.buyer_name}</div>}
+                      {record.status === "review" && (
+                        <ul className="fb-readiness-issue-list" style={{ maxWidth: "34ch", marginTop: ".25rem" }}>
+                          {splitReadinessIssues(record.readiness_reason).map((issue, i) => (
+                            <li key={i} className="fb-fine" style={{ color: "var(--chart-attn, #ef4444)" }}>
+                              <span className="fb-status-dot" aria-hidden="true" style={{ background: "var(--chart-attn, #ef4444)" }} />
+                              {issue}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </td>
                     <td className="fb-num-left">RM {record.total_amount}</td>
                     <td><span className={"fb-status-pill " + pillClass}><span className="fb-status-dot"></span>{FB_EINVOICE_STATUS_LABEL[record.status]}</span></td>

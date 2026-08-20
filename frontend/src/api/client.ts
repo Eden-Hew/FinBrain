@@ -903,6 +903,32 @@ export async function fetchEinvoiceRecord(recordId: number): Promise<EInvoiceApi
   return parse<EInvoiceApiRecord>(await authenticatedFetch(`/einvoice-records/${recordId}`));
 }
 
+export interface EInvoiceUpdatePayload {
+  supplier_name?: string | null;
+  supplier_tin?: string | null;
+  buyer_name?: string | null;
+  invoice_no?: string | null;
+  issue_date?: string | null;
+  due_date?: string | null;
+  currency?: string | null;
+  tax_type?: string | null;
+  tax_rate?: string | null;
+  total_amount?: string | null;
+}
+
+export async function updateEinvoiceRecord(
+  recordId: number,
+  payload: EInvoiceUpdatePayload,
+): Promise<EInvoiceApiRecord> {
+  return parse<EInvoiceApiRecord>(
+    await authenticatedFetch(`/einvoice-records/${recordId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  );
+}
+
 export async function approveEinvoiceRecord(recordId: number): Promise<EInvoiceApiRecord> {
   return parse<EInvoiceApiRecord>(
     await authenticatedFetch(`/einvoice-records/${recordId}/approve`, { method: "POST" }),
