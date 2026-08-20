@@ -6,7 +6,9 @@ import { useControllableCycle, useCountUp, useInView, useParallax, useTilt, useT
 import { CookieConsentBanner, SupportWidget } from "../components/MarketingWidgets";
 
 const HERO_NAV_ICONS: Record<string, ReactNode> = {
+  home: <><path d="M3 11l9-7 9 7" /><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" /></>,
   agents: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
+  customers: <><circle cx="9" cy="7" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><circle cx="17.5" cy="8.5" r="2.4" /><path d="M15.3 12.3A5.2 5.2 0 0 1 21.5 17" /></>,
   einvoice: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
   finance: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
   audit: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
@@ -15,12 +17,12 @@ const HERO_NAV_ICONS: Record<string, ReactNode> = {
 };
 
 const HERO_NAV_GROUPS: { label: string | null; items: { key: string; label: string }[] }[] = [
-  { label: null, items: [{ key: "agents", label: "Customer Intelligence" }] },
-  { label: "Records", items: [{ key: "einvoice", label: "e-Invoicing" }, { key: "finance", label: "Finance Dashboard" }] },
-  { label: "Oversight", items: [{ key: "audit", label: "Audit Trail" }, { key: "approvals", label: "Approvals" }, { key: "ingestion", label: "Ingestion" }] },
+  { label: null, items: [{ key: "home", label: "Briefing" }, { key: "agents", label: "Ask" }, { key: "customers", label: "Customers" }] },
+  { label: "Records", items: [{ key: "einvoice", label: "e-Invoicing" }, { key: "finance", label: "Financial Intelligence" }] },
+  { label: "Oversight", items: [{ key: "approvals", label: "Workflows" }, { key: "ingestion", label: "Sources" }, { key: "audit", label: "Audit & Access" }] },
 ];
 
-const HERO_SCREENS = ["agents", "finance", "audit"];
+const HERO_SCREENS = ["customers", "agents", "finance", "audit"];
 
 const HERO_DEMOS: TypewriterDemoItem[] = [
   {
@@ -44,7 +46,7 @@ const HERO_DEMOS: TypewriterDemoItem[] = [
   {
     question: "Who hasn't paid us this month?",
     answer: "4 customers show no payment against a validated invoice this month, totaling RM 12,600.",
-    citation: "Finance Dashboard · AR aging",
+    citation: "Financial Intelligence · AR aging",
     pill: "Restricted",
   },
 ];
@@ -54,39 +56,45 @@ const HERO_DEMO_CHIP_LABELS = ["Overdue accounts", "Invoices to review", "Delaye
 const AGENTS = [
   {
     tone: "is-blue",
-    title: "Customer Intelligence",
+    title: "Ask",
     body: "Ask a question, get a cited answer instantly — drafts follow-ups and collections chases, permission-filtered to your role.",
     icon: <path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" />,
   },
   {
     tone: "is-green",
+    title: "Customers",
+    body: "Every customer ranked by real urgency — overdue amounts, verified cross-source signals — with outreach that always waits for your approval before it sends.",
+    icon: <><circle cx="9" cy="7" r="3.2" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><circle cx="17.5" cy="8.5" r="2.4" /><path d="M15.3 12.3A5.2 5.2 0 0 1 21.5 17" /></>,
+  },
+  {
+    tone: "is-purple",
     title: "e-Invoicing",
     body: "Snap a receipt → OCR → MyInvois-compliant e-invoice, PDPA-masked before it's ever stored.",
     icon: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
   },
   {
-    tone: "is-purple",
-    title: "Finance Dashboard",
+    tone: "is-orange",
+    title: "Financial Intelligence",
     body: "Interactive revenue, profit, and AR charts — hover for exact figures, jump straight into what's overdue.",
     icon: <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />,
   },
   {
-    tone: "is-orange",
-    title: "Audit Trail",
-    body: "Every access decision hash-chained, searchable by actor, grouped by day — nothing gets buried.",
-    icon: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
-  },
-  {
     tone: "is-blue",
-    title: "Approvals",
+    title: "Workflows",
     body: "Every agent action — an invoice, a client email — waits for your confirmation. Nothing ships on its own.",
     icon: <path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />,
   },
   {
     tone: "is-green",
-    title: "Ingestion",
+    title: "Sources",
     body: "Telegram, email, and file uploads — captured live, protected before any text reaches an AI model.",
     icon: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />,
+  },
+  {
+    tone: "is-purple",
+    title: "Audit & Access",
+    body: "Every access decision hash-chained, searchable by actor, grouped by day — nothing gets buried.",
+    icon: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
   },
 ];
 
@@ -340,6 +348,14 @@ export default function Landing() {
               </div>
 
               <div className="fb-mkt-preview-content" key={activeScreen}>
+                {activeScreen === "customers" && (
+                  <div className="fb-mkt-preview-pane">
+                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Customers · ranked by attention</div>
+                    <div className="fb-mkt-preview-log-row"><span>Meridian Corp · RM 18,400 overdue</span><span className="fb-mkt-pill is-urgent">Urgent</span></div>
+                    <div className="fb-mkt-preview-log-row"><span>Grab Malaysia · RM 6,100 overdue</span><span className="fb-mkt-pill is-restricted">High</span></div>
+                    <div className="fb-mkt-preview-log-row"><span>TechHub Solutions · on schedule</span><span className="fb-mkt-pill is-allowed">Healthy</span></div>
+                  </div>
+                )}
                 {activeScreen === "agents" && (
                   <div className="fb-mkt-preview-pane">
                     <div className="fb-mkt-ask">
@@ -360,7 +376,7 @@ export default function Landing() {
                 )}
                 {activeScreen === "finance" && (
                   <div className="fb-mkt-preview-pane">
-                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Finance Dashboard</div>
+                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Financial Intelligence</div>
                     <div className="fb-mkt-preview-kpis">
                       <div>
                         <span>Total revenue</span>
@@ -383,7 +399,7 @@ export default function Landing() {
                 )}
                 {activeScreen === "audit" && (
                   <div className="fb-mkt-preview-pane">
-                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Audit Trail</div>
+                    <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: ".8rem" }}>Audit &amp; Access</div>
                     <div className="fb-mkt-preview-chain-ok"><span className="fb-mkt-dot" />Valid hash chain · 128 entries</div>
                     <div className="fb-mkt-preview-log-row"><span>chloe@finbrain.my · Chat Query</span><span className="fb-mkt-pill is-allowed">Allowed</span></div>
                     <div className="fb-mkt-preview-log-row"><span>invoicing-agent · Agent Run</span><span className="fb-mkt-pill is-allowed">Allowed</span></div>
@@ -423,7 +439,7 @@ export default function Landing() {
           <div className="fb-mkt-flow-card">
             <div className="fb-mkt-icon-badge is-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a9 9 0 1 0 9 9" /><path d="M12 3v9l6 3" /></svg></div>
             <h3>Question in →</h3>
-            <p>Ask from Customer Intelligence, or the Ask FinBrain panel on any screen.</p>
+            <p>Ask from the Ask screen — or the Ask FinBrain panel available on every screen.</p>
             <div className="fb-mkt-flow-chain">
               <span>Ask FinBrain</span><span>→</span><strong>FINBRAIN Agent</strong><span>→</span><span>Cited answer</span>
             </div>
@@ -448,35 +464,23 @@ export default function Landing() {
       <Reveal className="fb-mkt-section fb-mkt-proof-dark" id="landing-proof">
         <div className="fb-mkt-section-head">
           <div className="fb-mkt-eyebrow is-plain">Proof, not just promises</div>
-          <h2>The same dashboard your team sees after signing in</h2>
-          <p>Not marketing screenshots — the actual finance dashboard and audit trail.</p>
+          <h2>The same screens your team sees after signing in</h2>
+          <p>Real screenshots of the running app — not marketing mockups. Company names shown are illustrative examples, not live customer data.</p>
         </div>
         <div className="fb-mkt-proof-grid">
           <div className="fb-mkt-proof-panel">
-            <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: "1rem" }}>Finance Dashboard</div>
-            <div className="fb-mkt-proof-kpi-row">
-              <div>
-                <span style={{ fontSize: ".7rem", color: "var(--a-ink-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>Total revenue</span>
-                <strong>RM 1.84M</strong>
-                <div className="fb-mkt-delta is-good">▲ 12.4% vs last quarter</div>
-              </div>
-              <div>
-                <span style={{ fontSize: ".7rem", color: "var(--a-ink-faint)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>Outstanding AR</span>
-                <strong>RM 94K</strong>
-                <div className="fb-mkt-delta is-attn">⚠ 4.2% vs last quarter — review</div>
-              </div>
+            <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: "1rem" }}>Briefing</div>
+            <div className="fb-mkt-proof-shot-frame">
+              <img src="/screenshots/briefing.png" alt="FinBrain Briefing screen listing customers ranked by attention score, most urgent first" loading="lazy" />
             </div>
-            <button className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} type="button" onClick={() => show("signup")}>See the full dashboard</button>
+            <button className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} type="button" onClick={() => show("signup")}>See your own briefing</button>
           </div>
           <div className="fb-mkt-proof-panel">
-            <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: "1rem" }}>Audit Trail</div>
-            <div style={{ padding: ".9rem 1rem", borderRadius: "var(--a-radius-sm)", background: "var(--a-green-soft)", color: "var(--a-green)", fontSize: ".8rem", fontWeight: 600, marginBottom: "1rem" }}>Chain verified — 128 entries, 0 gaps.</div>
-            <div className="fb-mkt-proof-audit-rows">
-              <div className="fb-mkt-log-row"><div className="fb-mkt-log-row-time">chloe@finbrain.my · Chat Query</div><div className="fb-mkt-log-row-text">Board Meeting — 14 Jul 2026 minutes <span className="fb-mkt-pill is-allowed">Allowed</span></div></div>
-              <div className="fb-mkt-log-row"><div className="fb-mkt-log-row-time">guest-7f2a · Chat Query</div><div className="fb-mkt-log-row-text">Board Meeting — 14 Jul 2026 minutes <span className="fb-mkt-pill is-restricted">Denied</span></div></div>
-              <div className="fb-mkt-log-row"><div className="fb-mkt-log-row-time">invoicing-agent · Agent Run</div><div className="fb-mkt-log-row-text">Receipt OCR — Grab Malaysia <span className="fb-mkt-pill is-allowed">Allowed</span></div></div>
+            <div className="fb-mkt-eyebrow is-plain" style={{ marginBottom: "1rem" }}>Customers</div>
+            <div className="fb-mkt-proof-shot-frame">
+              <img src="/screenshots/customers.png" alt="FinBrain Customers screen showing every customer ranked by attention score, outstanding and overdue amounts" loading="lazy" />
             </div>
-            <button className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} type="button" onClick={() => show("signup")}>See the full audit trail</button>
+            <button className="fb-mkt-btn is-outline" style={{ width: "100%", justifyContent: "center" }} type="button" onClick={() => show("signup")}>See the full customer list</button>
           </div>
         </div>
       </Reveal>

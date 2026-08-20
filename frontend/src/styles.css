@@ -1028,6 +1028,7 @@ html{scroll-behavior:smooth;}
 .fb-mkt-pill{display:inline-flex;align-items:center;gap:.35rem;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:.22rem .55rem;border-radius:99px;}
 .fb-mkt-pill.is-restricted{background:var(--a-orange-soft);color:var(--a-orange);}
 .fb-mkt-pill.is-allowed{background:var(--a-green-soft);color:var(--a-green);}
+.fb-mkt-pill.is-urgent{background:var(--a-orange);color:#fff;}
 .fb-mkt-float-badge{position:absolute;bottom:-1.1rem;left:-1.3rem;background:var(--a-ink);color:var(--a-bg);border-radius:var(--a-radius-sm);padding:.7rem 1rem;box-shadow:var(--a-shadow-sm);font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:.5rem;z-index:2;}
 .fb-mkt-float-badge .fb-mkt-dot{width:7px;height:7px;border-radius:50%;background:var(--a-green);box-shadow:0 0 0 3px rgba(0,168,104,.25);}
 @media (max-width:920px){
@@ -1068,8 +1069,9 @@ html{scroll-behavior:smooth;}
 .fb-mkt-icon-badge svg{width:22px;height:22px;}
 
 .fb-mkt-agent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;max-width:1080px;margin:0 auto;}
-@media (max-width:900px){ .fb-mkt-agent-grid{grid-template-columns:repeat(2,1fr);} }
-@media (max-width:560px){ .fb-mkt-agent-grid{grid-template-columns:1fr;} }
+.fb-mkt-agent-grid > :nth-child(7){grid-column:2;}
+@media (max-width:900px){ .fb-mkt-agent-grid{grid-template-columns:repeat(2,1fr);} .fb-mkt-agent-grid > :nth-child(7){grid-column:1/-1;max-width:340px;margin:0 auto;} }
+@media (max-width:560px){ .fb-mkt-agent-grid{grid-template-columns:1fr;} .fb-mkt-agent-grid > :nth-child(7){grid-column:auto;max-width:none;margin:0;} }
 .fb-mkt-agent-card{border:1px solid var(--a-line);border-radius:var(--a-radius-md);padding:1.5rem;background:var(--a-surface);transition:transform .25s cubic-bezier(.16,1,.3,1),box-shadow .25s ease,border-color .25s ease;}
 .fb-mkt-agent-card:hover{transform:translateY(-6px);box-shadow:var(--a-shadow-sm);border-color:var(--a-line-soft);}
 .fb-mkt-agent-card:hover .fb-mkt-icon-badge{transform:scale(1.1) rotate(-4deg);}
@@ -1090,6 +1092,8 @@ html{scroll-behavior:smooth;}
 .fb-mkt-proof-kpi-row{display:flex;gap:2rem;margin-bottom:1.4rem;flex-wrap:wrap;}
 .fb-mkt-proof-kpi-row div strong{display:block;font-family:var(--font-display);font-size:1.5rem;font-weight:800;margin:.25rem 0;}
 .fb-mkt-proof-audit-rows{display:flex;flex-direction:column;gap:.6rem;margin-bottom:1.3rem;}
+.fb-mkt-proof-shot-frame{border:1px solid var(--a-line);border-radius:var(--a-radius-md);overflow:hidden;margin-bottom:1.2rem;background:var(--a-surface-2);}
+.fb-mkt-proof-shot-frame img{display:block;width:100%;height:auto;}
 .fb-mkt-log-row{border:1px solid var(--a-line);border-radius:var(--a-radius-sm);padding:.7rem .9rem;background:var(--a-surface-2);}
 .fb-mkt-log-row-time{font-size:.64rem;color:var(--a-ink-faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem;}
 .fb-mkt-log-row-text{font-size:.78rem;color:var(--a-ink);display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;}
