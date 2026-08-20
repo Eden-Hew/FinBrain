@@ -21,6 +21,7 @@ from app.routes import (
     health,
     ingestion,
     integrations,
+    outreach,
     privacy,
     query,
     query_artifacts,
@@ -107,6 +108,7 @@ app.include_router(query_artifacts.router)
 app.include_router(audit_log.router)
 app.include_router(ingestion.router)
 app.include_router(integrations.router)
+app.include_router(outreach.router)
 app.include_router(recommendations.router)
 app.include_router(einvoice.router)
 app.include_router(finance.router)

@@ -611,6 +611,86 @@ class CustomerAttentionSignal(Base):
     details: Mapped[dict[str, Any]] = mapped_column(ObjectType(), default=dict, nullable=False)
 
 
+class CustomerEndpoint(Base):
+    __tablename__ = "customer_endpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "customer_id",
+            "channel",
+            "endpoint_token",
+            name="customer_endpoint_unique",
+        ),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id"), nullable=False)
+    channel: Mapped[str] = mapped_column(String, nullable=False)
+    endpoint_token: Mapped[str] = mapped_column(String, nullable=False)
+    verification_status: Mapped[str] = mapped_column(String, default="observed", nullable=False)
+    verified_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OutreachAction(Base):
+    __tablename__ = "outreach_actions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="outreach_idempotency_unique"),
+        UniqueConstraint(
+            "tenant_id", "provider_message_ref_hash", name="outreach_provider_ref_unique"
+        ),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id"), nullable=False)
+    customer_endpoint_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customer_endpoints.id"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String, nullable=False)
+    protected_subject: Mapped[str] = mapped_column(Text, nullable=False)
+    protected_body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="draft", nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), nullable=False)
+    approved_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    send_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_message_ref_hash: Mapped[str | None] = mapped_column(String)
+    failure_code: Mapped[str | None] = mapped_column(String)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class OutreachEvidence(Base):
+    __tablename__ = "outreach_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "outreach_action_id", "tokenized_content_id", name="outreach_evidence_unique"
+        ),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    outreach_action_id: Mapped[str] = mapped_column(
+        String, ForeignKey("outreach_actions.id"), nullable=False
+    )
+    tokenized_content_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id"), nullable=False
+    )
+    purpose: Mapped[str] = mapped_column(String, default="supporting", nullable=False)
+
+
 class EInvoiceRecord(Base):
     __tablename__ = "einvoice_records"
 

@@ -666,3 +666,42 @@ class CustomerDetailResponse(CustomerSummaryResponse):
 class CustomerBriefingResponse(BaseModel):
     generated_at: datetime
     customers: list[CustomerSummaryResponse]
+
+
+class CustomerEndpointCreateRequest(BaseModel):
+    channel: Literal["email"] = "email"
+    value: str = Field(min_length=3, max_length=320)
+
+
+class CustomerEndpointResponse(BaseModel):
+    id: int
+    customer_id: int
+    channel: str
+    masked_value: str
+    verification_status: str
+    created_at: datetime
+
+
+class OutreachCreateRequest(BaseModel):
+    customer_endpoint_id: int
+    subject: str = Field(min_length=1, max_length=998)
+    body: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: str = Field(min_length=8, max_length=100)
+    evidence_content_ids: list[int] = Field(default_factory=list, max_length=20)
+
+
+class OutreachActionResponse(BaseModel):
+    id: str
+    customer_id: int
+    customer_endpoint_id: int
+    channel: str
+    protected_subject: str
+    protected_body: str
+    status: str
+    idempotency_key: str
+    attempt_count: int
+    failure_code: str | None
+    created_at: datetime
+    approved_at: datetime | None
+    sent_at: datetime | None
+    replied_at: datetime | None
