@@ -235,6 +235,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
     supplier_name: "",
     supplier_tin: "",
     buyer_name: "",
+    buyer_email: "",
     invoice_no: "",
     issue_date: "",
     currency: "MYR",
@@ -265,6 +266,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         supplier_name: extracted.supplier_name ?? f.supplier_name,
         supplier_tin: extracted.supplier_tin ?? f.supplier_tin,
         buyer_name: extracted.buyer_name ?? f.buyer_name,
+        buyer_email: f.buyer_email,
         invoice_no: extracted.invoice_no ?? f.invoice_no,
         issue_date: extracted.issue_date ?? f.issue_date,
         currency: extracted.currency ?? f.currency,
@@ -293,6 +295,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         supplier_name: form.supplier_name.trim(),
         supplier_tin: form.supplier_tin.trim() || null,
         buyer_name: form.buyer_name.trim() || null,
+        buyer_email: form.buyer_email.trim() || null,
         invoice_no: form.invoice_no.trim() || null,
         issue_date: form.issue_date || null,
         currency: form.currency.trim() || null,
@@ -345,6 +348,9 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         <label className="fb-field-label">Buyer name
           <input className="fb-field-mock" {...field("buyer_name")} />
         </label>
+        <label className="fb-field-label">Buyer email
+          <input className="fb-field-mock" type="email" {...field("buyer_email")} placeholder="e.g. finance@buyer.com" />
+        </label>
         <label className="fb-field-label">Invoice no.
           <input className="fb-field-mock" {...field("invoice_no")} />
         </label>
@@ -352,7 +358,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
           <input className="fb-field-mock" type="date" {...field("issue_date")} />
         </label>
         <label className="fb-field-label">Currency
-          <input className="fb-field-mock" {...field("currency")} />
+          <input className="fb-field-mock" {...field("currency")} placeholder="e.g. MYR, USD" />
         </label>
         <label className="fb-field-label">Tax type
           <input className="fb-field-mock" {...field("tax_type")} placeholder="e.g. SST" />
@@ -360,7 +366,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         <label className="fb-field-label">Tax rate
           <input className="fb-field-mock" {...field("tax_rate")} placeholder="e.g. 6%" />
         </label>
-        <label className="fb-field-label">Total amount (RM)
+        <label className="fb-field-label">Total amount ({form.currency?.trim() ? form.currency.trim().toUpperCase() : "RM"})
           <input className="fb-field-mock" type="number" step="0.01" min="0.01" {...field("total_amount")} required />
         </label>
       </div>

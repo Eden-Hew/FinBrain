@@ -836,6 +836,7 @@ export interface EInvoiceCreatePayload {
   supplier_name: string;
   supplier_tin?: string | null;
   buyer_name?: string | null;
+  buyer_email?: string | null;
   invoice_no?: string | null;
   issue_date?: string | null;
   currency?: string | null;

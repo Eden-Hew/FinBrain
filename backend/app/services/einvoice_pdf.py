@@ -947,39 +947,86 @@ def render_einvoice_pdf(
     # 6. TOTALS BLOCK & PAYMENT INFO GRID
     # ==========================================
     # Payment info block (left)
-    pay_rows = [
-        [Paragraph("PAYMENT INFORMATION", style_box_head), Paragraph("", style_box_head)],
-        [
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT MODE:</b></font><br/>{data.payment.mode or 'Bank Transfer'}",
-                style_meta_val,
-            ),
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>BANK ACC NO:</b></font><br/><b>{data.payment.bank_account_no or '—'}</b>",
-                style_meta_val,
-            ),
-        ],
-        [
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>TERMS:</b></font><br/>{data.payment.terms or 'Net 30 Days'}",
-                style_meta_val,
-            ),
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>DUE DATE:</b></font><br/>{data.payment.due_date or data.document.issue_date}",
-                style_meta_val,
-            ),
-        ],
-        [
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT REF:</b></font><br/>{data.payment.payment_reference_no or data.document.einvoice_code}",
-                style_meta_val,
-            ),
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>BILL REF:</b></font><br/>{data.payment.bill_reference_no or '—'}",
-                style_meta_val,
-            ),
-        ],
-    ]
+    if data.payment.paid_at:
+        pay_rows = [
+            [
+                Paragraph(
+                    "PAYMENT SETTLEMENT &bull; <font color='#10B981'>PAID</font>",
+                    style_box_head,
+                ),
+                Paragraph("", style_box_head),
+            ],
+            [
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>SETTLEMENT STATUS:</b></font><br/><font color='#10B981'><b>Paid on {data.payment.paid_at}</b></font>",
+                    style_meta_val,
+                ),
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>BENEFICIARY ACCOUNT:</b></font><br/><b>{data.payment.bank_account_no or '—'}</b>",
+                    style_meta_val,
+                ),
+            ],
+            [
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT METHOD:</b></font><br/>{data.payment.mode or 'Bank Transfer'}",
+                    style_meta_val,
+                ),
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>TRANSACTION REF:</b></font><br/>{data.payment.payment_reference_no or data.document.einvoice_code}",
+                    style_meta_val,
+                ),
+            ],
+            [
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>TERMS:</b></font><br/>{data.payment.terms or 'Net 30 Days'}",
+                    style_meta_val,
+                ),
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>BILL REF:</b></font><br/>{data.payment.bill_reference_no or '—'}",
+                    style_meta_val,
+                ),
+            ],
+        ]
+    else:
+        pay_rows = [
+            [
+                Paragraph(
+                    "REMITTANCE &amp; PAYMENT INSTRUCTIONS",
+                    style_box_head,
+                ),
+                Paragraph("", style_box_head),
+            ],
+            [
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAY TO / BENEFICIARY:</b></font><br/><b>{data.supplier.name}</b>",
+                    style_meta_val,
+                ),
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>BANK ACC NO:</b></font><br/><b>{data.payment.bank_account_no or '—'}</b>",
+                    style_meta_val,
+                ),
+            ],
+            [
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT TERMS:</b></font><br/>{data.payment.terms or 'Net 30 Days'}",
+                    style_meta_val,
+                ),
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT DUE DATE:</b></font><br/><b>{data.payment.due_date or data.document.issue_date}</b>",
+                    style_meta_val,
+                ),
+            ],
+            [
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>QUOTE FOR REMITTANCE:</b></font><br/>{data.document.einvoice_code}",
+                    style_meta_val,
+                ),
+                Paragraph(
+                    f"<font size='6' color='{MID_GREY.hexval()}'><b>ACCEPTED MODES:</b></font><br/>{data.payment.mode or 'Bank Transfer / DuitNow'}",
+                    style_meta_val,
+                ),
+            ],
+        ]
     t_pay_box = Table(pay_rows, colWidths=[130, 140])
     t_pay_box.setStyle(
         TableStyle(
