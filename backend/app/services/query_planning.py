@@ -185,7 +185,9 @@ def plan_query(
     timezone_name: str | None = None,
 ) -> QueryPlan:
     """Plan trusted metadata filters before PII tokenization changes the question text."""
-    lowered = re.sub(r"\s+", " ", question.casefold()).strip()
+    # Treat API/database spellings such as source_system and customer_email as
+    # their natural-language equivalents before applying the trusted planner.
+    lowered = re.sub(r"\s+", " ", re.sub(r"[_]+", " ", question.casefold())).strip()
     sources = _mentioned_sources(lowered, available_sources)
     occurred_from, occurred_to = _date_range(
         lowered,

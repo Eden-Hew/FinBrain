@@ -149,6 +149,16 @@ def test_referential_follow_up_reuses_prior_citations_with_filters_and_ordinals(
         )
         assert [hit.source_record_id for hit in email_hits] == ["email:1"]
         assert [hit.source_record_id for hit in second] == ["telegram:1"]
+        for question in (
+            "Tell me about email 2",
+            "Tell me about the 2nd email",
+            "About 2",
+            "Describe the second email",
+            "Inspect SOURCE-2",
+        ):
+            assert is_referential_question(question)
+            selected = prior_citation_hits(db, conversation.id, question, DEFAULT_TENANT_ID)
+            assert [hit.source_record_id for hit in selected] == ["telegram:1"]
     finally:
         db.close()
         engine.dispose()
@@ -225,9 +235,10 @@ def test_expiry_and_delete_remove_replayable_turns():
         )
         delete_conversation(db, active.id, DEFAULT_TENANT_ID)
         assert db.get(Conversation, active.id).status == "deleted"
-        assert db.scalar(
-            select(ConversationTurn).where(ConversationTurn.conversation_id == active.id)
-        ) is None
+        assert (
+            db.scalar(select(ConversationTurn).where(ConversationTurn.conversation_id == active.id))
+            is None
+        )
     finally:
         db.close()
         engine.dispose()
@@ -281,9 +292,7 @@ def test_query_route_creates_context_and_intersects_follow_up_sources(monkeypatc
         assert turns[1].protected_question == "Which of those came from email?"
         assert "Protected conversation history" not in turns[1].protected_question
         assert "deterministic conversation resolver has already selected" in captured["question"]
-        assert captured["question"].endswith(
-            "User follow-up: Which of those came from email?"
-        )
+        assert captured["question"].endswith("User follow-up: Which of those came from email?")
     finally:
         db.close()
         engine.dispose()

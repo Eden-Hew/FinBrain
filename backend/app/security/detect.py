@@ -76,6 +76,8 @@ def _get_model():
             device = settings.gliner_device
             if device == "auto":
                 device = "cuda" if torch.cuda.is_available() else "cpu"
+            if device == "cpu":
+                torch.set_num_threads(settings.gliner_cpu_threads)
             _model = GLiNER.from_pretrained(settings.gliner_model_name).to(device)
             _model.eval()
             logger.info("GLiNER loaded on %s", device)
@@ -106,9 +108,7 @@ def _gliner_detect(text: str, threshold: float = 0.4) -> list[Span]:
             continue
         if label == "person" and normalized in NON_PERSON_ROLE_TERMS:
             continue
-        output.append(
-            Span(entity["start"], entity["end"], value, str(entity["label"]), "gliner")
-        )
+        output.append(Span(entity["start"], entity["end"], value, str(entity["label"]), "gliner"))
     return output
 
 

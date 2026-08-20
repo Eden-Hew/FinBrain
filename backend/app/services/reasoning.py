@@ -1,9 +1,13 @@
 import logging
 import re
 
+import httpx
+from pydantic import ValidationError
+
 from app.config import get_settings
 from app.schemas import CitedAnswer
 from app.security.detect import contains_known_pii
+from app.services.gemini import gemini_client
 from app.services.morpheus import morpheus_chat
 from app.services.retrieval import RetrievalHit
 
@@ -21,11 +25,33 @@ ANALYZE_ALL_BATCH_SIZE = 20
 logger = logging.getLogger(__name__)
 
 
+def _provider_error_code(error: Exception) -> str:
+    if isinstance(error, httpx.TimeoutException):
+        return "provider_timeout"
+    if isinstance(error, httpx.HTTPStatusError):
+        return "provider_http_error"
+    if isinstance(error, ValidationError):
+        return "provider_schema_violation"
+    message = str(error).casefold()
+    if "empty response" in message or "no answer was generated" in message:
+        return "provider_empty_response"
+    if "unknown citation" in message:
+        return "provider_unknown_citation"
+    if "at least one citation" in message:
+        return "provider_missing_citation"
+    if "sensitive data" in message or "recognized pii" in message:
+        return "provider_pii_violation"
+    if "unknown protected token" in message:
+        return "provider_unknown_token"
+    return "provider_invalid_response"
+
+
 def _log_provider_failure(provider: str, error: Exception) -> None:
     """Log only a safe failure class; provider messages may contain echoed content."""
     logger.warning(
-        "reasoning_provider_failed provider=%s error_type=%s",
+        "reasoning_provider_failed provider=%s error_code=%s error_type=%s",
         provider,
+        _provider_error_code(error),
         type(error).__name__,
     )
 
@@ -46,6 +72,7 @@ def structured_record_listing(hits: list[RetrievalHit]) -> CitedAnswer:
         citations=[f"SOURCE-{index}" for index in range(1, len(hits) + 1)],
         insufficient_evidence=False,
     )
+
 
 TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
 
@@ -82,9 +109,7 @@ def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
                 raise
     if settings.gemini_api_key:
         try:
-            from google import genai
-
-            client = genai.Client(api_key=settings.gemini_api_key)
+            client = gemini_client()
             response = client.models.generate_content(
                 model=settings.gemini_reasoning_model,
                 contents=f"Context:\n{context}\n\nQuestion: {question}",
@@ -105,9 +130,7 @@ def unknown_tokens(text: str, known_tokens: set[str]) -> set[str]:
     return output_tokens - known_tokens
 
 
-def _cited_context(
-    hits: list[RetrievalHit], *, citation_offset: int = 0
-) -> tuple[str, set[str]]:
+def _cited_context(hits: list[RetrievalHit], *, citation_offset: int = 0) -> tuple[str, set[str]]:
     blocks: list[str] = []
     citation_ids: set[str] = set()
     for index, hit in enumerate(hits, 1 + citation_offset):
@@ -173,9 +196,7 @@ def _answer_cited_context(
                 raise
     if settings.gemini_api_key:
         try:
-            from google import genai
-
-            client = genai.Client(api_key=settings.gemini_api_key)
+            client = gemini_client()
             response = client.models.generate_content(
                 model=settings.gemini_reasoning_model,
                 contents=f"Context:\n{context}\n\nQuestion: {question}",
@@ -221,9 +242,7 @@ def _answer_cited_context(
     return result, "offline-demo"
 
 
-def answer_query_with_citations(
-    question: str, hits: list[RetrievalHit]
-) -> tuple[CitedAnswer, str]:
+def answer_query_with_citations(question: str, hits: list[RetrievalHit]) -> tuple[CitedAnswer, str]:
     context, allowed_citations = _cited_context(hits)
     if contains_known_pii(question) or contains_known_pii(context):
         raise ValueError("Refusing to send recognized PII to the reasoning service")

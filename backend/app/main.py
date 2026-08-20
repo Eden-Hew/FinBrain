@@ -1,7 +1,9 @@
 import logging
+import uuid
 from contextlib import asynccontextmanager
+from time import perf_counter
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -38,6 +40,39 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def attach_request_id(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    started = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception(
+            "http_request_failed",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "duration_ms": round((perf_counter() - started) * 1_000, 1),
+            },
+        )
+        raise
+    response.headers["X-Request-ID"] = request_id
+    logger.info(
+        "http_request_completed",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": round((perf_counter() - started) * 1_000, 1),
+        },
+    )
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -50,7 +85,9 @@ app.add_middleware(
         "X-FinBrain-Filename",
         "X-FinBrain-Record-Type",
         "X-FinBrain-Preview-Digest",
+        "X-Request-ID",
     ],
+    expose_headers=["X-Request-ID"],
 )
 app.include_router(auth.router)
 app.include_router(query.router)

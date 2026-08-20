@@ -15,12 +15,38 @@ from app.services.retrieval import RetrievalHit
 
 CONVERSATION_TTL = timedelta(hours=24)
 HISTORY_TURN_LIMIT = 6
+ORDINALS = {
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+    "eleventh": 11,
+    "twelfth": 12,
+    "thirteenth": 13,
+    "fourteenth": 14,
+    "fifteenth": 15,
+    "sixteenth": 16,
+    "seventeenth": 17,
+    "eighteenth": 18,
+    "nineteenth": 19,
+    "twentieth": 20,
+}
+_ORDINAL_WORDS = "|".join(ORDINALS)
+_REFERENCE_NOUNS = r"(?:one|result|record|source|email|message|invoice)"
 REFERENCE_PATTERN = re.compile(
-    r"\b(?:those|these|them|it|that|that record|the (?:first|second|third|previous) "
-    r"(?:one|result)|(?:first|second|third) one)\b",
+    rf"\b(?:those|these|them|it|that|that record|the previous {_REFERENCE_NOUNS}|"
+    rf"(?:the\s+)?(?:{_ORDINAL_WORDS})\s+{_REFERENCE_NOUNS}|"
+    rf"(?:source|email|result|record)[\s-]*(?:number\s*)?\d{{1,2}}|"
+    rf"(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\s+{_REFERENCE_NOUNS}|"
+    rf"about\s+(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)?(?:\s+{_REFERENCE_NOUNS})?)\b",
     re.IGNORECASE,
 )
-ORDINALS = {"first": 1, "second": 2, "third": 3}
 
 
 def _now() -> datetime:
@@ -61,10 +87,7 @@ def get_active_conversation(
         or conversation.tenant_id != tenant_id
     ):
         raise ValueError("conversation_not_found")
-    if (
-        created_by_user_id is not None
-        and conversation.created_by_user_id != created_by_user_id
-    ):
+    if created_by_user_id is not None and conversation.created_by_user_id != created_by_user_id:
         raise ValueError("conversation_not_found")
     if conversation.status == "expired" or _aware(conversation.expires_at) <= _now():
         conversation.status = "expired"
@@ -115,8 +138,17 @@ def is_referential_question(question: str) -> bool:
 def _requested_ordinal(question: str) -> int | None:
     lowered = question.casefold()
     for word, ordinal in ORDINALS.items():
-        if re.search(rf"\b(?:the\s+)?{word}\s+(?:one|result)\b", lowered):
+        if re.search(rf"\b(?:the\s+)?{word}\s+{_REFERENCE_NOUNS}\b", lowered):
             return ordinal
+    numeric_patterns = (
+        r"\b(?:source|email|result|record)[\s-]*(?:number\s*)?(\d{1,2})\b",
+        rf"\b(?:the\s+)?(\d{{1,2}})(?:st|nd|rd|th)\s+{_REFERENCE_NOUNS}\b",
+        rf"\babout\s+(?:the\s+)?(\d{{1,2}})(?:st|nd|rd|th)?(?:\s+{_REFERENCE_NOUNS})?\b",
+    )
+    for pattern in numeric_patterns:
+        if match := re.search(pattern, lowered):
+            ordinal = int(match.group(1))
+            return ordinal if ordinal > 0 else None
     return None
 
 
@@ -237,15 +269,9 @@ def delete_conversation(
         ConversationTurn.conversation_id == conversation.id
     )
     db.execute(
-        delete(ConversationTurnCitation).where(
-            ConversationTurnCitation.turn_id.in_(turn_ids)
-        )
+        delete(ConversationTurnCitation).where(ConversationTurnCitation.turn_id.in_(turn_ids))
     )
-    db.execute(
-        delete(ConversationTurn).where(
-            ConversationTurn.conversation_id == conversation.id
-        )
-    )
+    db.execute(delete(ConversationTurn).where(ConversationTurn.conversation_id == conversation.id))
     conversation.status = "deleted"
     db.commit()
 

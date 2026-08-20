@@ -11,6 +11,7 @@ import {
 import { matchEinvoiceReadinessEmbed, resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
 import {
   askQuestion,
+  ApiError,
   commitUpload,
   previewUpload,
   type QueryCitation,
@@ -160,9 +161,12 @@ export default function Agents() {
         modelQuestion = response.model_question;
         turnId = response.turn_id ?? undefined;
         embed = matchEinvoiceReadinessEmbed(trimmed) ?? undefined;
-      } catch {
-        // Preserve the visual demonstration when the local backend is unavailable.
+      } catch (error) {
         isFallback = true;
+        embed = undefined;
+        finalText = error instanceof ApiError
+          ? `FinBrain could not complete this request (${error.code}).${error.requestId ? ` Reference: ${error.requestId}` : ""}`
+          : "FinBrain could not reach the backend. Check the connection and try again.";
       }
 
       setMessages((messages) => messages.map((message) => (
@@ -354,7 +358,7 @@ export default function Agents() {
                 ) : (
                   <>
                     {msg.isFallback && (
-                      <div className="fb-intel-fallback" role="status">Sample response — the live backend is unavailable.</div>
+                      <div className="fb-intel-fallback" role="status">The live request failed; no sample answer was substituted.</div>
                     )}
                     {!msg.brief && msg.queryIntent !== "list_records" && (
                       <span style={{ whiteSpace: "pre-wrap" }}>

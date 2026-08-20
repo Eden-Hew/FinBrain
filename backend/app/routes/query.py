@@ -33,7 +33,7 @@ from app.services.reasoning import (
     structured_record_listing,
     unknown_tokens,
 )
-from app.services.retrieval import RetrievalHit, retrieve_hits
+from app.services.retrieval import RetrievalHit, retrieve_hybrid_hits
 
 router = APIRouter(tags=["query"])
 
@@ -158,7 +158,13 @@ def query(
             hits = prior_hits or []
         else:
             query_embedding, _embedding_mode = embed_query_cached(sanitized_question)
-            hits = retrieve_hits(db, query_embedding, k=SEMANTIC_TOP_K, filters=plan.filters)
+            hits = retrieve_hybrid_hits(
+                db,
+                sanitized_question,
+                query_embedding,
+                k=SEMANTIC_TOP_K,
+                filters=plan.filters,
+            )
         cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
     else:  # QueryIntent.ANALYZE_ALL: unbounded on purpose, see SEMANTIC_TOP_K note above.
         hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters)
@@ -198,17 +204,13 @@ def query(
         user_role=principal.role.value,
         protected_question=sanitized_question,
         protected_answer=raw_answer,
-        protected_brief=(
-            protected_brief.model_dump(mode="json") if protected_brief else None
-        ),
+        protected_brief=(protected_brief.model_dump(mode="json") if protected_brief else None),
         query_intent=plan.intent.value,
         source_systems=list(plan.source_systems),
         reasoning_mode=reasoning_mode,
         insufficient_evidence=cited_answer.insufficient_evidence,
         cited_hits=(
-            conversation_context_hits
-            if conversation_context_hits is not None
-            else cited_hits
+            conversation_context_hits if conversation_context_hits is not None else cited_hits
         ),
         citation_ordinals=(
             None
@@ -260,9 +262,7 @@ def query(
                 similarity=hit.similarity,
                 freshness=citation_freshness(hit)[0],
                 age_days=citation_freshness(hit)[1],
-                relation=(
-                    "stale" if citation_freshness(hit)[0] == "stale" else "supporting"
-                ),
+                relation=("stale" if citation_freshness(hit)[0] == "stale" else "supporting"),
             )
             for index, hit in enumerate(hits, 1)
             if f"SOURCE-{index}" in cited_answer.citations
@@ -281,11 +281,7 @@ def query(
             recognized_sensitive_fields=len(query_entries),
             protected_question_tokens=len(set(TOKEN_PATTERN.findall(sanitized_question))),
             protected_context_tokens=len(
-                {
-                    token
-                    for hit in hits
-                    for token in TOKEN_PATTERN.findall(hit.retrieval_text)
-                }
+                {token for hit in hits for token in TOKEN_PATTERN.findall(hit.retrieval_text)}
             ),
             restored_tokens=(
                 brief_trace.restored_tokens if brief_trace else answer_trace.restored_tokens
@@ -301,9 +297,7 @@ def query(
                 else answer_trace.disclosure_session_ref
             ),
             single_use_grants=(
-                brief_trace.single_use_grants
-                if brief_trace
-                else answer_trace.single_use_grants
+                brief_trace.single_use_grants if brief_trace else answer_trace.single_use_grants
             ),
             vault_key_version=(
                 db.scalar(

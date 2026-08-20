@@ -27,15 +27,25 @@ def get_current_user(
         )
     try:
         claims = verify_access_token(credentials.credentials)
-        user_id = UUID(str(claims["sub"]))
-        tenant_id = UUID(str(claims["tenant_id"]))
-    except (AccessTokenError, KeyError, TypeError, ValueError) as error:
-        # A missing/invalid tenant_id claim also lands here — most commonly a JWT
-        # minted before the tenant auth hook was deployed. The fix is a fresh login,
-        # same remedy as any other invalid-token case, so it shares this detail.
+    except AccessTokenError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid_access_token",
+            detail=str(error),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+    if "tenant_id" not in claims:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing_tenant_claim",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        user_id = UUID(str(claims["sub"]))
+        tenant_id = UUID(str(claims["tenant_id"]))
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid_identity_claims",
             headers={"WWW-Authenticate": "Bearer"},
         ) from error
     assignment = db.get(AuthUserRole, (str(user_id), str(tenant_id)))

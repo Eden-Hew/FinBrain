@@ -99,6 +99,40 @@ def test_missing_token_and_unprovisioned_user_are_denied(monkeypatch):
         engine.dispose()
 
 
+def test_missing_tenant_claim_requests_a_fresh_session(monkeypatch):
+    engine, db = _database()
+    try:
+        monkeypatch.setattr(
+            dependencies,
+            "verify_access_token",
+            lambda _token: {"sub": str(USER_ID), "role": "authenticated"},
+        )
+        with pytest.raises(HTTPException) as error:
+            dependencies.get_current_user(_credentials(), db)
+        assert error.value.status_code == 401
+        assert error.value.detail == "missing_tenant_claim"
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_token_verification_error_is_preserved(monkeypatch):
+    engine, db = _database()
+    try:
+
+        def reject(_token):
+            raise jwt_service.AccessTokenError("expired_access_token")
+
+        monkeypatch.setattr(dependencies, "verify_access_token", reject)
+        with pytest.raises(HTTPException) as error:
+            dependencies.get_current_user(_credentials(), db)
+        assert error.value.status_code == 401
+        assert error.value.detail == "expired_access_token"
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_jwt_verification_checks_signature_issuer_audience_and_role(monkeypatch):
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key = private_key.public_key()

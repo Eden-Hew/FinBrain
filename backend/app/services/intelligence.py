@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.schemas import (
     CustomerIntelligenceBrief,
     IntelligenceAction,
@@ -19,7 +18,6 @@ from app.security.detokenize import (
     DetokenizationTrace,
     detokenize_response_with_trace,
 )
-from app.services.morpheus import morpheus_chat
 from app.services.retrieval import RetrievalHit
 
 logger = logging.getLogger(__name__)
@@ -141,9 +139,7 @@ def build_protected_brief(
     open_commitments: list[IntelligenceClaim] = []
 
     candidates = [
-        (index, hit)
-        for index, hit in enumerate(hits, 1)
-        if f"SOURCE-{index}" in cited_ids
+        (index, hit) for index, hit in enumerate(hits, 1) if f"SOURCE-{index}" in cited_ids
     ]
     ranked = sorted(
         candidates,
@@ -178,13 +174,9 @@ def build_protected_brief(
             risks.append(claim.model_copy(deep=True))
             open_commitments.append(claim.model_copy(deep=True))
         if MISSING_PATTERN.search(source_text):
-            missing.append(
-                claim.model_copy(update={"relation": "missing"}, deep=True)
-            )
+            missing.append(claim.model_copy(update={"relation": "missing"}, deep=True))
 
-    combined = f"{question}\n{protected_answer}\n" + "\n".join(
-        claim.statement for claim in claims
-    )
+    combined = f"{question}\n{protected_answer}\n" + "\n".join(claim.statement for claim in claims)
     status = "at_risk" if risks else "needs_attention"
     subject = (
         "Payment approval intelligence"
@@ -247,83 +239,20 @@ def generate_protected_brief(
     insufficient_evidence: bool,
     reasoning_mode: str,
 ) -> CustomerIntelligenceBrief | None:
-    """Generate the live structured artifact, with a grounded offline fallback."""
-    def fallback() -> CustomerIntelligenceBrief | None:
-        return build_protected_brief(
-            question=question,
-            protected_answer=protected_answer,
-            hits=hits,
-            cited_ids=cited_ids,
-            insufficient_evidence=insufficient_evidence,
-        )
-    if insufficient_evidence or reasoning_mode not in {"morpheus", "gemini"}:
-        return fallback()
+    """Build the structured artifact deterministically from the already-grounded answer.
 
-    context = "\n\n".join(
-        f"[SOURCE-{index}]\n{hit.retrieval_text}"
-        for index, hit in enumerate(hits, 1)
-        if f"SOURCE-{index}" in cited_ids
+    The reasoning provider has already produced and validated the cited answer. A
+    second provider request added latency and could fail independently after a
+    correct answer existed, so brief construction intentionally remains local.
+    """
+    _ = reasoning_mode
+    return build_protected_brief(
+        question=question,
+        protected_answer=protected_answer,
+        hits=hits,
+        cited_ids=cited_ids,
+        insufficient_evidence=insufficient_evidence,
     )
-    if contains_known_pii(question) or contains_known_pii(context):
-        return fallback()
-    schema = CustomerIntelligenceBrief.model_json_schema()
-    instruction = (
-        "Return only a CustomerIntelligenceBrief JSON object. Use only supplied SOURCE-n "
-        "citations. Every factual claim and timeline event must cite evidence. Use relation "
-        "missing only for a stated information gap. Maximums: five claims, five timeline "
-        "events, three risks, three missing-information items. Status must be healthy, "
-        "needs_attention, at_risk, or insufficient_evidence. Preserve protected tokens "
-        "exactly and never invent people, amounts, contacts, or citations. Follow this JSON "
-        f"Schema exactly: {json.dumps(schema, separators=(',', ':'))}"
-    )
-    prompt = (
-        f"Protected evidence:\n{context}\n\nProtected question:\n{question}"
-        f"\n\nGrounded protected answer:\n{protected_answer}"
-    )
-    settings = get_settings()
-    try:
-        if settings.gemini_api_key:
-            from google import genai
-
-            response = genai.Client(api_key=settings.gemini_api_key).models.generate_content(
-                model=settings.gemini_reasoning_model,
-                contents=prompt,
-                config={
-                    "system_instruction": instruction,
-                    "response_mime_type": "application/json",
-                    "response_schema": CustomerIntelligenceBrief,
-                    "temperature": 0.1,
-                },
-            )
-            return (
-                response.parsed
-                if isinstance(response.parsed, CustomerIntelligenceBrief)
-                else CustomerIntelligenceBrief.model_validate(response.parsed)
-                if response.parsed is not None
-                else CustomerIntelligenceBrief.model_validate_json(response.text or "")
-            )
-        if reasoning_mode == "morpheus" and settings.morpheus_api_key:
-            response = morpheus_chat(
-                [
-                    {"role": "system", "content": instruction},
-                    {"role": "user", "content": prompt},
-                ]
-            )
-            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
-            try:
-                parsed = json.loads(cleaned, strict=False)
-                return CustomerIntelligenceBrief.model_validate(parsed)
-            except Exception:
-                return CustomerIntelligenceBrief.model_validate_json(cleaned)
-    except Exception as error:
-        logger.warning(
-            "intelligence_brief_provider_failed mode=%s error_type=%s",
-            reasoning_mode,
-            type(error).__name__,
-        )
-        if not settings.allow_offline_demo:
-            raise
-    return fallback()
 
 
 def validate_protected_brief(
@@ -385,7 +314,10 @@ def authorize_brief_with_trace(
         parsed = json.loads(trace.text, strict=False)
         return CustomerIntelligenceBrief.model_validate(parsed), trace
     except Exception as error:
-        logger.warning("Failed to parse detokenized brief JSON; falling back to original: %s", error)
+        logger.warning(
+            "Failed to parse detokenized brief JSON; falling back to original: %s",
+            error,
+        )
         return brief, trace
 
 

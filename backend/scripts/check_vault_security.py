@@ -5,6 +5,8 @@ from app.db import SessionLocal, engine, set_rls_context, set_worker_context
 from app.services.audit import write_audit_entry
 from app.services.workflow_audit import write_workflow_event
 
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+
 
 def _role_counts(role: str) -> tuple[int, int]:
     with engine.connect() as connection, connection.begin():
@@ -12,12 +14,14 @@ def _role_counts(role: str) -> tuple[int, int]:
             text(
                 "select set_config('app.user_id', :user_id, true), "
                 "set_config('app.user_role', :user_role, true), "
-                "set_config('app.actor_ref', :actor_ref, true)"
+                "set_config('app.actor_ref', :actor_ref, true), "
+                "set_config('app.tenant_id', :tenant_id, true)"
             ),
             {
                 "user_id": "00000000-0000-0000-0000-000000000001",
                 "user_role": role,
                 "actor_ref": f"security-check:{role}",
+                "tenant_id": DEFAULT_TENANT_ID,
             },
         )
         connection.execute(text("set local role finbrain_app"))
@@ -43,9 +47,7 @@ def main() -> None:
         raise SystemExit("Compliance cannot read every seeded vault row.")
     with SessionLocal() as worker_db:
         set_worker_context(worker_db)
-        worker_identity = worker_db.execute(
-            text("select current_user, session_user")
-        ).one()
+        worker_identity = worker_db.execute(text("select current_user, session_user")).one()
         worker_policies = worker_db.execute(
             text(
                 "select policyname, cmd, with_check from pg_policies "
@@ -73,7 +75,7 @@ def main() -> None:
             user_id="00000000-0000-0000-0000-000000000001",
             user_role="general_employee",
             actor_ref="security-check:application",
-            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_id=DEFAULT_TENANT_ID,
         )
         write_audit_entry(
             app_db,
@@ -81,7 +83,7 @@ def main() -> None:
             "SECURITY_CHECK_0000000000",
             False,
             "security-check",
-            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_id=DEFAULT_TENANT_ID,
             actor_ref="security-check:application",
         )
         write_workflow_event(
@@ -91,7 +93,7 @@ def main() -> None:
             actor_ref="security-check:application",
             resource_type="vault",
             resource_id="rollback",
-            tenant_id="00000000-0000-0000-0000-000000000001",
+            tenant_id=DEFAULT_TENANT_ID,
             event_payload={},
         )
         app_db.rollback()

@@ -42,6 +42,11 @@ def test_planner_recognizes_exact_email_listing_before_tokenization():
     assert second.intent is QueryIntent.LIST_RECORDS
     assert second.source_systems == ("email",)
 
+    underscored = plan_query("show all customer_email", available)
+    assert underscored.intent is QueryIntent.LIST_RECORDS
+    assert underscored.source_systems == ("email",)
+    assert underscored.filters.record_types == ("customer_email",)
+
 
 def test_planner_recognizes_source_count_questions():
     available = ["email", "telegram", "meeting_notes"]

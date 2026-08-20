@@ -22,12 +22,18 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_reasoning_model: str = "gemini-3.6-flash"
     gemini_embedding_model: str = "gemini-embedding-001"
+    gemini_timeout_seconds: int = 12
     morpheus_api_key: str | None = None
     morpheus_base_url: str = "https://api.mor.org/api/v1"
     morpheus_model: str = "deepseek-v4-flash"
+    morpheus_timeout_seconds: int = 20
+    database_pool_size: int = 1
+    database_max_overflow: int = 1
+    database_pool_timeout: int = 10
     enable_gliner: bool = True
     gliner_model_name: str = "urchade/gliner_multi_pii-v1"
     gliner_device: str = "cpu"
+    gliner_cpu_threads: int = 2
     allow_offline_demo: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1):517[3-9]$"
@@ -107,6 +113,12 @@ class Settings(BaseSettings):
         "vault_rotation_batch_size",
         "recommendations_analysis_interval_seconds",
         "default_payment_terms_days",
+        "morpheus_timeout_seconds",
+        "gemini_timeout_seconds",
+        "database_pool_size",
+        "database_max_overflow",
+        "database_pool_timeout",
+        "gliner_cpu_threads",
     )
     @classmethod
     def positive_connector_limits(cls, value: int) -> int:

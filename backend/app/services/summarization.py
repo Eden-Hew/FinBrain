@@ -3,6 +3,7 @@ import re
 from app.config import get_settings
 from app.schemas import ProtectedSummary, SummaryPriority
 from app.security.detect import contains_known_pii
+from app.services.gemini import gemini_client
 from app.services.morpheus import morpheus_chat
 
 TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
@@ -93,9 +94,7 @@ def summarize_protected_text(text: str) -> tuple[ProtectedSummary, str]:
                 raise
     if settings.gemini_api_key:
         try:
-            from google import genai
-
-            client = genai.Client(api_key=settings.gemini_api_key)
+            client = gemini_client()
             response = client.models.generate_content(
                 model=settings.gemini_reasoning_model,
                 contents=text,

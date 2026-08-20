@@ -1,9 +1,10 @@
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 import numpy as np
-from sqlalchemy import literal_column, select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from app.models import TokenizedContent
@@ -71,9 +72,7 @@ def retrieve_hits(
 
     if db.bind is not None and db.bind.dialect.name == "postgresql":
         vector_literal = "[" + ",".join(str(value) for value in query_embedding) + "]"
-        distance_sql = (
-            "tokenized_content.embedding <=> cast(:query_embedding as extensions.vector)"
-        )
+        distance_sql = "tokenized_content.embedding <=> cast(:query_embedding as extensions.vector)"
         statement = (
             apply_content_filters(select(TokenizedContent), filters)
             .where(TokenizedContent.embedding.is_not(None))
@@ -94,6 +93,67 @@ def retrieve_hits(
         reverse=True,
     )
     return [_hit_from_row(row, score) for score, row in ranked[:k] if score > -1.0]
+
+
+_PROTECTED_TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
+_BUSINESS_IDENTIFIER_PATTERN = re.compile(
+    r"\b(?=[A-Z0-9-]*\d)[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+\b",
+    re.IGNORECASE,
+)
+
+
+def _exact_terms(question: str) -> list[str]:
+    """Return protected tokens and business identifiers worth exact retrieval.
+
+    Common words are deliberately excluded: broad lexical matching can swamp a
+    small corpus, whereas tokens and invoice/reference IDs are stable identifiers.
+    """
+    values = _PROTECTED_TOKEN_PATTERN.findall(question)
+    values.extend(_BUSINESS_IDENTIFIER_PATTERN.findall(question))
+    return list(dict.fromkeys(value.casefold() for value in values))
+
+
+def retrieve_hybrid_hits(
+    db: Session,
+    question: str,
+    query_embedding: list[float],
+    k: int = 10,
+    *,
+    filters: "QueryFilters | None" = None,
+) -> list[RetrievalHit]:
+    """Rank exact protected identifiers before filling remaining slots by vector similarity."""
+    from app.services.query_filters import QueryFilters, apply_content_filters
+
+    filters = filters or QueryFilters()
+    terms = _exact_terms(question)
+    exact_hits: list[RetrievalHit] = []
+    if terms:
+        predicates = []
+        for term in terms:
+            pattern = f"%{term}%"
+            predicates.extend(
+                (
+                    TokenizedContent.content_text.ilike(pattern),
+                    TokenizedContent.summary.ilike(pattern),
+                    TokenizedContent.source_record_id.ilike(pattern),
+                )
+            )
+        statement = apply_content_filters(select(TokenizedContent), filters).where(or_(*predicates))
+        exact_hits = [_hit_from_row(row, 1.0) for row in db.scalars(statement).all()]
+
+    # Fetch enough semantic candidates to fill the requested result set after
+    # exact rows are de-duplicated. Exact rows always retain the leading rank.
+    semantic_hits = retrieve_hits(db, query_embedding, k=k, filters=filters)
+    merged: list[RetrievalHit] = []
+    seen: set[int] = set()
+    for hit in exact_hits + semantic_hits:
+        if hit.content_id in seen:
+            continue
+        merged.append(hit)
+        seen.add(hit.content_id)
+        if len(merged) == k:
+            break
+    return merged
 
 
 def retrieve_top_k(db: Session, query_embedding: list[float], k: int = 5) -> list[str]:

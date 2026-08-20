@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.models import Base, TokenizedContent
 from app.services import reasoning
 from app.services.reasoning import answer_all_query_with_citations, answer_query_with_citations
-from app.services.retrieval import RetrievalHit, retrieve_hits
+from app.services.retrieval import RetrievalHit, retrieve_hits, retrieve_hybrid_hits
 
 
 def test_structured_retrieval_preserves_cross_source_provenance(monkeypatch):
@@ -52,6 +52,39 @@ def test_cited_answer_reports_insufficient_evidence_without_hits():
     assert answer.insufficient_evidence
     assert answer.citations == []
     assert mode == "offline-demo"
+
+
+def test_hybrid_retrieval_prioritizes_exact_protected_token_and_invoice_id():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TokenizedContent(
+                    source_record_id="email:DGT-4400",
+                    source_system="email",
+                    record_type="customer_email",
+                    content_text="PERSON_aabbccddee asked about invoice DGT-4400.",
+                    embedding=[0.0, 1.0],
+                    processing_status="ready",
+                ),
+                TokenizedContent(
+                    source_record_id="email:semantic",
+                    source_system="email",
+                    record_type="customer_email",
+                    content_text="A semantically similar invoice approval record.",
+                    embedding=[1.0, 0.0],
+                    processing_status="ready",
+                ),
+            ]
+        )
+        db.commit()
+
+        by_invoice = retrieve_hybrid_hits(db, "Explain DGT-4400", [1.0, 0.0], k=2)
+        by_person = retrieve_hybrid_hits(db, "Find PERSON_aabbccddee", [1.0, 0.0], k=2)
+
+        assert by_invoice[0].source_record_id == "email:DGT-4400"
+        assert by_person[0].source_record_id == "email:DGT-4400"
 
 
 def test_analyze_all_batches_every_eligible_record(monkeypatch):

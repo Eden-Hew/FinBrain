@@ -303,10 +303,25 @@ export interface WorkflowAuditResponse {
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
+export class ApiError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly status: number,
+    public readonly requestId: string | null,
+  ) {
+    super(code);
+    this.name = "ApiError";
+  }
+}
+
 async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Request failed (${response.status})`);
+    throw new ApiError(
+      body.detail ?? `request_failed_${response.status}`,
+      response.status,
+      response.headers.get("X-Request-ID"),
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -326,7 +341,24 @@ async function authenticatedFetch(path: string, init: RequestInit = {}): Promise
   headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${BASE_URL}${path}`, { ...init, headers });
   if (response.status === 401) {
-    await supabase.auth.signOut();
+    const body = await response.clone().json().catch(() => ({}));
+    const terminalCodes = new Set([
+      "expired_access_token",
+      "invalid_access_token",
+      "invalid_signature",
+      "invalid_issuer",
+      "invalid_audience",
+      "invalid_supabase_role",
+      "missing_tenant_claim",
+      "missing_exp_claim",
+      "missing_iss_claim",
+      "missing_sub_claim",
+      "missing_aud_claim",
+      "invalid_identity_claims",
+    ]);
+    if (terminalCodes.has(body.detail)) {
+      await supabase.auth.signOut();
+    }
   }
   return response;
 }

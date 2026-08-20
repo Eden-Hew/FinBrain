@@ -31,6 +31,20 @@ def verify_access_token(token: str) -> dict[str, Any]:
             leeway=30,
             options={"require": ["exp", "iss", "sub", "aud"]},
         )
+    except jwt.ExpiredSignatureError as error:
+        raise AccessTokenError("expired_access_token") from error
+    except jwt.InvalidSignatureError as error:
+        raise AccessTokenError("invalid_signature") from error
+    except jwt.InvalidIssuerError as error:
+        raise AccessTokenError("invalid_issuer") from error
+    except jwt.InvalidAudienceError as error:
+        raise AccessTokenError("invalid_audience") from error
+    except jwt.MissingRequiredClaimError as error:
+        raise AccessTokenError(f"missing_{error.claim}_claim") from error
+    except jwt.PyJWKClientConnectionError as error:
+        raise AccessTokenError("jwks_unavailable") from error
+    except jwt.PyJWKClientError as error:
+        raise AccessTokenError("signing_key_unavailable") from error
     except jwt.PyJWTError as error:
         raise AccessTokenError("invalid_access_token") from error
     if claims.get("role") != "authenticated":

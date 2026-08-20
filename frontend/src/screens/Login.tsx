@@ -5,7 +5,7 @@ import { useAppState } from "../lib/appState";
 
 export default function Login() {
   const { show, goToSecurity } = useAppState();
-  const { signIn } = useAuth();
+  const { authError, signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -66,7 +66,9 @@ export default function Login() {
             <label className="fb-mkt-field" htmlFor="fb-login-password">Password
               <input className="fb-mkt-input" id="fb-login-password" name="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
             </label>
-            {error && <div className="fb-mkt-callout" role="alert">{error}</div>}
+            {(error || authError) && (
+              <div className="fb-mkt-callout" role="alert">{error || authError}</div>
+            )}
             <button className="fb-mkt-btn is-accent is-lg" style={{ width: "100%", justifyContent: "center", marginTop: ".2rem" }} type="submit" disabled={submitting}>
               {submitting ? "Authenticating…" : "Sign in to FINBRAIN"}
             </button>

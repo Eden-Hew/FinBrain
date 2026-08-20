@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 from app.config import get_settings
 from app.security.detect import contains_known_pii
+from app.services.gemini import gemini_client
 
 # Matches the pgvector column width (vector(768)) so the offline fallback stays a
 # valid drop-in for real HNSW similarity search, not just SQLite's Python-side cosine.
@@ -28,9 +29,7 @@ def embed_text(text: str) -> tuple[list[float], str]:
     settings = get_settings()
     if settings.gemini_api_key:
         try:
-            from google import genai
-
-            client = genai.Client(api_key=settings.gemini_api_key)
+            client = gemini_client()
             result = client.models.embed_content(
                 model=settings.gemini_embedding_model,
                 contents=text,
