@@ -17,7 +17,7 @@ from app.schemas import (
     UserRole,
 )
 from app.services.einvoice_extraction import extract_invoice_fields
-from app.services.einvoice_pdf import render_einvoice_pdf
+from app.services.einvoice_pdf import render_einvoice_pdf, render_payment_receipt_pdf
 from app.services.einvoice_readiness import (
     approve_record,
     compute_readiness,
@@ -148,6 +148,29 @@ def einvoice_record_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="einvoice_{filename}.pdf"'},
+    )
+
+
+@router.get("/einvoice-records/{record_id}/receipt/pdf")
+def einvoice_record_receipt_pdf(
+    record_id: int,
+    _principal: CurrentUser,
+    db: Session = Depends(get_db),
+) -> Response:
+    record = db.get(EInvoiceRecord, record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="e-invoice record not found")
+    try:
+        pdf_bytes = render_payment_receipt_pdf(record)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate payment receipt PDF: {error}"
+        ) from error
+    filename = record.invoice_no or str(record.id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="receipt_{filename}.pdf"'},
     )
 
 

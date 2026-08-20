@@ -279,3 +279,64 @@ def test_einvoice_record_pdf_route():
     assert doc_response.status_code == 200
     data = doc_response.json()
     assert "url" in data
+
+
+def test_render_payment_receipt_pdf_valid_bytes():
+    from app.services.einvoice_pdf import render_payment_receipt_pdf
+    receipt_bytes = render_payment_receipt_pdf(
+        supplier_name="Tenaga Nasional Berhad",
+        supplier_tin="C1234567890",
+        buyer_name="FINBRAIN Sdn Bhd",
+        invoice_no="TNB-2026-88213",
+        issue_date="2026-08-10",
+        paid_at="2026-08-15",
+        currency="MYR",
+        total_amount="1240.00",
+        uin="MY29A8F1Q3RT",
+    )
+    assert isinstance(receipt_bytes, bytes)
+    assert receipt_bytes.startswith(b"%PDF-")
+    assert len(receipt_bytes) > 1000
+
+
+def test_einvoice_receipt_pdf_route():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from app.auth.dependencies import get_current_user
+    from app.db import get_db
+    from app.models import Base, EInvoiceRecord
+    from app.routes.einvoice import router
+    from tests.auth_support import principal
+    from app.schemas import UserRole
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    record = EInvoiceRecord(
+        supplier_name="Tenaga Nasional Berhad",
+        buyer_name="FINBRAIN Sdn Bhd",
+        invoice_no="TNB-2026-88213",
+        issue_date=date(2026, 8, 10),
+        paid_at=date(2026, 8, 15),
+        currency="MYR",
+        total_amount="1240.00",
+        status="validated",
+        uin="MY29A8F1Q3RT",
+    )
+    db.add(record)
+    db.commit()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: principal(UserRole.FINANCE_OPS)
+
+    client = TestClient(app)
+    response = client.get(f"/einvoice-records/{record.id}/receipt/pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+

@@ -126,6 +126,7 @@ class PaymentInfo:
     bank_account_no: str | None = "Maybank 514011223344"
     terms: str | None = "Net 30 Days"
     due_date: str | None = None
+    paid_at: str | None = None
     payment_reference_no: str | None = None
     bill_reference_no: str | None = None
 
@@ -278,7 +279,8 @@ def normalize_einvoice_data(
             mode=pay_dict.get("mode", "Bank Transfer"),
             bank_account_no=pay_dict.get("bank_account_no", "Maybank 514011223344"),
             terms=pay_dict.get("terms", "Net 30 Days"),
-            due_date=pay_dict.get("due_date"),
+            due_date=_format_date(pay_dict.get("due_date")) if pay_dict.get("due_date") else None,
+            paid_at=_format_date(pay_dict.get("paid_at")) if pay_dict.get("paid_at") else None,
             payment_reference_no=pay_dict.get("payment_reference_no"),
             bill_reference_no=pay_dict.get("bill_reference_no"),
         )
@@ -305,6 +307,8 @@ def normalize_einvoice_data(
                 "buyer_name",
                 "invoice_no",
                 "issue_date",
+                "due_date",
+                "paid_at",
                 "currency",
                 "tax_type",
                 "tax_rate",
@@ -312,6 +316,8 @@ def normalize_einvoice_data(
                 "status",
                 "uin",
                 "created_at",
+                "payment_method",
+                "payment_reference_no",
             ):
                 if hasattr(data_or_record, attr):
                     raw[attr] = getattr(data_or_record, attr)
@@ -401,13 +407,15 @@ def normalize_einvoice_data(
         total_payable=total_amount_dec,
     )
 
+    paid_at_val = _format_date(raw.get("paid_at")) if raw.get("paid_at") else None
     payment = PaymentInfo(
-        mode="Bank Transfer",
-        bank_account_no="Maybank 514011223344",
-        terms="Net 30 Days",
-        due_date=issue_date_val,
-        payment_reference_no=invoice_no,
-        bill_reference_no=f"BIL-{invoice_no.replace('-', '')[-4:]}",
+        mode=str(raw.get("payment_method") or raw.get("mode") or "Bank Transfer"),
+        bank_account_no=str(raw.get("bank_account_no") or "Maybank 514011223344"),
+        terms=str(raw.get("terms") or "Net 30 Days"),
+        due_date=_format_date(raw.get("due_date")) if raw.get("due_date") else issue_date_val,
+        paid_at=paid_at_val,
+        payment_reference_no=str(raw.get("payment_reference_no") or invoice_no),
+        bill_reference_no=str(raw.get("bill_reference_no") or f"BIL-{invoice_no.replace('-', '')[-4:]}"),
     )
 
     return EInvoicePdfData(
@@ -1061,6 +1069,530 @@ def render_einvoice_pdf(
     story.append(
         Paragraph(
             "FinBrain OS e-Invoice Readiness Platform &bull; Human-Readable Official Representation",
+            style_footer,
+        )
+    )
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def render_payment_receipt_pdf(
+    data_or_record: Any = None,
+    **kwargs: Any,
+) -> bytes:
+    """Render an Official Payment Receipt (Resit Rasmi) as single-page PDF bytes."""
+    data = normalize_einvoice_data(data_or_record, **kwargs)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=8 * mm,
+        bottomMargin=8 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    style_h1 = ParagraphStyle(
+        "ReceiptH1",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=17,
+        textColor=NAVY,
+    )
+    style_title = ParagraphStyle(
+        "ReceiptTitle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=17,
+        alignment=2,
+        textColor=NAVY,
+    )
+    style_meta_val = ParagraphStyle(
+        "ReceiptMetaVal",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=10,
+        textColor=NEAR_BLACK,
+    )
+    style_meta_val_r = ParagraphStyle(
+        "ReceiptMetaValR",
+        parent=style_meta_val,
+        alignment=2,
+    )
+    style_box_head = ParagraphStyle(
+        "ReceiptBoxHead",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=9.5,
+        textColor=WHITE,
+    )
+    style_th = ParagraphStyle(
+        "ReceiptTh",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9,
+        textColor=WHITE,
+    )
+    style_th_r = ParagraphStyle(
+        "ReceiptThR",
+        parent=style_th,
+        alignment=2,
+    )
+    style_td = ParagraphStyle(
+        "ReceiptTd",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=NEAR_BLACK,
+    )
+    style_td_bold = ParagraphStyle(
+        "ReceiptTdBold",
+        parent=style_td,
+        fontName="Helvetica-Bold",
+    )
+    style_td_r = ParagraphStyle(
+        "ReceiptTdR",
+        parent=style_td,
+        alignment=2,
+    )
+    style_td_r_bold = ParagraphStyle(
+        "ReceiptTdRBold",
+        parent=style_td_bold,
+        alignment=2,
+    )
+    style_footer = ParagraphStyle(
+        "ReceiptFooter",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=6.5,
+        leading=8,
+        alignment=1,
+        textColor=MID_GREY,
+    )
+
+    story: list[Any] = []
+
+    # 1. Header Band
+    left_header_data = [
+        [Paragraph(data.supplier.name, style_h1)],
+        [
+            Paragraph(
+                f"<b>Reg No:</b> {data.supplier.registration_no}"
+                + (
+                    f" | <b>SST:</b> {data.supplier.sst_registration_no}"
+                    if data.supplier.sst_registration_no
+                    else ""
+                ),
+                style_meta_val,
+            )
+        ],
+        [Paragraph(f"{data.supplier.address}", style_meta_val)],
+        [
+            Paragraph(
+                f"<b>Tel:</b> {data.supplier.contact} &nbsp;|&nbsp; <b>Email:</b> {data.supplier.email}",
+                style_meta_val,
+            )
+        ],
+    ]
+    t_left_header = Table(left_header_data, colWidths=[310])
+    t_left_header.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    receipt_no = f"REC-{data.document.einvoice_code}"
+    receipt_date = data.payment.paid_at or data.document.issue_date
+    right_header_data = [
+        [Paragraph("OFFICIAL PAYMENT RECEIPT", style_title)],
+        [
+            Paragraph(
+                "<font size='7' color='#6B7280'><b>RESIT RASMI PEMBAYARAN</b></font>",
+                style_meta_val_r,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font color='{MID_GREY.hexval()}'><b>RECEIPT NO:</b></font> <b>{receipt_no}</b>",
+                style_meta_val_r,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font color='{MID_GREY.hexval()}'><b>PAYMENT DATE:</b></font> <b>{receipt_date}</b>",
+                style_meta_val_r,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font color='{MID_GREY.hexval()}'><b>PAYMENT METHOD:</b></font> {data.payment.mode or 'Bank Transfer'}",
+                style_meta_val_r,
+            )
+        ],
+    ]
+    t_right_header = Table(right_header_data, colWidths=[228])
+    t_right_header.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    header_table = Table([[t_left_header, t_right_header]], colWidths=[310, 228])
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(header_table)
+
+    # 2. Gold Divider
+    story.append(_build_gold_line())
+    story.append(Spacer(1, 4))
+
+    # 3. Payment Acknowledgment Banner
+    ack_left = [
+        [
+            Paragraph(
+                "<font size='7' color='#94A3B8'><b>PAYMENT ACKNOWLEDGMENT &bull; STATUS: <font color='#10B981'>PAID / SETTLED</font></b></font>",
+                styles["Normal"],
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='8' color='#FFFFFF'>Received with thanks full settlement for e-Invoice <b>{data.document.einvoice_code}</b></font>",
+                styles["Normal"],
+            )
+        ],
+    ]
+    t_ack_left = Table(ack_left, colWidths=[370])
+    t_ack_left.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+
+    amount_str = _format_curr(data.totals.total_payable, data.document.currency_code)
+    ack_right = [
+        [
+            Paragraph(
+                f"<font size='7' color='#94A3B8'>TOTAL AMOUNT PAID</font><br/><font size='12' color='#10B981'><b>{amount_str}</b></font>",
+                style_meta_val_r,
+            )
+        ],
+    ]
+    t_ack_right = Table(ack_right, colWidths=[158])
+    t_ack_right.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+
+    ack_table = Table([[t_ack_left, t_ack_right]], colWidths=[375, 163])
+    ack_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), NAVY_DARK),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(ack_table)
+    story.append(Spacer(1, 5))
+
+    # 4. Payer Details & Invoice Reference Boxes
+    box_w = 264.0
+    payer_rows = [
+        [Paragraph("RECEIVED FROM (BUYER)", style_box_head)],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>COMPANY / PAYER NAME</b></font><br/><b>{data.buyer.name}</b>",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>TIN:</b></font> <b>{data.buyer.tin}</b> &nbsp;&nbsp; <font size='6' color='{MID_GREY.hexval()}'><b>REG NO:</b></font> {data.buyer.registration_no}",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>ADDRESS:</b></font> {data.buyer.address}",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>CONTACT:</b></font> {data.buyer.contact} &nbsp;|&nbsp; {data.buyer.email}",
+                style_meta_val,
+            )
+        ],
+    ]
+    t_payer_box = Table(payer_rows, colWidths=[box_w])
+    t_payer_box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 0), NAVY),
+                ("TOPPADDING", (0, 0), (0, 0), 2.5),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 2.5),
+                ("LEFTPADDING", (0, 0), (0, 0), 5),
+                ("BACKGROUND", (0, 1), (-1, -1), WHITE),
+                ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
+                ("INNERGRID", (0, 1), (-1, -1), 0.25, LIGHT_GREY),
+                ("TOPPADDING", (0, 1), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
+                ("LEFTPADDING", (0, 1), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 1), (-1, -1), 5),
+            ]
+        )
+    )
+
+    ref_rows = [
+        [Paragraph("PAYMENT &amp; INVOICE REFERENCE", style_box_head)],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>ORIGINAL INVOICE NO:</b></font> <b>{data.document.einvoice_code}</b>",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>INVOICE ISSUE DATE:</b></font> {data.document.issue_date} &nbsp;&nbsp; <font size='6' color='{MID_GREY.hexval()}'><b>DUE DATE:</b></font> {data.payment.due_date or '—'}",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>MYINVOIS UIN REF:</b></font> <font face='Courier-Bold'><b>{data.document.irbm_unique_id or 'VALIDATED'}</b></font>",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT REF / TXN ID:</b></font> {data.payment.payment_reference_no or data.document.einvoice_code}",
+                style_meta_val,
+            )
+        ],
+        [
+            Paragraph(
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>BENEFICIARY ACCOUNT:</b></font> {data.payment.bank_account_no or '—'}",
+                style_meta_val,
+            )
+        ],
+    ]
+    t_ref_box = Table(ref_rows, colWidths=[box_w])
+    t_ref_box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 0), NAVY),
+                ("TOPPADDING", (0, 0), (0, 0), 2.5),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 2.5),
+                ("LEFTPADDING", (0, 0), (0, 0), 5),
+                ("BACKGROUND", (0, 1), (-1, -1), WHITE),
+                ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
+                ("INNERGRID", (0, 1), (-1, -1), 0.25, LIGHT_GREY),
+                ("TOPPADDING", (0, 1), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
+                ("LEFTPADDING", (0, 1), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 1), (-1, -1), 5),
+            ]
+        )
+    )
+
+    parties_table = Table([[t_payer_box, t_ref_box]], colWidths=[264, 264])
+    parties_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(parties_table)
+    story.append(Spacer(1, 6))
+
+    # 5. Settlement Details Table
+    items_header = [
+        Paragraph("#", style_th),
+        Paragraph("TRANSACTION DESCRIPTION &amp; SETTLEMENT DETAILS", style_th),
+        Paragraph("INVOICE TOTAL", style_th_r),
+        Paragraph("AMOUNT PAID", style_th_r),
+        Paragraph("BALANCE DUE", style_th_r),
+    ]
+    item_col_widths = [20, 248, 90, 90, 90]
+
+    desc_text = (
+        f"<b>Payment in full for e-Invoice {data.document.einvoice_code}</b><br/>"
+        f"<font size='6' color='{MID_GREY.hexval()}'>Payer: {data.buyer.name} &bull; Method: {data.payment.mode or 'Bank Transfer'} &bull; Settled on {receipt_date}</font>"
+    )
+    items_rows = [
+        items_header,
+        [
+            Paragraph("1", style_td),
+            Paragraph(desc_text, style_td),
+            Paragraph(
+                _format_curr(data.totals.total_payable, data.document.currency_code),
+                style_td_r,
+            ),
+            Paragraph(
+                _format_curr(data.totals.total_payable, data.document.currency_code),
+                style_td_r_bold,
+            ),
+            Paragraph(
+                _format_curr(Decimal("0.00"), data.document.currency_code),
+                style_td_r_bold,
+            ),
+        ],
+    ]
+    t_items = Table(items_rows, colWidths=item_col_widths)
+    t_items.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+                ("TOPPADDING", (0, 0), (-1, 0), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BACKGROUND", (0, 1), (-1, 1), WHITE),
+                ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, BORDER_GREY),
+                ("TOPPADDING", (0, 1), (-1, 1), 6),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 6),
+            ]
+        )
+    )
+    story.append(t_items)
+    story.append(Spacer(1, 6))
+
+    # 6. Total Summary & Sign-off Box
+    tot_rows = [
+        [
+            Paragraph("Total Amount Invoiced", style_td),
+            Paragraph(
+                _format_curr(data.totals.total_payable, data.document.currency_code),
+                style_td_r,
+            ),
+        ],
+        [
+            Paragraph("<b>Total Amount Received</b>", style_td_bold),
+            Paragraph(
+                f"<font color='#10B981'><b>{_format_curr(data.totals.total_payable, data.document.currency_code)}</b></font>",
+                style_td_r_bold,
+            ),
+        ],
+        [
+            Paragraph("Outstanding Balance", style_td),
+            Paragraph(
+                _format_curr(Decimal("0.00"), data.document.currency_code),
+                style_td_r,
+            ),
+        ],
+    ]
+    t_tot_box = Table(tot_rows, colWidths=[140, 118])
+    t_tot_box.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+                ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, LIGHT_GREY),
+            ]
+        )
+    )
+
+    note_text = (
+        "<b>PAYMENT STATUS VERIFIED:</b> This official payment receipt confirms that full payment "
+        f"for e-Invoice <b>{data.document.einvoice_code}</b> has been received and verified. "
+        "No further payment is required for this billing reference."
+    )
+    t_note_box = Table([[Paragraph(note_text, style_td)]], colWidths=[264])
+    t_note_box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), LIGHT_BG),
+                ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+
+    summary_table = Table([[t_note_box, t_tot_box]], colWidths=[270, 268])
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(summary_table)
+    story.append(Spacer(1, 6))
+
+    # 7. Footer
+    disclaimer_text = (
+        "<b>Notice:</b> This is a computer-generated official receipt validated by FinBrain OS. "
+        "No signature is required. For inquiries regarding this receipt, please contact the supplier finance department."
+    )
+    story.append(Paragraph(disclaimer_text, style_footer))
+    story.append(Spacer(1, 1))
+    story.append(
+        Paragraph(
+            "FinBrain OS &bull; Official Payment Confirmation &bull; MyInvois Auditable Record",
             style_footer,
         )
     )
