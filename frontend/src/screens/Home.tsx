@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import { EmptyState } from "../components/EmptyState";
 import { PERSONAS } from "../lib/personas";
-import { buildCustomers, formatRm } from "../lib/customerAggregation";
+import { formatRm } from "../lib/customerAggregation";
 import {
   fetchAuditLog,
+  fetchCustomers,
   fetchEinvoiceOutreachDrafts,
   fetchEinvoiceReadiness,
-  fetchEinvoiceRecords,
   fetchEmailRecords,
   fetchEmailStatus,
   fetchFinanceSummary,
@@ -17,8 +17,8 @@ import {
   fetchTelegramRecords,
   fetchTelegramStatus,
   fetchWorkflowAudit,
+  type CustomerSummary,
   type EinvoiceReadinessResponse,
-  type EInvoiceApiRecord,
   type FinanceSummaryResponse,
 } from "../api/client";
 
@@ -338,39 +338,41 @@ function FinanceCard() {
 
 function AttentionSection() {
   const { showCustomerDetail } = useAppState();
-  const [records, setRecords] = useState<EInvoiceApiRecord[]>([]);
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [state, setState] = useState<LoadState>("loading");
 
   useEffect(() => {
     let active = true;
-    fetchEinvoiceRecords()
-      .then((res) => { if (active) { setRecords(res); setState("loaded"); } })
+    fetchCustomers()
+      .then((res) => { if (active) { setCustomers(res); setState("loaded"); } })
       .catch(() => { if (active) setState("error"); });
     return () => { active = false; };
   }, []);
 
-  const customers = useMemo(() => buildCustomers(records, new Set()), [records]);
-  const needsAttention = customers.filter((c) => c.overdueTotal > 0).slice(0, 5);
+  const needsAttention = [...customers]
+    .filter((c) => c.priority !== "healthy")
+    .sort((a, b) => b.attention_score - a.attention_score)
+    .slice(0, 5);
 
   return (
     <section style={{ marginBottom: "1.6rem" }}>
-      <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Attention — from invoicing data</div>
+      <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Attention — verified cross-source signals</div>
       {state === "loading" && <div className="fb-callout">Loading customer attention…</div>}
       {state === "error" && <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>Couldn't load customer data.</div>}
       {state === "loaded" && needsAttention.length === 0 && (
         <EmptyState
           icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
           title="No customers need attention right now"
-          description="Nobody has an overdue invoice today."
+          description="Nobody has an active attention signal today."
         />
       )}
       {state === "loaded" && needsAttention.length > 0 && (
         <div className="fb-briefing-list">
           {needsAttention.map((c) => (
-            <button key={c.key} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(c.key)}>
-              <span className={"fb-briefing-tier is-" + c.tier}>{TIER_LABEL[c.tier]}</span>
+            <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
+              <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
               <span className="fb-briefing-name">{c.name}</span>
-              <span className="fb-briefing-detail">{formatRm(c.overdueTotal)} overdue · {c.oldestOverdueDays} day{c.oldestOverdueDays === 1 ? "" : "s"}</span>
+              <span className="fb-briefing-detail">{formatRm(Number(c.overdue_total))} overdue · {c.attention_score}/100</span>
               <span className="fb-home-card-arrow" aria-hidden="true">→</span>
             </button>
           ))}

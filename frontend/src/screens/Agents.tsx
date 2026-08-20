@@ -9,6 +9,7 @@ import {
   StructuredCitationResults,
 } from "../components/intelligence/IntelligenceExperience";
 import { matchEinvoiceReadinessEmbed, resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
+import { listRecentConversations, recordConversationTurn, type RecentConversation } from "../lib/recentConversations";
 import {
   askQuestion,
   ApiError,
@@ -105,6 +106,8 @@ export default function Agents() {
   const [uploadError, setUploadError] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [protectedTurnCount, setProtectedTurnCount] = useState(0);
+  const [recentConversations, setRecentConversations] = useState<RecentConversation[]>(() => listRecentConversations());
+  const [recentOpen, setRecentOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
@@ -166,6 +169,10 @@ export default function Agents() {
       try {
         const response = await askQuestion(trimmed, conversationId, scopedCustomerId);
         setConversationId(response.conversation_id);
+        if (response.conversation_id) {
+          recordConversationTurn(response.conversation_id, trimmed);
+          setRecentConversations(listRecentConversations());
+        }
         setProtectedTurnCount((count) => count + 1);
         finalText = response.answer;
         protectedText = response.model_answer;
@@ -233,6 +240,24 @@ export default function Agents() {
         id: msgId++,
         from: "agent",
         text: "New protected conversation started. What would you like to investigate?",
+      },
+    ]);
+  };
+
+  // The backend keeps real turn history per conversation_id, but nothing
+  // fetches it back — resuming just re-attaches to that id so the next
+  // question gets answered with the right context, rather than pretending
+  // to redisplay messages this browser never actually stored.
+  const resumeConversation = (entry: RecentConversation) => {
+    setConversationId(entry.id);
+    setProtectedTurnCount(0);
+    setChips([]);
+    setRecentOpen(false);
+    setMessages([
+      {
+        id: msgId++,
+        from: "agent",
+        text: `Continuing "${entry.title}" — ask your next question and FinBrain will pick up where that conversation left off.`,
       },
     ]);
   };
@@ -584,6 +609,45 @@ export default function Agents() {
 
             <div className="fb-composer2-toolbar-row">
               <div className="fb-composer2-tools">
+                <div
+                  className="fb-recent-menu"
+                  onBlur={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setRecentOpen(false);
+                  }}
+                >
+                  <button
+                    className="fb-btn fb-btn-outline"
+                    type="button"
+                    onClick={() => setRecentOpen((v) => !v)}
+                    aria-expanded={recentOpen}
+                    title="Recent conversations (stored on this device only)"
+                  >
+                    Recent
+                  </button>
+                  {recentOpen && (
+                    <div className="fb-recent-menu-panel" role="menu">
+                      {recentConversations.length === 0 ? (
+                        <div className="fb-fine" style={{ padding: ".8rem" }}>No recent conversations yet.</div>
+                      ) : (
+                        recentConversations.map((entry) => (
+                          <button
+                            key={entry.id}
+                            className="fb-recent-menu-item"
+                            type="button"
+                            role="menuitem"
+                            onClick={() => resumeConversation(entry)}
+                          >
+                            <span className="fb-recent-menu-title">{entry.title}</span>
+                            <span className="fb-fine">
+                              {entry.turnCount} turn{entry.turnCount === 1 ? "" : "s"} · {new Date(entry.lastActivityAt).toLocaleDateString()}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                      <div className="fb-recent-menu-footnote">Stored on this device only</div>
+                    </div>
+                  )}
+                </div>
                 {hasConversation && (
                   <button
                     className="fb-btn fb-btn-outline"

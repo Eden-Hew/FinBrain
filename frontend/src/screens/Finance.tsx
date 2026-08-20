@@ -3,15 +3,17 @@ import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import {
+  fetchCustomers,
   fetchEinvoiceRecords,
   fetchFinanceSummary,
   type ARAgingBucket,
+  type CustomerSummary,
   type EInvoiceApiRecord,
   type FinancePeriod,
   type FinanceSummaryResponse,
   type TopCustomer,
 } from "../api/client";
-import { buildCustomers, isOutstanding, toAmount } from "../lib/customerAggregation";
+import { isOutstanding, toAmount } from "../lib/customerAggregation";
 
 function downloadCsv(filename: string, rows: (string | number)[][]) {
   const csv = rows
@@ -224,18 +226,30 @@ const TIER_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", mon
 function CustomerInsightsSection() {
   const { showCustomerDetail, askAbout } = useAppState();
   const [records, setRecords] = useState<EInvoiceApiRecord[]>([]);
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
 
   useEffect(() => {
     let active = true;
-    fetchEinvoiceRecords()
-      .then((res) => { if (active) { setRecords(res); setState("loaded"); } })
+    // Scenarios need per-invoice payment-timing history (not exposed by the
+    // customer-summary endpoint), so both real sources get fetched — the
+    // at-risk ranking itself uses the same attention-scored customers as
+    // Briefing and Customers, not a separate client-side computation.
+    Promise.all([fetchEinvoiceRecords(), fetchCustomers()])
+      .then(([recordRows, customerRows]) => {
+        if (!active) return;
+        setRecords(recordRows);
+        setCustomers(customerRows);
+        setState("loaded");
+      })
       .catch(() => { if (active) setState("error"); });
     return () => { active = false; };
   }, []);
 
-  const customers = useMemo(() => buildCustomers(records, new Set()), [records]);
-  const atRisk = customers.filter((c) => c.overdueTotal > 0).slice(0, 5);
+  const atRisk = [...customers]
+    .filter((c) => c.priority !== "healthy")
+    .sort((a, b) => b.attention_score - a.attention_score)
+    .slice(0, 5);
   const scenarios = useMemo(() => computeScenarios(records), [records]);
 
   if (state === "loading") return <div className="fb-callout">Loading customer risk…</div>;
@@ -268,7 +282,7 @@ function CustomerInsightsSection() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
           <div>
             <h2>Customers at risk</h2>
-            <p className="fb-chart-caption">Ranked the same way as the Briefing — urgency tier first, overdue amount as the tiebreaker.</p>
+            <p className="fb-chart-caption">Ranked the same way as the Briefing — verified attention score, highest first.</p>
           </div>
           <button
             className="fb-link-toggle"
@@ -279,14 +293,14 @@ function CustomerInsightsSection() {
           </button>
         </div>
         {atRisk.length === 0 ? (
-          <div className="fb-callout">No customers have an overdue invoice right now.</div>
+          <div className="fb-callout">No customers have an active attention signal right now.</div>
         ) : (
           <div className="fb-briefing-list">
             {atRisk.map((c) => (
-              <button key={c.key} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(c.key)}>
-                <span className={"fb-briefing-tier is-" + c.tier}>{TIER_LABEL[c.tier]}</span>
+              <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
+                <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
                 <span className="fb-briefing-name">{c.name}</span>
-                <span className="fb-briefing-detail">{formatCurrency(c.overdueTotal)} overdue · {c.oldestOverdueDays} day{c.oldestOverdueDays === 1 ? "" : "s"}</span>
+                <span className="fb-briefing-detail">{formatCurrency(c.overdue_total)} overdue · {c.attention_score}/100</span>
                 <span className="fb-home-card-arrow" aria-hidden="true">→</span>
               </button>
             ))}

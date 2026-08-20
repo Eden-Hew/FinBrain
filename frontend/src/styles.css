@@ -316,6 +316,12 @@ img{max-width:100%}
 .fb-composer2-input::placeholder{color:var(--ink-soft);}
 .fb-composer2-toolbar-row{display:flex;align-items:center;justify-content:space-between;padding:.3rem .1rem 0;}
 .fb-composer2-tools{display:flex;align-items:center;gap:.1rem;}
+.fb-recent-menu{position:relative;}
+.fb-recent-menu-panel{position:absolute;bottom:calc(100% + .5rem);left:0;width:280px;max-height:320px;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);padding:.4rem;z-index:60;}
+.fb-recent-menu-item{display:flex;flex-direction:column;gap:.15rem;width:100%;text-align:left;padding:.6rem .7rem;border-radius:10px;border:none;background:none;cursor:pointer;font-family:inherit;}
+.fb-recent-menu-item:hover{background:var(--bg-alt);}
+.fb-recent-menu-title{font-size:.8rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fb-recent-menu-footnote{font-size:.68rem;color:var(--ink-soft);padding:.5rem .7rem 0;margin-top:.2rem;border-top:1px solid var(--line);}
 .fb-icon-btn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;border:none;background:transparent;color:var(--ink-soft);cursor:pointer;flex:0 0 auto;padding:0;}
 .fb-icon-btn:hover{background:var(--bg-alt);color:var(--ink);}
 .fb-icon-btn:focus-visible{outline:2px solid var(--ink-soft);outline-offset:2px;}
