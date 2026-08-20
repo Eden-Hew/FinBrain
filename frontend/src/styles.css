@@ -351,12 +351,17 @@ img{max-width:100%}
 .fb-chat-embed .fb-tg-panel{border:none;border-radius:0;}
 
 .fb-status-pill{display:inline-flex;align-items:center;gap:.35rem;font-size:.62rem;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:.25rem .55rem;border-radius:99px;border:1px solid var(--line);white-space:nowrap;}
-.fb-status-dot{width:6px;height:6px;border-radius:50%;background:var(--ink-soft);}
+.fb-status-dot{width:6px;height:6px;border-radius:50%;background:var(--ink-soft);flex:0 0 auto;}
+.fb-readiness-issue-list{list-style:none;margin:.35rem 0 0;padding:0;display:flex;flex-direction:column;gap:.3rem;}
+.fb-readiness-issue-list li{display:flex;align-items:flex-start;gap:.45rem;line-height:1.45;}
+.fb-readiness-issue-list .fb-status-dot{margin-top:.42em;}
 .fb-status-pill.is-active .fb-status-dot{background:var(--chart-good);}
 .fb-status-pill.is-active{color:var(--chart-good);border-color:color-mix(in srgb, var(--chart-good) 35%, var(--line));background:color-mix(in srgb, var(--chart-good) 8%, transparent);}
 .fb-status-pill:not(.is-active){color:var(--ink-soft);}
 .fb-status-pill.is-review{border-color:color-mix(in srgb, var(--chart-attn) 35%, var(--line));color:var(--chart-attn);background:color-mix(in srgb, var(--chart-attn) 8%, transparent);}
 .fb-status-pill.is-review .fb-status-dot{background:var(--chart-attn);}
+.fb-status-pill.is-submitted{border-color:color-mix(in srgb, var(--purple) 35%, var(--line));color:var(--purple);background:color-mix(in srgb, var(--purple) 8%, transparent);}
+.fb-status-pill.is-submitted .fb-status-dot{background:var(--purple);}
 
 .fb-detail-header{max-width:920px;margin:0 auto;padding:2.4rem 1.5rem 1.6rem;font-family:Arial,Helvetica,sans-serif;}
 .fb-detail-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;}

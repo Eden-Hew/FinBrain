@@ -31,6 +31,27 @@ function formatRm(total: number): string {
   return "RM " + total.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// "Submitted" (sent, awaiting LHDN) and "validated" (LHDN issued a UIN, done)
+// used to share the same green pill — distinct enough states that a reviewer
+// scanning the table should be able to tell them apart at a glance.
+function statusPillClass(status: EinvoiceStatus): string {
+  if (status === "review") return "is-review";
+  if (status === "pending") return "";
+  if (status === "submitted") return "is-submitted";
+  return "is-active";
+}
+
+// The backend returns readiness_reason as one joined string (each issue is a
+// complete sentence). Split it back into individual issues so a reviewer can
+// scan them as a list instead of parsing a run-on paragraph.
+function splitReadinessIssues(reason: string): string[] {
+  return reason
+    .split(/\.\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (s.endsWith(".") ? s : s + "."));
+}
+
 type ReadinessCategoryKey = "critical" | "warning" | "passing";
 type FixState = "idle" | "sending" | "sent" | "failed";
 type DocumentState = "idle" | "loading" | "failed";
@@ -135,9 +156,14 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
                     <td>
                       <div>{record.supplier_name}</div>
                       {expanded !== "passing" && (
-                        <div className="fb-fine" style={{ marginTop: ".2rem", maxWidth: "34ch", whiteSpace: "normal" }}>
-                          {record.readiness_reason}
-                        </div>
+                        <ul className="fb-readiness-issue-list" style={{ maxWidth: "34ch" }}>
+                          {splitReadinessIssues(record.readiness_reason).map((issue, i) => (
+                            <li key={i} className="fb-fine">
+                              <span className="fb-status-dot" aria-hidden="true" style={{ background: categoryColor(expanded) }} />
+                              {issue}
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </td>
                     <td>{record.invoice_no ?? "—"}</td>
@@ -328,12 +354,15 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
   );
 }
 
+type InvoiceStatusFilter = "all" | "review" | "pending" | "processed";
+
 function AllInvoicesPanel() {
   const { showEinvoiceDetail, askRole } = useAppState();
   const [records, setRecords] = useState<EInvoiceApiRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<InvoiceStatusFilter>("all");
   const [legendOpen, setLegendOpen] = useState(false);
   const [pdpaOpen, setPdpaOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -348,7 +377,15 @@ function AllInvoicesPanel() {
     return () => { active = false; };
   }, []);
 
-  const order = records.filter((r) => r.supplier_name.toLowerCase().includes(search.trim().toLowerCase()));
+  const matchesStatusFilter = (r: EInvoiceApiRecord) => {
+    if (statusFilter === "all") return true;
+    if (statusFilter === "processed") return r.status === "submitted" || r.status === "validated";
+    return r.status === statusFilter;
+  };
+
+  const order = records
+    .filter((r) => r.supplier_name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(matchesStatusFilter);
 
   const stats = useMemo(() => ({
     review: records.filter((r) => r.status === "review").length,
@@ -357,29 +394,53 @@ function AllInvoicesPanel() {
     total: formatRm(records.reduce((sum, r) => sum + Number(r.total_amount), 0)),
   }), [records]);
 
+  const toggleFilter = (key: InvoiceStatusFilter) => setStatusFilter((current) => (current === key ? "all" : key));
+
   if (loading) return <div className="fb-callout">Loading invoices…</div>;
   if (error) return <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>{error}</div>;
 
   return (
     <>
       <div className="fb-kpi-row" style={{ paddingBottom: "1.4rem" }}>
-        <div className="fb-kpi-tile">
+        <button
+          className={"fb-kpi-tile fb-readiness-cat" + (statusFilter === "review" ? " is-open" : "")}
+          type="button"
+          onClick={() => toggleFilter("review")}
+          aria-pressed={statusFilter === "review"}
+        >
           <div className="fb-kpi-label">Needs review</div>
           <div className="fb-kpi-value" style={{ color: stats.review > 0 ? "var(--chart-attn)" : undefined }}>{stats.review}</div>
-        </div>
-        <div className="fb-kpi-tile">
+        </button>
+        <button
+          className={"fb-kpi-tile fb-readiness-cat" + (statusFilter === "pending" ? " is-open" : "")}
+          type="button"
+          onClick={() => toggleFilter("pending")}
+          aria-pressed={statusFilter === "pending"}
+        >
           <div className="fb-kpi-label">Pending approval</div>
           <div className="fb-kpi-value">{stats.pending}</div>
-        </div>
-        <div className="fb-kpi-tile">
+        </button>
+        <button
+          className={"fb-kpi-tile fb-readiness-cat" + (statusFilter === "processed" ? " is-open" : "")}
+          type="button"
+          onClick={() => toggleFilter("processed")}
+          aria-pressed={statusFilter === "processed"}
+        >
           <div className="fb-kpi-label">Submitted / validated</div>
           <div className="fb-kpi-value" style={{ color: "var(--chart-good)" }}>{stats.processed}</div>
-        </div>
+        </button>
         <div className="fb-kpi-tile">
           <div className="fb-kpi-label">Total in view</div>
           <div className="fb-kpi-value">{stats.total}</div>
         </div>
       </div>
+      {statusFilter !== "all" && (
+        <div style={{ padding: "0 1.5rem", margin: "-1rem 0 1rem" }}>
+          <button className="fb-link-toggle" type="button" onClick={() => setStatusFilter("all")}>
+            Showing {statusFilter === "processed" ? "submitted / validated" : statusFilter === "review" ? "needs review" : "pending approval"} only — clear filter
+          </button>
+        </div>
+      )}
 
       {canAdd && (
         <div style={{ padding: "0 1.5rem", margin: "0 0 1.2rem" }}>
@@ -430,7 +491,7 @@ function AllInvoicesPanel() {
             <div className="fb-info-tip-panel" role="tooltip">
               {STATUS_LEGEND.map((item) => (
                 <div className="fb-info-tip-row" key={item.status}>
-                  <span className={"fb-status-pill " + (item.status === "review" ? "is-review" : item.status === "pending" ? "" : "is-active")}>
+                  <span className={"fb-status-pill " + statusPillClass(item.status)}>
                     <span className="fb-status-dot"></span>{FB_EINVOICE_STATUS_LABEL[item.status]}
                   </span>
                   <span>{item.note}</span>
@@ -453,24 +514,24 @@ function AllInvoicesPanel() {
                   icon={
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z" /><path d="M9 13h6M9 17h6" /></svg>
                   }
-                  title={records.length === 0 ? "No invoices on file yet" : "No suppliers match your search"}
+                  title={records.length === 0 ? "No invoices on file yet" : "No invoices match your filters"}
                   description={
                     records.length === 0
                       ? "Add your first invoice to start tracking e-invoice readiness."
-                      : "Try a different supplier name, or clear the search to see all invoices."
+                      : "Try a different supplier name, or clear the search/status filter to see all invoices."
                   }
                   action={
                     records.length === 0 && canAdd
                       ? { label: "+ Add invoice", onClick: () => setAddOpen(true) }
-                      : records.length > 0 && search.trim() !== ""
-                        ? { label: "Clear search", onClick: () => setSearch("") }
+                      : records.length > 0 && (search.trim() !== "" || statusFilter !== "all")
+                        ? { label: "Clear filters", onClick: () => { setSearch(""); setStatusFilter("all"); } }
                         : undefined
                   }
                 />
               </td></tr>
             ) : (
               order.map((record) => {
-                const pillClass = record.status === "review" ? "is-review" : record.status === "pending" ? "" : "is-active";
+                const pillClass = statusPillClass(record.status);
                 return (
                   <tr
                     key={record.id}
