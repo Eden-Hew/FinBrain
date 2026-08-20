@@ -50,6 +50,10 @@ interface AppStateValue {
   currentCustomerKey: string | null;
   showCustomerDetail: (key: string) => void;
 
+  pendingAskPrompt: string | null;
+  askAbout: (prompt: string) => void;
+  clearPendingAskPrompt: () => void;
+
   einvoiceFilterMine: boolean;
   setEinvoiceFilterMine: (mine: boolean) => void;
 
@@ -87,6 +91,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [einvoices, setEinvoices] = useState<Record<string, EinvoiceRecord>>(() => initialEinvoices());
   const [currentEinvoiceId, setCurrentEinvoiceId] = useState<string | null>(null);
   const [currentCustomerKey, setCurrentCustomerKey] = useState<string | null>(null);
+  const [pendingAskPrompt, setPendingAskPrompt] = useState<string | null>(null);
   const [einvoiceFilterMine, setEinvoiceFilterMine] = useState(false);
   const [sops, setSops] = useState<Sop[]>(() => initialSops());
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() => initialRecommendations());
@@ -174,6 +179,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setCurrentCustomerKey(key);
     show("customers");
   }, [show]);
+
+  const askAbout = useCallback((prompt: string) => {
+    setPendingAskPrompt(prompt);
+    show("agents");
+  }, [show]);
+
+  const clearPendingAskPrompt = useCallback(() => setPendingAskPrompt(null), []);
 
   const approveEinvoiceById = useCallback((id: string) => {
     setEinvoices((prev) => {
@@ -304,6 +316,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     askRole, setAskRole,
     einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById,
     currentCustomerKey, showCustomerDetail,
+    pendingAskPrompt, askAbout, clearPendingAskPrompt,
     einvoiceFilterMine, setEinvoiceFilterMine,
     sops, approveSop, rejectSop, draftSop,
     recommendations,

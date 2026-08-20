@@ -122,15 +122,17 @@ const NAV_ICONS: Record<string, ReactNode> = {
   ingestion: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />,
 };
 
-// Primary application navigation — Briefing, Ask, Customers, Financial
-// Intelligence, Workflows, Sources, Audit & Access. e-Invoicing is
-// intentionally not a top-level item: it's a governed workflow that
-// surfaces contextually from Customers and Workflows instead.
+// Primary application navigation — Briefing, Ask, Customers, e-Invoicing,
+// Financial Intelligence, Workflows, Sources, Audit & Access. e-Invoicing
+// stays a normal nav item (kept alongside the spec's Track 2 restructure
+// rather than folded away) so the existing all-invoices/readiness-check
+// workflow doesn't lose its own discoverable entry point.
 const NAV_GROUPS: { label: string | null; items: { screen: Screen; key: string }[] }[] = [
   { label: null, items: [
     { screen: "home", key: "nav.home" },
     { screen: "agents", key: "nav.aiAgents" },
     { screen: "customers", key: "nav.customers" },
+    { screen: "einvoice", key: "nav.einvoicing" },
     { screen: "finance", key: "nav.financeDashboard" },
     { screen: "approvals", key: "nav.approvals" },
     { screen: "ingestion", key: "nav.ingestion" },
