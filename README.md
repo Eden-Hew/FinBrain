@@ -68,6 +68,10 @@ multi-source records
 
 ## Current architecture
 
+Contributors changing Supabase, persistence, identity, ingestion, or workers must first read
+[FinBrain Supabase Architecture and Change Guardrails](SUPABASE_ARCHITECTURE.md). It defines the
+current live schema contract, RLS boundaries, retry invariants, and required migration checks.
+
 ```text
 Telegram / unread IMAP / manual UI / protected file upload / seed adapters
                          |
