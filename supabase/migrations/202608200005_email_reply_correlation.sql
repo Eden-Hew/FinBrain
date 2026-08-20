@@ -28,7 +28,7 @@ grant select on public.email_reply_correlations to finbrain_app;
 grant select,insert on public.email_reply_correlations to finbrain_worker;
 grant update on public.email_ingestion_receipts to finbrain_worker;
 grant usage,select on sequence public.email_reply_correlations_id_seq to finbrain_worker;
-create policy finbrain_email_reply_read on public.email_reply_correlations to finbrain_app
-  for select using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role()<>'');
+create policy finbrain_email_reply_read on public.email_reply_correlations
+  for select to finbrain_app using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role()<>'');
 create policy finbrain_email_reply_worker on public.email_reply_correlations to finbrain_worker
   using(true) with check(true);

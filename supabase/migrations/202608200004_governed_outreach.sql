@@ -32,19 +32,19 @@ revoke all on public.customer_endpoints,public.outreach_actions,public.outreach_
 grant select,insert,update on public.customer_endpoints,public.outreach_actions,public.outreach_evidence to finbrain_app;
 grant select,insert,update on public.customer_endpoints,public.outreach_actions,public.outreach_evidence to finbrain_worker;
 grant usage,select on sequence public.customer_endpoints_id_seq,public.outreach_evidence_id_seq to finbrain_app,finbrain_worker;
-create policy finbrain_customer_endpoints_read on public.customer_endpoints to finbrain_app
-  for select using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director'));
-create policy finbrain_customer_endpoints_insert on public.customer_endpoints to finbrain_app
-  for insert with check(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director'));
-create policy finbrain_customer_endpoints_update on public.customer_endpoints to finbrain_app
-  for update using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role()='owner_director')
+create policy finbrain_customer_endpoints_read on public.customer_endpoints
+  for select to finbrain_app using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director'));
+create policy finbrain_customer_endpoints_insert on public.customer_endpoints
+  for insert to finbrain_app with check(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director'));
+create policy finbrain_customer_endpoints_update on public.customer_endpoints
+  for update to finbrain_app using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role()='owner_director')
   with check(tenant_id=public.finbrain_tenant_id() and public.finbrain_role()='owner_director');
-create policy finbrain_outreach_actions_read on public.outreach_actions to finbrain_app
-  for select using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director','compliance'));
-create policy finbrain_outreach_actions_insert on public.outreach_actions to finbrain_app
-  for insert with check(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director') and status='draft');
-create policy finbrain_outreach_actions_update on public.outreach_actions to finbrain_app
-  for update using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director'))
+create policy finbrain_outreach_actions_read on public.outreach_actions
+  for select to finbrain_app using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director','compliance'));
+create policy finbrain_outreach_actions_insert on public.outreach_actions
+  for insert to finbrain_app with check(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director') and status='draft');
+create policy finbrain_outreach_actions_update on public.outreach_actions
+  for update to finbrain_app using(tenant_id=public.finbrain_tenant_id() and public.finbrain_role() in ('finance_ops','owner_director'))
   with check(tenant_id=public.finbrain_tenant_id() and (
     public.finbrain_role()='owner_director' or
     (public.finbrain_role()='finance_ops' and status in ('pending_approval','cancelled'))
