@@ -35,7 +35,10 @@ class QueryFilters:
     metadata_missing: tuple[str, ...] = ()
 
     def with_content_ids(self, content_ids: list[int]) -> "QueryFilters":
-        return replace(self, content_ids=tuple(content_ids))
+        selected = set(content_ids)
+        if self.content_ids:
+            selected.intersection_update(self.content_ids)
+        return replace(self, content_ids=tuple(sorted(selected)) or (-1,))
 
 
 def apply_content_filters(

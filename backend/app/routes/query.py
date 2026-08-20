@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import CurrentUser
 from app.config import get_settings
 from app.db import get_db
-from app.models import ProtectedTokenRegistry, VaultKeyVersion
+from app.models import (
+    Customer,
+    CustomerRecordLink,
+    ProtectedTokenRegistry,
+    VaultKeyVersion,
+    utcnow,
+)
 from app.schemas import CitedAnswer, ExposureReceipt, QueryCitation, QueryRequest, QueryResponse
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.detokenize import TOKEN_PATTERN, detokenize_response_with_trace, hash_query
@@ -76,6 +82,28 @@ def query(
             status_code=410 if code == "conversation_expired" else 404,
             detail=code,
         ) from error
+    if payload.clear_customer_context:
+        conversation.context_customer_id = None
+        conversation.context_updated_at = utcnow()
+        db.commit()
+    elif payload.customer_id is not None:
+        customer = db.get(Customer, payload.customer_id)
+        if customer is None or customer.tenant_id != str(principal.tenant_id):
+            raise HTTPException(status_code=404, detail="customer_not_found")
+        conversation.context_customer_id = customer.id
+        conversation.context_updated_at = utcnow()
+        db.commit()
+    if conversation.context_customer_id is not None:
+        customer_content_ids = list(
+            db.scalars(
+                select(CustomerRecordLink.tokenized_content_id).where(
+                    CustomerRecordLink.tenant_id == str(principal.tenant_id),
+                    CustomerRecordLink.customer_id == conversation.context_customer_id,
+                    CustomerRecordLink.match_status == "verified",
+                )
+            ).all()
+        )
+        plan = QueryPlan(plan.intent, plan.filters.with_content_ids(customer_content_ids or [-1]))
     history = protected_history(db, conversation.id, str(principal.tenant_id))
     query_id = f"query-{uuid.uuid4()}"
     detected_spans = detect_spans(payload.question)
@@ -439,4 +467,5 @@ def query(
                 or 1
             ),
         ),
+        context_customer_id=conversation.context_customer_id,
     )

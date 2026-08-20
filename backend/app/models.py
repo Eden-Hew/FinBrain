@@ -330,6 +330,10 @@ class Conversation(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    context_customer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="SET NULL")
+    )
+    context_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ConversationTurn(Base):

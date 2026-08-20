@@ -173,6 +173,8 @@ class UploadCommitResponse(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     conversation_id: str | None = Field(default=None, min_length=36, max_length=36)
+    customer_id: int | None = Field(default=None, gt=0)
+    clear_customer_context: bool = False
 
 
 class QueryCitation(BaseModel):
@@ -264,6 +266,7 @@ class QueryResponse(BaseModel):
     protected_intelligence_brief: CustomerIntelligenceBrief | None = None
     intelligence_brief: CustomerIntelligenceBrief | None = None
     exposure_receipt: ExposureReceipt | None = None
+    context_customer_id: int | None = None
 
 
 class CitationDetailResponse(BaseModel):
