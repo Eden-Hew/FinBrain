@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Base, TokenizedContent
 from app.routes import query as query_route
-from app.schemas import CitedAnswer, QueryRequest
+from app.schemas import CitedAnswer, CustomerIntelligenceBrief, QueryRequest
 from app.security import detect
 from app.services.query_planning import QueryIntent, plan_query
 from tests.auth_support import principal
@@ -46,6 +46,33 @@ def test_planner_recognizes_exact_email_listing_before_tokenization():
     assert underscored.intent is QueryIntent.LIST_RECORDS
     assert underscored.source_systems == ("email",)
     assert underscored.filters.record_types == ("customer_email",)
+
+
+def test_planner_recognizes_einvoice_listing_before_search_mirror_exists():
+    plan = plan_query("show all einvoice", ["email", "telegram"])
+
+    assert plan.intent is QueryIntent.LIST_RECORDS
+    assert plan.source_systems == ("einvoice",)
+    assert plan.filters.record_types == ("invoice_row", "einvoice")
+
+
+def test_planner_uses_compact_lookup_and_sql_invoice_listing_intents():
+    available = ["email", "einvoice"]
+
+    for question in (
+        "find sheng kai",
+        "look for Sheng Kai",
+        "contact for Sheng Kai",
+        "how do I contact him",
+        "show all phone numbers",
+        "describe the first email",
+        "who are they for respectively",
+        "suggest response",
+        "draft a reply",
+    ):
+        assert plan_query(question, available).intent is QueryIntent.LOOKUP
+
+    assert plan_query("show all invoice", available).intent is QueryIntent.LIST_RECORDS
 
 
 def test_planner_recognizes_source_count_questions():
@@ -272,6 +299,46 @@ def test_semantic_question_is_scoped_to_mentioned_source(monkeypatch):
 
     assert response.sources_used == 1
     assert {citation.source_system for citation in response.citations} == {"email"}
+
+
+def test_invalid_intelligence_card_does_not_destroy_valid_answer(monkeypatch):
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(
+        query_route,
+        "answer_all_query_with_citations",
+        lambda _question, _hits: (
+            CitedAnswer(answer="Protected answer.", citations=["SOURCE-1"]),
+            "test",
+        ),
+    )
+    monkeypatch.setattr(
+        query_route,
+        "generate_protected_brief",
+        lambda **_kwargs: CustomerIntelligenceBrief(
+            subject_label="Protected customer",
+            status="needs_attention",
+            executive_summary="PERSON_ffeeddccbb needs attention.",
+        ),
+    )
+    monkeypatch.setattr(
+        query_route,
+        "validate_protected_brief",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("unknown protected token")),
+    )
+    with Session(engine) as db:
+        db.add(_record(1, "email"))
+        db.commit()
+
+        response = query_route.query(
+            QueryRequest(question="What payment issue needs attention?"),
+            principal(),
+            db,
+        )
+
+    assert response.answer == "Protected answer."
+    assert response.protected_intelligence_brief is None
+    assert response.intelligence_brief is None
 
 
 class _FakeDetector:

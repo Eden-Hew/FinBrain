@@ -8,6 +8,7 @@ export type Role =
 
 export type QueryIntent =
   | "semantic"
+  | "lookup"
   | "analyze_all"
   | "list_records"
   | "list_sources"
@@ -20,7 +21,7 @@ export interface QueryResponse {
   model_question: string;
   query_intent: QueryIntent;
   sources_used: number;
-  mode: "morpheus" | "gemini" | "offline-demo" | "structured-filter";
+  mode: "morpheus" | "gemini" | "offline-demo" | "no-evidence" | "conversation-clarification" | "structured-filter" | "structured-lookup";
   insufficient_evidence: boolean;
   citations: QueryCitation[];
   conversation_id: string | null;

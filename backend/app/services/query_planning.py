@@ -14,6 +14,7 @@ from app.services.query_filters import QueryFilters
 
 class QueryIntent(StrEnum):
     SEMANTIC = "semantic"
+    LOOKUP = "lookup"
     ANALYZE_ALL = "analyze_all"
     LIST_RECORDS = "list_records"
     LIST_SOURCES = "list_sources"
@@ -66,7 +67,11 @@ def _source_aliases(source_system: str) -> set[str]:
 def _mentioned_sources(question: str, available_sources: list[str]) -> tuple[str, ...]:
     lowered = question.casefold()
     matches: list[str] = []
-    for source in available_sources:
+    # Known connector names remain plan-able when their searchable inventory is
+    # temporarily empty. This makes "show all einvoice" a deterministic zero-row
+    # listing instead of an unrelated semantic-search request during backfills.
+    candidate_sources = list(dict.fromkeys([*available_sources, "einvoice"]))
+    for source in candidate_sources:
         if any(
             re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", lowered)
             for alias in _source_aliases(source)
@@ -260,9 +265,23 @@ def plan_query(
         return QueryPlan(QueryIntent.ANALYZE_ALL, filters)
     if sources and (explicit_column_filter or (enumeration_verb and enumeration_scope)):
         return QueryPlan(QueryIntent.LIST_RECORDS, filters)
+    if enumeration_verb and enumeration_scope and filters.record_types:
+        return QueryPlan(QueryIntent.LIST_RECORDS, filters)
     if not sources and (
         re.search(r"\b(list|show|display)\s+(?:me\s+)?(?:all\s+)?source systems?\b", lowered)
         or re.fullmatch(r"(?:list|show|display)(?: me)? all sources", lowered)
     ):
         return QueryPlan(QueryIntent.LIST_SOURCES, filters)
+    lookup_request = bool(
+        re.search(
+            r"\b(?:find|look for|who (?:is|are)|contact(?: details?| information)?|"
+            r"phone numbers?|email addresses?|how (?:can|do) i contact|"
+            r"tell me about|describe|inspect|suggest(?: a)? (?:response|reply)|"
+            r"draft(?: a)? (?:response|reply)|write(?: a)? (?:response|reply)|"
+            r"how should (?:i|we) (?:respond|reply))\b",
+            lowered,
+        )
+    )
+    if lookup_request:
+        return QueryPlan(QueryIntent.LOOKUP, filters)
     return QueryPlan(QueryIntent.SEMANTIC, filters)

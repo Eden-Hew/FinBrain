@@ -40,11 +40,18 @@ ORDINALS = {
 _ORDINAL_WORDS = "|".join(ORDINALS)
 _REFERENCE_NOUNS = r"(?:one|result|record|source|email|message|invoice)"
 REFERENCE_PATTERN = re.compile(
-    rf"\b(?:those|these|them|it|that|that record|the previous {_REFERENCE_NOUNS}|"
+    rf"\b(?:those|these|them|it|that|he|him|his|she|her|hers|they|"
+    rf"that (?:record|customer|person|client)|the previous {_REFERENCE_NOUNS}|"
     rf"(?:the\s+)?(?:{_ORDINAL_WORDS})\s+{_REFERENCE_NOUNS}|"
     rf"(?:source|email|result|record)[\s-]*(?:number\s*)?\d{{1,2}}|"
     rf"(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\s+{_REFERENCE_NOUNS}|"
-    rf"about\s+(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)?(?:\s+{_REFERENCE_NOUNS})?)\b",
+    rf"about\s+(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)?(?:\s+{_REFERENCE_NOUNS})?|"
+    r"suggest(?: a)? (?:response|reply)|draft(?: a)? (?:response|reply)|"
+    r"write(?: a)? (?:response|reply)|how should (?:i|we) (?:respond|reply))\b",
+    re.IGNORECASE,
+)
+PERSON_REFERENCE_PATTERN = re.compile(
+    r"\b(?:he|him|his|she|her|hers|that customer|that person|that client)\b",
     re.IGNORECASE,
 )
 
@@ -131,8 +138,59 @@ def protected_history(db: Session, conversation_id: str, tenant_id: str) -> str:
     return "Protected conversation history:\n" + "\n\n".join(blocks)
 
 
+def protected_planning_history(
+    db: Session, conversation_id: str, tenant_id: str
+) -> list[dict[str, object]]:
+    """Return bounded protected turns plus non-sensitive citation metadata.
+
+    This is the only conversation payload supplied to the pre-retrieval model.
+    Raw vault values and source bodies are deliberately excluded.
+    """
+    turns = load_recent_turns(db, conversation_id, tenant_id)
+    history: list[dict[str, object]] = []
+    for turn in turns:
+        citations = db.execute(
+            select(ConversationTurnCitation, TokenizedContent)
+            .join(
+                TokenizedContent,
+                TokenizedContent.id == ConversationTurnCitation.tokenized_content_id,
+            )
+            .where(
+                ConversationTurnCitation.turn_id == turn.id,
+                ConversationTurnCitation.tenant_id == tenant_id,
+                TokenizedContent.tenant_id == tenant_id,
+            )
+            .order_by(ConversationTurnCitation.ordinal)
+        ).all()
+        history.append(
+            {
+                "turn": turn.sequence_number,
+                "user": turn.protected_question,
+                "assistant": turn.protected_answer,
+                "intent": turn.query_intent,
+                "citations": [
+                    {
+                        "ordinal": citation.ordinal,
+                        "source_system": row.source_system,
+                        "record_type": row.record_type,
+                    }
+                    for citation, row in citations
+                ],
+            }
+        )
+    return history
+
+
 def is_referential_question(question: str) -> bool:
     return bool(REFERENCE_PATTERN.search(question))
+
+
+def is_person_reference_question(question: str) -> bool:
+    return bool(PERSON_REFERENCE_PATTERN.search(question))
+
+
+def is_ordinal_reference_question(question: str) -> bool:
+    return _requested_ordinal(question) is not None
 
 
 def _requested_ordinal(question: str) -> int | None:
@@ -201,6 +259,51 @@ def prior_citation_hits(
         )
         for _citation, row in citations
         if row.processing_status == "ready"
+    ]
+
+
+def turn_citation_hits(
+    db: Session,
+    conversation_id: str,
+    turn_sequence: int,
+    tenant_id: str,
+) -> list[RetrievalHit]:
+    """Load citations from one model-selected turn within the bounded conversation."""
+    turn = db.scalar(
+        select(ConversationTurn).where(
+            ConversationTurn.conversation_id == conversation_id,
+            ConversationTurn.tenant_id == tenant_id,
+            ConversationTurn.sequence_number == turn_sequence,
+        )
+    )
+    if turn is None:
+        return []
+    rows = db.execute(
+        select(ConversationTurnCitation, TokenizedContent)
+        .join(
+            TokenizedContent,
+            TokenizedContent.id == ConversationTurnCitation.tokenized_content_id,
+        )
+        .where(
+            ConversationTurnCitation.turn_id == turn.id,
+            ConversationTurnCitation.tenant_id == tenant_id,
+            TokenizedContent.tenant_id == tenant_id,
+            TokenizedContent.processing_status == "ready",
+        )
+        .order_by(ConversationTurnCitation.ordinal)
+    ).all()
+    return [
+        RetrievalHit(
+            content_id=row.id,
+            source_record_id=row.source_record_id,
+            source_system=row.source_system,
+            record_type=row.record_type,
+            occurred_at=row.occurred_at,
+            protected_excerpt=row.content_text,
+            protected_summary=row.summary,
+            similarity=1.0,
+        )
+        for _citation, row in rows
     ]
 
 

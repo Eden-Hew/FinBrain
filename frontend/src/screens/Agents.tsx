@@ -353,7 +353,7 @@ export default function Agents() {
                 {msg.thinking ? (
                   <div className="fb-intel-building" role="status">
                     <span className="fb-thinking"><span></span><span></span><span></span></span>
-                    <span>Building protected brief…</span>
+                    <span>Searching protected knowledge…</span>
                   </div>
                 ) : (
                   <>
@@ -410,15 +410,20 @@ export default function Agents() {
                       </div>
                     )}
                     {!!msg.citations?.length && !msg.brief && msg.queryIntent !== "list_records" && (
-                      <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
-                        {msg.citations.map((citation) => (
-                          <div className="fb-rec-evidence" key={citation.citation_id}>
-                            <strong>{citation.citation_id}</strong> · {citation.source_system} · {citation.record_type ?? "record"}
-                            {citation.occurred_at ? ` · ${new Date(citation.occurred_at).toLocaleDateString()}` : ""}
-                            <div style={{ marginTop: ".35rem" }}>{citation.protected_excerpt}</div>
-                          </div>
-                        ))}
-                      </div>
+                      <details style={{ marginTop: ".8rem" }}>
+                        <summary className="fb-btn fb-btn-outline" style={{ cursor: "pointer", width: "fit-content" }}>
+                          Inspect {msg.citations.length} cited source{msg.citations.length === 1 ? "" : "s"}
+                        </summary>
+                        <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
+                          {msg.citations.map((citation) => (
+                            <div className="fb-rec-evidence" key={citation.citation_id}>
+                              <strong>{citation.citation_id}</strong> · {citation.source_system} · {citation.record_type ?? "record"}
+                              {citation.occurred_at ? ` · ${new Date(citation.occurred_at).toLocaleDateString()}` : ""}
+                              <div style={{ marginTop: ".35rem" }}>{citation.protected_excerpt}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     )}
                     {msg.embed && <div className="fb-chat-embed">{msg.embed}</div>}
                   </>

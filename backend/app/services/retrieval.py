@@ -141,10 +141,9 @@ def retrieve_hybrid_hits(
         statement = apply_content_filters(select(TokenizedContent), filters).where(or_(*predicates))
         exact_hits = [_hit_from_row(row, 1.0) for row in db.scalars(statement).all()]
 
-    # An exact protected token or business identifier is already a complete,
-    # high-confidence scope. Padding it with semantic neighbors makes direct
-    # lookups appear to cite unrelated records.
-    if exact_hits:
+    # An explicit protected token or business identifier requests an exact scope.
+    # If it is unknown, return no evidence rather than unrelated vector neighbors.
+    if terms:
         return exact_hits[:k]
 
     semantic_hits = retrieve_hits(db, query_embedding, k=k, filters=filters)

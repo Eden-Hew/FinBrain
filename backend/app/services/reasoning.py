@@ -13,6 +13,14 @@ from app.services.retrieval import RetrievalHit
 
 SYSTEM_INSTRUCTION = (
     "You are FinBrain OS's reasoning assistant. Answer only from the supplied context. "
+    "Answer the user's latest question directly in natural language. For a simple lookup, use "
+    "one or two concise sentences. Do not restate the context, describe your reasoning process, "
+    "or mention SOURCE identifiers in the answer prose because citations are rendered separately. "
+    "Do not recommend actions unless the user asks for analysis, risks, or recommendations. "
+    "Conversation history is background only: never preserve an earlier source filter unless the "
+    "latest question explicitly refers to that source. "
+    "Bad style: 'The customer is found in SOURCE-1, where they requested a refund.' "
+    "Good style: 'The customer requested a refund after cancelling the order.' "
     "Treat each supplied System field as authoritative source metadata; do not infer source "
     "identity from words inside the protected record. "
     "Never invent values. Placeholders matching TYPE_xxxxxxxxxx represent hidden values. "
@@ -75,6 +83,20 @@ def structured_record_listing(hits: list[RetrievalHit]) -> CitedAnswer:
 
 
 TOKEN_PATTERN = re.compile(r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})")
+_PERSON_PATTERN = re.compile(r"PERSON_[0-9a-f]{10}")
+_ORG_PATTERN = re.compile(r"ORG_[0-9a-f]{10}")
+_PHONE_PATTERN = re.compile(r"PHONE_[0-9a-f]{10}")
+_EMAIL_PATTERN = re.compile(r"EMAIL_[0-9a-f]{10}")
+_CONTACT_QUESTION_PATTERN = re.compile(
+    r"\b(?:contact|phone numbers?|email addresses?|who (?:is|are) (?:it|they|these|those) for|"
+    r"who do (?:it|they|these|those) belong to)\b",
+    re.IGNORECASE,
+)
+_CONTACT_ENUMERATION_PATTERN = re.compile(
+    r"\b(?:show|list|give|return)\b.*\b(?:all|every|each)\b.*"
+    r"\b(?:contacts?|phone numbers?|email addresses?)\b",
+    re.IGNORECASE,
+)
 
 
 def _offline_answer(question: str, chunks: list[str]) -> str:
@@ -84,6 +106,57 @@ def _offline_answer(question: str, chunks: list[str]) -> str:
         "Offline demo mode is active. The most relevant protected records are:\n\n- "
         + "\n- ".join(chunks)
     )
+
+
+def is_contact_lookup(question: str) -> bool:
+    return bool(_CONTACT_QUESTION_PATTERN.search(question))
+
+
+def is_contact_enumeration(question: str) -> bool:
+    return bool(_CONTACT_ENUMERATION_PATTERN.search(question))
+
+
+def structured_contact_lookup(question: str, hits: list[RetrievalHit]) -> CitedAnswer | None:
+    """Associate protected people/organizations with contacts from the same evidence row."""
+    if not is_contact_lookup(question):
+        return None
+    lowered = question.casefold()
+    wants_phone = "phone" in lowered
+    wants_email = "email" in lowered
+    associations: list[tuple[str, list[str], str]] = []
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    for index, hit in enumerate(hits, 1):
+        # Prefer the focused protected summary. Email source bodies also contain
+        # transport sender/recipient tokens that are not the customer's contact.
+        text = hit.protected_summary or hit.protected_excerpt
+        people = list(dict.fromkeys(_PERSON_PATTERN.findall(text)))
+        organizations = list(dict.fromkeys(_ORG_PATTERN.findall(text)))
+        contacts: list[str] = []
+        if wants_phone or not wants_email:
+            contacts.extend(_PHONE_PATTERN.findall(text))
+        if wants_email or not wants_phone:
+            contacts.extend(_EMAIL_PATTERN.findall(text))
+        contacts = list(dict.fromkeys(contacts))
+        if not contacts:
+            continue
+        name = people[0] if people else organizations[0] if organizations else "Contact"
+        key = (name, tuple(contacts))
+        if key in seen:
+            continue
+        seen.add(key)
+        associations.append((name, contacts, f"SOURCE-{index}"))
+    if not associations:
+        return None
+
+    citations = [citation for _name, _contacts, citation in associations]
+    if len(associations) == 1:
+        name, contacts, _citation = associations[0]
+        answer = f"{name} can be contacted at {', '.join(contacts)}."
+    else:
+        answer = "\n".join(
+            f"{name} — {', '.join(contacts)}" for name, contacts, _citation in associations
+        )
+    return CitedAnswer(answer=answer, citations=citations, insufficient_evidence=False)
 
 
 def answer_query(question: str, chunks: list[str]) -> tuple[str, str]:
@@ -159,6 +232,13 @@ def _validate_cited_answer(
         raise ValueError("The reasoning service returned an unknown protected token")
 
 
+def _normalize_insufficient_citations(answer: CitedAnswer) -> CitedAnswer:
+    """Do not present retrieved neighbors as supporting citations for no-evidence answers."""
+    if answer.insufficient_evidence and answer.citations:
+        return answer.model_copy(update={"citations": []})
+    return answer
+
+
 def _answer_cited_context(
     question: str,
     context: str,
@@ -166,12 +246,20 @@ def _answer_cited_context(
     *,
     offline_chunks: list[str],
     protected_context: str | None = None,
+    response_style: str = "analysis",
 ) -> tuple[CitedAnswer, str]:
     settings = get_settings()
+    style_instruction = (
+        "This is a compact lookup. Put the requested value or fact first and keep the answer to "
+        "one or two sentences. "
+        if response_style == "compact"
+        else "This is an analytical request. Synthesize the evidence clearly but concisely. "
+    )
     instruction = (
         f"{SYSTEM_INSTRUCTION} Return only JSON with keys answer, citations, and "
         "insufficient_evidence. citations must contain only supplied SOURCE-n identifiers. "
-        "Set insufficient_evidence true when the context cannot support the answer."
+        "Set insufficient_evidence true when the context cannot support the answer. "
+        f"{style_instruction}"
     )
     # Tokens supplied by the user are legitimate protected values too. During a
     # tenant-token migration they may differ from legacy evidence tokens, and a
@@ -188,7 +276,7 @@ def _answer_cited_context(
                 ]
             )
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
-            result = CitedAnswer.model_validate_json(cleaned)
+            result = _normalize_insufficient_citations(CitedAnswer.model_validate_json(cleaned))
             _validate_cited_answer(
                 result,
                 allowed_citations=allowed_citations,
@@ -219,6 +307,7 @@ def _answer_cited_context(
                 if response.parsed is not None
                 else CitedAnswer.model_validate_json(response.text or "")
             )
+            result = _normalize_insufficient_citations(result)
             _validate_cited_answer(
                 result,
                 allowed_citations=allowed_citations,
@@ -247,7 +336,12 @@ def _answer_cited_context(
     return result, "offline-demo"
 
 
-def answer_query_with_citations(question: str, hits: list[RetrievalHit]) -> tuple[CitedAnswer, str]:
+def answer_query_with_citations(
+    question: str,
+    hits: list[RetrievalHit],
+    *,
+    response_style: str = "analysis",
+) -> tuple[CitedAnswer, str]:
     context, allowed_citations = _cited_context(hits)
     if contains_known_pii(question) or contains_known_pii(context):
         raise ValueError("Refusing to send recognized PII to the reasoning service")
@@ -256,22 +350,26 @@ def answer_query_with_citations(question: str, hits: list[RetrievalHit]) -> tupl
             answer="No matching protected records are available.",
             citations=[],
             insufficient_evidence=True,
-        ), "offline-demo"
+        ), "no-evidence"
 
     return _answer_cited_context(
         question,
         context,
         allowed_citations,
         offline_chunks=[hit.retrieval_text for hit in hits],
+        response_style=response_style,
     )
 
 
 def answer_all_query_with_citations(
-    question: str, hits: list[RetrievalHit]
+    question: str,
+    hits: list[RetrievalHit],
+    *,
+    response_style: str = "analysis",
 ) -> tuple[CitedAnswer, str]:
     """Analyze every SQL-eligible record, batching before synthesis when necessary."""
     if len(hits) <= ANALYZE_ALL_BATCH_SIZE:
-        return answer_query_with_citations(question, hits)
+        return answer_query_with_citations(question, hits, response_style=response_style)
 
     full_context, _all_citations = _cited_context(hits)
     partial_answers: list[CitedAnswer] = []
@@ -287,6 +385,7 @@ def answer_all_query_with_citations(
             batch_context,
             batch_citations,
             offline_chunks=[hit.retrieval_text for hit in batch],
+            response_style=response_style,
         )
         partial_answers.append(partial)
         modes.append(mode)
@@ -304,6 +403,7 @@ def answer_all_query_with_citations(
         synthesis_citations,
         offline_chunks=[partial.answer for partial in partial_answers],
         protected_context=full_context,
+        response_style=response_style,
     )
     modes.append(final_mode)
     mode = final_mode if len(set(modes)) == 1 else "mixed"

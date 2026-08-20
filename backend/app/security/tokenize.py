@@ -80,25 +80,31 @@ def _masked_value(label: str, text: str, token: str) -> str:
     }.get(label, f"[{label.lower()} — restricted]")
 
 
-def _token_for(span, tenant_id: str) -> str:
-    """Derive a token that is unique per (tenant, raw value), not just per raw value —
-    otherwise two tenants sharing the same name/phone/amount would collide on the same
-    token, and the second tenant's value would silently never be stored (see
-    persist_vault_entries' idempotent-by-token insert)."""
-    label = LABEL_TOKEN_MAP.get(span.label, "MISC")
+def derive_token(entity_type: str, text: str, tenant_id: str) -> str:
+    """Derive a tenant-scoped token without persisting or encrypting the value."""
+    label = entity_type.upper()
     if label == "AMOUNT":
-        canonical = f"{tenant_id}:{_canonical_amount(span.text)}"
+        canonical = f"{tenant_id}:{_canonical_amount(text)}"
         digest = hmac.new(
             get_settings().token_identity_secret.encode(), canonical.encode(), hashlib.sha256
         ).hexdigest()[:10]
-        return f"AMOUNT_BAND_{_band_index(_parse_amount(span.text))}_{digest}"
-    canonical = f"{tenant_id}:{span.text.strip().casefold()}"
+        return f"AMOUNT_BAND_{_band_index(_parse_amount(text))}_{digest}"
+    canonical = f"{tenant_id}:{text.strip().casefold()}"
     digest = hmac.new(
         get_settings().token_identity_secret.encode(),
         canonical.encode(),
         hashlib.sha256,
     ).hexdigest()[:10]
     return f"{label}_{digest}"
+
+
+def _token_for(span, tenant_id: str) -> str:
+    """Derive a token that is unique per (tenant, raw value), not just per raw value —
+    otherwise two tenants sharing the same name/phone/amount would collide on the same
+    token, and the second tenant's value would silently never be stored (see
+    persist_vault_entries' idempotent-by-token insert)."""
+    label = LABEL_TOKEN_MAP.get(span.label, "MISC")
+    return derive_token(label, span.text, tenant_id)
 
 
 def tokenize_record(

@@ -19,7 +19,12 @@ def _client(base_url: str, api_key: str, timeout_seconds: int) -> httpx.Client:
     )
 
 
-def morpheus_chat(messages: Sequence[dict[str, str]], *, temperature: float = 0.1) -> str:
+def morpheus_chat(
+    messages: Sequence[dict[str, str]],
+    *,
+    temperature: float = 0.1,
+    timeout_seconds: int | None = None,
+) -> str:
     settings = get_settings()
     if not settings.morpheus_api_key:
         raise RuntimeError("MORPHEUS_API_KEY is not configured")
@@ -27,7 +32,7 @@ def morpheus_chat(messages: Sequence[dict[str, str]], *, temperature: float = 0.
     response = _client(
         settings.morpheus_base_url,
         settings.morpheus_api_key,
-        settings.morpheus_timeout_seconds,
+        timeout_seconds or settings.morpheus_timeout_seconds,
     ).post(
         "/chat/completions",
         json={

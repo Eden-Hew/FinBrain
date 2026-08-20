@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     morpheus_base_url: str = "https://api.mor.org/api/v1"
     morpheus_model: str = "deepseek-v4-flash"
     morpheus_timeout_seconds: int = 20
+    conversation_planner_enabled: bool = True
+    conversation_planner_timeout_seconds: int = 6
     database_pool_size: int = 1
     database_max_overflow: int = 1
     database_pool_timeout: int = 10
@@ -115,6 +117,7 @@ class Settings(BaseSettings):
         "recommendations_analysis_interval_seconds",
         "default_payment_terms_days",
         "morpheus_timeout_seconds",
+        "conversation_planner_timeout_seconds",
         "gemini_timeout_seconds",
         "database_pool_size",
         "database_max_overflow",

@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.routes.query import query
 from app.schemas import CitedAnswer, QueryRequest
+from app.services.conversation_planning import ConversationalPlan
 from app.services.conversations import (
     create_conversation,
     delete_conversation,
@@ -23,6 +24,7 @@ from app.services.conversations import (
     persist_turn,
     prior_citation_hits,
     protected_history,
+    protected_planning_history,
 )
 from app.services.retrieval import RetrievalHit
 from tests.auth_support import principal
@@ -137,6 +139,11 @@ def test_referential_follow_up_reuses_prior_citations_with_filters_and_ordinals(
 
         assert is_referential_question("Which of those came from email?")
         assert is_referential_question("Yes, describe that")
+        assert is_referential_question("Show his contact")
+        assert is_referential_question("How do I contact him?")
+        assert is_referential_question("What did that customer request?")
+        assert is_referential_question("Suggest response")
+        assert is_referential_question("Draft a reply")
         email_hits = prior_citation_hits(
             db,
             conversation.id,
@@ -324,6 +331,269 @@ def test_count_turn_preserves_hidden_record_context_for_follow_up():
         assert first.answer == "email: 2 ready record(s)."
         assert second.sources_used == 2
         assert len(second.citations) == 2
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_planning_history_contains_only_protected_turns_and_citation_metadata():
+    engine, db = _database()
+    row = _ready_record(db, "email:planning", "email")
+    try:
+        conversation = create_conversation(db, DEFAULT_TENANT_ID)
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="What did PERSON_aabbccddee request?",
+            protected_answer="PERSON_aabbccddee requested help.",
+            query_intent="lookup",
+            source_systems=["email"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(row)],
+        )
+
+        history = protected_planning_history(db, conversation.id, DEFAULT_TENANT_ID)
+
+        assert history == [
+            {
+                "turn": 1,
+                "user": "What did PERSON_aabbccddee request?",
+                "assistant": "PERSON_aabbccddee requested help.",
+                "intent": "lookup",
+                "citations": [
+                    {"ordinal": 1, "source_system": "email", "record_type": "message"}
+                ],
+            }
+        ]
+        assert "Protected email content" not in repr(history)
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_person_pronoun_follow_up_reuses_single_cited_customer_as_compact_lookup(monkeypatch):
+    engine, db = _database()
+    customer = _ready_record(db, "email:sheng", "email")
+    try:
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Find PERSON_aabbccddee",
+            protected_answer="The customer is available.",
+            query_intent="lookup",
+            source_systems=[],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(customer)],
+        )
+        captured: dict[str, object] = {}
+
+        def answer_follow_up(question, hits, *, response_style="analysis"):
+            captured["question"] = question
+            captured["hits"] = hits
+            captured["style"] = response_style
+            return CitedAnswer(answer="The contact is available.", citations=["SOURCE-1"]), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_follow_up,
+        )
+        response = query(
+            QueryRequest(
+                question="How do I contact him?",
+                conversation_id=conversation.id,
+            ),
+            principal(),
+            db,
+        )
+
+        assert response.query_intent == "lookup"
+        assert response.intelligence_brief is None
+        assert response.protected_intelligence_brief is None
+        assert response.citations[0].source_record_id == "email:sheng"
+        assert captured["style"] == "compact"
+        assert len(captured["hits"]) == 1
+        assert "deterministic conversation resolver" in str(captured["question"])
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_ambiguous_person_pronoun_requests_a_name_without_calling_model(monkeypatch):
+    engine, db = _database()
+    first = _ready_record(db, "email:first-person", "email")
+    second = _ready_record(db, "email:second-person", "email")
+    try:
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="List customer contacts",
+            protected_answer="Two customers are available.",
+            query_intent="lookup",
+            source_systems=[],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(first), _hit(second)],
+        )
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("ambiguous reference must not reach the model")
+            ),
+        )
+
+        response = query(
+            QueryRequest(question="Show his contact", conversation_id=conversation.id),
+            principal(),
+            db,
+        )
+
+        assert response.mode == "conversation-clarification"
+        assert response.citations == []
+        assert "which person" in response.answer.casefold()
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_elliptical_suggest_response_reuses_immediately_previous_citation(monkeypatch):
+    engine, db = _database()
+    wong = _ready_record(db, "telegram:wong-mei-ling", "telegram")
+    try:
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="What issue does PERSON_aabbccddee have?",
+            protected_answer="The shipment contained damaged units.",
+            query_intent="lookup",
+            source_systems=[],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(wong)],
+        )
+        captured: dict[str, object] = {}
+
+        def answer_follow_up(question, hits, *, response_style="analysis"):
+            captured["question"] = question
+            captured["source_ids"] = [hit.source_record_id for hit in hits]
+            captured["style"] = response_style
+            return (
+                CitedAnswer(
+                    answer="Acknowledge the damaged items and confirm replacement timing.",
+                    citations=["SOURCE-1"],
+                ),
+                "test",
+            )
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_follow_up,
+        )
+        response = query(
+            QueryRequest(question="suggest response", conversation_id=conversation.id),
+            principal(),
+            db,
+        )
+
+        assert captured["source_ids"] == ["telegram:wong-mei-ling"]
+        assert captured["style"] == "compact"
+        assert "deterministic conversation resolver" in str(captured["question"])
+        assert response.query_intent == "lookup"
+        assert response.citations[0].source_record_id == "telegram:wong-mei-ling"
+        assert response.intelligence_brief is None
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_model_planner_can_follow_topic_to_an_older_cited_turn(monkeypatch):
+    engine, db = _database()
+    older_topic = _ready_record(db, "telegram:older-topic", "telegram")
+    newer_topic = _ready_record(db, "email:newer-topic", "email")
+    try:
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(principal().user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Discuss PERSON_aabbccddee",
+            protected_answer="The protected shipment was damaged.",
+            query_intent="lookup",
+            source_systems=["telegram"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(older_topic)],
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Discuss PERSON_ffeeddccbb",
+            protected_answer="The protected refund is pending.",
+            query_intent="lookup",
+            source_systems=["email"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(newer_topic)],
+        )
+        monkeypatch.setattr(
+            "app.routes.query.plan_conversation",
+            lambda **_kwargs: ConversationalPlan(
+                intent="lookup",
+                referenced_turn=1,
+                response_style="compact",
+                needs_clarification=False,
+            ),
+        )
+        captured = {}
+
+        def answer_follow_up(_question, hits, *, response_style="analysis"):
+            captured["ids"] = [hit.source_record_id for hit in hits]
+            captured["style"] = response_style
+            return CitedAnswer(answer="Draft the protected reply.", citations=["SOURCE-1"]), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_follow_up,
+        )
+
+        response = query(
+            QueryRequest(
+                question="Suggest a response to the damaged shipment",
+                conversation_id=conversation.id,
+            ),
+            principal(),
+            db,
+        )
+
+        assert captured["ids"] == ["telegram:older-topic"]
+        assert captured["style"] == "compact"
+        assert response.citations[0].source_record_id == "telegram:older-topic"
+        assert response.exposure_receipt.external_ai_used is True
     finally:
         db.close()
         engine.dispose()

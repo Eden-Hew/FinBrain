@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,13 +12,19 @@ from app.models import ProtectedTokenRegistry, VaultKeyVersion
 from app.schemas import CitedAnswer, ExposureReceipt, QueryCitation, QueryRequest, QueryResponse
 from app.security.detect import contains_known_pii, detect_spans
 from app.security.detokenize import TOKEN_PATTERN, detokenize_response_with_trace, hash_query
+from app.security.query_entities import resolve_registered_entity_spans
 from app.security.tokenize import persist_vault_entries, tokenize_record
+from app.services.conversation_planning import plan_conversation
 from app.services.conversations import (
     get_or_create_conversation,
+    is_ordinal_reference_question,
+    is_person_reference_question,
     is_referential_question,
     persist_turn,
     prior_citation_hits,
     protected_history,
+    protected_planning_history,
+    turn_citation_hits,
 )
 from app.services.embeddings import embed_query_cached
 from app.services.intelligence import (
@@ -27,15 +34,18 @@ from app.services.intelligence import (
     validate_protected_brief,
 )
 from app.services.query_filters import list_eligible_hits
-from app.services.query_planning import QueryIntent, plan_query, source_inventory
+from app.services.query_planning import QueryIntent, QueryPlan, plan_query, source_inventory
 from app.services.reasoning import (
     answer_all_query_with_citations,
+    is_contact_enumeration,
+    structured_contact_lookup,
     structured_record_listing,
     unknown_tokens,
 )
 from app.services.retrieval import RetrievalHit, retrieve_hybrid_hits
 
 router = APIRouter(tags=["query"])
+logger = logging.getLogger(__name__)
 
 # Open-ended SEMANTIC questions get similarity-ranked evidence rather than every
 # eligible row; ANALYZE_ALL keeps the unbounded listing since its whole meaning is
@@ -67,8 +77,15 @@ def query(
         ) from error
     history = protected_history(db, conversation.id, str(principal.tenant_id))
     query_id = f"query-{uuid.uuid4()}"
+    detected_spans = detect_spans(payload.question)
+    query_spans = resolve_registered_entity_spans(
+        db,
+        payload.question,
+        str(principal.tenant_id),
+        detected_spans,
+    )
     sanitized_question, query_entries = tokenize_record(
-        payload.question, detect_spans(payload.question), query_id, str(principal.tenant_id), db=db
+        payload.question, query_spans, query_id, str(principal.tenant_id), db=db
     )
     if contains_known_pii(sanitized_question):
         raise HTTPException(
@@ -77,22 +94,61 @@ def query(
     persist_vault_entries(db, query_entries)
     db.commit()
 
-    referential = bool(payload.conversation_id) and is_referential_question(payload.question)
-    prior_hits = (
-        prior_citation_hits(
+    reference_requested = bool(payload.conversation_id) and is_referential_question(
+        payload.question
+    )
+    explicit_entity = any(
+        span.label.casefold() in {"person", "company name"} for span in query_spans
+    )
+    planning_history = (
+        protected_planning_history(db, conversation.id, str(principal.tenant_id))
+        if payload.conversation_id
+        and not explicit_entity
+        and not is_ordinal_reference_question(payload.question)
+        else []
+    )
+    conversational_plan = plan_conversation(
+        history=planning_history,
+        protected_question=sanitized_question,
+        current_intent=plan.intent,
+        available_sources=[source for source, _count in inventory],
+    )
+    if conversational_plan is not None:
+        plan = QueryPlan(conversational_plan.query_intent, plan.filters)
+
+    if conversational_plan is not None and conversational_plan.referenced_turn is not None:
+        reference_requested = True
+        prior_hits = turn_citation_hits(
             db,
             conversation.id,
-            payload.question,
+            conversational_plan.referenced_turn,
             str(principal.tenant_id),
         )
-        if referential
-        else None
-    )
+    else:
+        prior_hits = (
+            prior_citation_hits(
+                db,
+                conversation.id,
+                payload.question,
+                str(principal.tenant_id),
+            )
+            if reference_requested
+            else None
+        )
     if prior_hits is not None:
         prior_ids = [hit.content_id for hit in prior_hits]
         prior_hits = (
             list_eligible_hits(db, plan.filters.with_content_ids(prior_ids)) if prior_ids else []
         )
+    referential = reference_requested and bool(prior_hits)
+    ambiguous_person_reference = bool(
+        (conversational_plan is not None and conversational_plan.needs_clarification)
+        or (
+            referential
+            and is_person_reference_question(payload.question)
+            and len(prior_hits or []) != 1
+        )
+    )
     # Referential scope is resolved deterministically to current hits above.
     # Do not expose historical SOURCE-n labels to the model after those hits
     # have been remapped to the current turn's SOURCE-n namespace.
@@ -107,13 +163,21 @@ def query(
         )
         if referential
         else f"{history}\n\nCurrent protected question: {sanitized_question}"
-        if history
+        if history and not explicit_entity
         else sanitized_question
     )
 
     hits: list[RetrievalHit]
     conversation_context_hits: list[RetrievalHit] | None = None
-    if plan.intent is QueryIntent.LIST_SOURCES:
+    if ambiguous_person_reference:
+        hits = []
+        cited_answer = CitedAnswer(
+            answer="I’m not sure which person you mean. Please provide their name.",
+            citations=[],
+            insufficient_evidence=True,
+        )
+        reasoning_mode = "conversation-clarification"
+    elif plan.intent is QueryIntent.LIST_SOURCES:
         hits = []
         cited_answer = CitedAnswer(
             answer=(
@@ -153,9 +217,11 @@ def query(
         hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters, limit=50)
         cited_answer = structured_record_listing(hits)
         reasoning_mode = "structured-filter"
-    elif plan.intent is QueryIntent.SEMANTIC:
+    elif plan.intent in {QueryIntent.SEMANTIC, QueryIntent.LOOKUP}:
         if referential:
             hits = prior_hits or []
+        elif plan.intent is QueryIntent.LOOKUP and is_contact_enumeration(payload.question):
+            hits = list_eligible_hits(db, plan.filters)
         else:
             query_embedding, _embedding_mode = embed_query_cached(sanitized_question)
             hits = retrieve_hybrid_hits(
@@ -165,7 +231,23 @@ def query(
                 k=SEMANTIC_TOP_K,
                 filters=plan.filters,
             )
-        cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
+        if plan.intent is QueryIntent.LOOKUP:
+            contact_answer = structured_contact_lookup(payload.question, hits)
+            if contact_answer is not None:
+                cited_answer = contact_answer
+                reasoning_mode = "structured-lookup"
+            else:
+                cited_answer, reasoning_mode = answer_all_query_with_citations(
+                    reasoning_question,
+                    hits,
+                    response_style=(
+                        conversational_plan.response_style
+                        if conversational_plan is not None
+                        else "compact"
+                    ),
+                )
+        else:
+            cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
     else:  # QueryIntent.ANALYZE_ALL: unbounded on purpose, see SEMANTIC_TOP_K note above.
         hits = prior_hits or [] if referential else list_eligible_hits(db, plan.filters)
         cited_answer, reasoning_mode = answer_all_query_with_citations(reasoning_question, hits)
@@ -190,14 +272,26 @@ def query(
             reasoning_mode=reasoning_mode,
         )
         if plan.intent in {QueryIntent.SEMANTIC, QueryIntent.ANALYZE_ALL}
+        and reasoning_mode not in {"conversation-clarification", "no-evidence"}
         else None
     )
     if protected_brief is not None:
-        validate_protected_brief(
-            protected_brief,
-            allowed_citations=set(cited_answer.citations),
-            protected_context="\n".join(hit.retrieval_text for hit in hits),
-        )
+        try:
+            validate_protected_brief(
+                protected_brief,
+                allowed_citations=set(cited_answer.citations),
+                protected_context=(
+                    "\n".join(hit.retrieval_text for hit in hits) + f"\n{reasoning_question}"
+                ),
+            )
+        except ValueError as error:
+            # A secondary presentation artifact must not turn an already
+            # validated cited answer into an HTTP 500.
+            logger.warning(
+                "intelligence_brief_validation_failed error_type=%s",
+                type(error).__name__,
+            )
+            protected_brief = None
     turn = persist_turn(
         db,
         conversation,
@@ -243,6 +337,8 @@ def query(
         if reasoning_mode == "gemini"
         else None
     )
+    if reasoning_model is None and conversational_plan is not None:
+        reasoning_model = settings.morpheus_model
     return QueryResponse(
         answer=answer_trace.text,
         model_answer=raw_answer,
@@ -276,12 +372,26 @@ def query(
             query_hash=query_hash_value,
             reasoning_mode=reasoning_mode,
             reasoning_model=reasoning_model,
-            external_ai_used=reasoning_mode in {"morpheus", "gemini"},
+            external_ai_used=(
+                conversational_plan is not None or reasoning_mode in {"morpheus", "gemini"}
+            ),
             privacy_preflight_passed=True,
             recognized_sensitive_fields=len(query_entries),
             protected_question_tokens=len(set(TOKEN_PATTERN.findall(sanitized_question))),
             protected_context_tokens=len(
-                {token for hit in hits for token in TOKEN_PATTERN.findall(hit.retrieval_text)}
+                {
+                    *(
+                        token
+                        for hit in hits
+                        for token in TOKEN_PATTERN.findall(hit.retrieval_text)
+                    ),
+                    *(
+                        token
+                        for turn in planning_history
+                        for field in ("user", "assistant")
+                        for token in TOKEN_PATTERN.findall(str(turn[field]))
+                    ),
+                }
             ),
             restored_tokens=(
                 brief_trace.restored_tokens if brief_trace else answer_trace.restored_tokens
