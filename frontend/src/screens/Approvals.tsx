@@ -41,6 +41,10 @@ const TYPE_SUMMARY_LABEL: Record<CardType, [string, string]> = {
   outreach: ["outreach message", "outreach messages"],
 };
 
+function needsAttention(text: string): boolean {
+  return /overdue|past due|urgent/i.test(text);
+}
+
 function TypeBadge({ type }: { type: CardType }) {
   return (
     <div className={"fb-rec-type-badge is-type-" + type}>
@@ -88,6 +92,7 @@ export default function Approvals() {
   const [recommendationError, setRecommendationError] = useState("");
   const [outreachDrafts, setOutreachDrafts] = useState<EinvoiceOutreachDraft[]>([]);
   const [outreachError, setOutreachError] = useState("");
+  const [activeFilter, setActiveFilter] = useState<CardType | null>(null);
 
   const refreshRecommendations = async () => {
     const rows = await fetchRecommendations();
@@ -206,30 +211,48 @@ export default function Approvals() {
             <h1>{t("approvals.title")}</h1>
             <p>{t("approvals.desc")}</p>
           </div>
-          <button
-            className="fb-btn fb-btn-solid"
-            type="button"
-            onClick={analyze}
-            disabled={loadingAnalysis || !capabilities.analyzeProcesses}
-            title={capabilities.analyzeProcesses ? "" : "Owner / director persona required"}
-          >
-            {loadingAnalysis ? "Analyzing protected records…" : "Analyze recurring problems"}
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: ".5rem" }}>
+            <button
+              className="fb-btn fb-btn-outline"
+              type="button"
+              onClick={analyze}
+              disabled={loadingAnalysis || !capabilities.analyzeProcesses}
+            >
+              {loadingAnalysis ? "Analyzing protected records…" : "Analyze recurring problems"}
+            </button>
+            {!capabilities.analyzeProcesses && (
+              <span className="fb-disabled-hint" style={{ alignSelf: "flex-end" }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                Owner / director role required
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
       {summary.length > 0 && (
-        <div className="fb-approvals-summary">
+        <div className={"fb-approvals-summary" + (activeFilter ? " has-filter" : "")}>
           {summary.map((item) => (
-            <span className={"fb-count-chip " + item.tone} key={item.type}>
+            <button
+              className={"fb-count-chip " + item.tone + (activeFilter === item.type ? " is-active" : "")}
+              type="button"
+              key={item.type}
+              aria-pressed={activeFilter === item.type}
+              onClick={() => setActiveFilter((f) => (f === item.type ? null : item.type))}
+            >
               {item.count} {item.count === 1 ? TYPE_SUMMARY_LABEL[item.type][0] : TYPE_SUMMARY_LABEL[item.type][1]}
-            </span>
+            </button>
           ))}
+          {activeFilter && (
+            <button className="fb-link-toggle" type="button" onClick={() => setActiveFilter(null)}>
+              Showing {TYPE_SUMMARY_LABEL[activeFilter][1]} only — clear filter
+            </button>
+          )}
         </div>
       )}
 
       <div className="fb-page-body">
-        <PersonaSelector />
+        <PersonaSelector compact />
         {!capabilities.viewRecommendations && (
           <div className="fb-callout">This persona cannot view process recommendations.</div>
         )}
@@ -244,7 +267,7 @@ export default function Approvals() {
             />
           )}
 
-          {openRecommendations.map((item) => (
+          {(activeFilter === null || activeFilter === "recommendation") && openRecommendations.map((item) => (
             <article
               id={`recommendation-${item.id}`}
               className={`fb-rec-card is-type-recommendation${focusedRecommendationId === item.id ? " is-focused" : ""}`}
@@ -295,9 +318,15 @@ export default function Approvals() {
             </article>
           ))}
 
-          {pendingInvoices.map((inv) => (
+          {(activeFilter === null || activeFilter === "invoice") && pendingInvoices.map((inv) => (
             <div className="fb-rec-card is-type-invoice" key={inv.id}>
               <TypeBadge type="invoice" />
+              {needsAttention(inv.description) && (
+                <span className="fb-status-pill is-review" style={{ marginBottom: ".5rem" }}>
+                  <span className="fb-status-dot"></span>Needs attention
+                </span>
+              )}
+              <div className="fb-eyebrow" style={{ marginBottom: ".2rem" }}>{inv.date}</div>
               <h3>{inv.supplier} — {inv.amount}</h3>
               <div className="fb-rec-evidence">{inv.description}</div>
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
@@ -307,7 +336,7 @@ export default function Approvals() {
             </div>
           ))}
 
-          {draftSops.map((sop) => (
+          {(activeFilter === null || activeFilter === "sop") && draftSops.map((sop) => (
             <div className="fb-rec-card is-type-sop" key={sop.id}>
               <TypeBadge type="sop" />
               <h3>{sop.title}</h3>
@@ -319,9 +348,14 @@ export default function Approvals() {
             </div>
           ))}
 
-          {activeActions.map((act) => (
+          {(activeFilter === null || activeFilter === "action") && activeActions.map((act) => (
             <div className="fb-rec-card is-type-action" key={act.id}>
               <TypeBadge type="action" />
+              {needsAttention(act.detail) && (
+                <span className="fb-status-pill is-review" style={{ marginBottom: ".5rem" }}>
+                  <span className="fb-status-dot"></span>Needs attention
+                </span>
+              )}
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>{act.kind} · {act.agent}</div>
               <h3>{act.title}</h3>
               <div className="fb-rec-evidence">{act.detail}</div>
@@ -332,9 +366,14 @@ export default function Approvals() {
             </div>
           ))}
 
-          {outreachDrafts.map((draft) => (
+          {(activeFilter === null || activeFilter === "outreach") && outreachDrafts.map((draft) => (
             <div className="fb-rec-card is-type-outreach" key={`outreach-${draft.id}`}>
               <TypeBadge type="outreach" />
+              {needsAttention(draft.draft_text) && (
+                <span className="fb-status-pill is-review" style={{ marginBottom: ".5rem" }}>
+                  <span className="fb-status-dot"></span>Needs attention
+                </span>
+              )}
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>e-Invoice Readiness · via {draft.channel}</div>
               <div className="fb-rec-evidence">{draft.draft_text}</div>
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
