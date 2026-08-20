@@ -143,9 +143,9 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
 
       {expanded && (
         <div className="fb-table-wrap">
-          <table className="fb-table">
+          <table className="fb-table fb-align-top">
             <thead>
-              <tr><th>Supplier</th><th>Invoice</th><th style={{ textAlign: "right" }}>Amount</th><th>Document</th><th aria-hidden="true"></th></tr>
+              <tr><th>Supplier</th><th>Invoice</th><th>Amount</th><th>Document</th><th aria-hidden="true"></th></tr>
             </thead>
             <tbody>
               {data[expanded].records.length === 0 ? (
@@ -167,7 +167,7 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
                       )}
                     </td>
                     <td>{record.invoice_no ?? "—"}</td>
-                    <td className="fb-num">RM {record.total_amount}</td>
+                    <td className="fb-num-left">RM {record.total_amount}</td>
                     <td>
                       {record.document_available ? (
                         <button
@@ -460,7 +460,7 @@ function AllInvoicesPanel() {
         </div>
       )}
 
-      <div className="fb-unified-wrap" style={{ margin: "0 0 .8rem", maxWidth: "920px", padding: "0 1.5rem" }}>
+      <div className="fb-unified-wrap" style={{ margin: "0 0 .8rem", maxWidth: "var(--content-width)", padding: "0 1.5rem", textAlign: "center" }}>
         <button className="fb-link-toggle" type="button" onClick={() => setPdpaOpen((v) => !v)} aria-expanded={pdpaOpen}>
           <span className={"fb-link-toggle-caret" + (pdpaOpen ? " is-open" : "")}>▸</span>
           How is my receipt data protected? (PDPA compliance)
@@ -505,7 +505,7 @@ function AllInvoicesPanel() {
       <div className="fb-table-wrap">
         <table className="fb-table">
           <thead>
-            <tr><th>Date</th><th>Supplier</th><th style={{ textAlign: "right" }}>Amount</th><th>Status</th><th>UIN</th><th aria-hidden="true"></th></tr>
+            <tr><th>Date</th><th>Supplier</th><th>Amount</th><th>Status</th><th>UIN</th><th aria-hidden="true"></th></tr>
           </thead>
           <tbody>
             {order.length === 0 ? (
@@ -543,7 +543,7 @@ function AllInvoicesPanel() {
                   >
                     <td>{record.issue_date ?? "—"}</td>
                     <td>{record.supplier_name}</td>
-                    <td className="fb-num">RM {record.total_amount}</td>
+                    <td className="fb-num-left">RM {record.total_amount}</td>
                     <td><span className={"fb-status-pill " + pillClass}><span className="fb-status-dot"></span>{FB_EINVOICE_STATUS_LABEL[record.status]}</span></td>
                     <td>{record.uin || "—"}</td>
                     <td className="fb-table-row-chevron" aria-hidden="true">
