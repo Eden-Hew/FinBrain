@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   FB_ROLE_IDENTITY,
   initialAuditRows,
@@ -13,6 +13,8 @@ import {
   type Recommendation,
   type Sop,
 } from "../data/sampleData";
+import { PERSONAS } from "./personas";
+import { fetchEinvoiceOutreachDrafts, fetchRecommendations } from "../api/client";
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
@@ -257,13 +259,33 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }, [pushAuditRow]);
 
-  const approvalsCount = useMemo(() => {
-    let count = 0;
-    Object.values(einvoices).forEach((inv) => { if (inv.status === "pending") count++; });
-    sops.forEach((s) => { if (s.status === "draft") count++; });
-    pendingActions.forEach((a) => { if (a.active) count++; });
-    return count;
-  }, [einvoices, sops, pendingActions]);
+  // Counts real recommendations + outreach drafts only (matches Home's
+  // Approvals card) — the sidebar/topbar badge is meant to answer the same
+  // "how many things actually need my review" question shown there, so it
+  // must use the same source rather than the local demo seed data.
+  const [approvalsCount, setApprovalsCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const capabilities = PERSONAS[askRole].capabilities;
+    const load = async () => {
+      try {
+        let count = 0;
+        if (capabilities.viewRecommendations) {
+          const rows = await fetchRecommendations();
+          count += rows.filter((r) => r.status === "proposed" || r.status === "approved").length;
+        }
+        if (capabilities.manageEinvoiceReadiness) {
+          const drafts = await fetchEinvoiceOutreachDrafts();
+          count += drafts.length;
+        }
+        if (active) setApprovalsCount(count);
+      } catch {
+        if (active) setApprovalsCount(0);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [askRole]);
 
   const value: AppStateValue = {
     screen, show,

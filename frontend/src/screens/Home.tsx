@@ -45,18 +45,17 @@ function RestrictedNote({ label }: { label: string }) {
 }
 
 function CardShell({
-  tone, icon, label, onClick, disconnected, children,
+  tone, icon, label, onClick, children,
 }: {
   tone: string;
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
-  disconnected?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
-      className={"fb-home-card is-" + tone + (disconnected ? " is-disconnected" : "")}
+      className={"fb-home-card is-" + tone}
       type="button"
       onClick={onClick}
     >
@@ -64,13 +63,16 @@ function CardShell({
         <span className="fb-home-card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icon}</svg>
         </span>
-        {!disconnected && <span className="fb-home-card-arrow" aria-hidden="true">→</span>}
+        <span className="fb-home-card-arrow" aria-hidden="true">→</span>
       </div>
       <div className="fb-home-card-label">{label}</div>
       {children}
     </button>
   );
 }
+
+const RING_RADIUS = 25;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 function EinvoiceCard() {
   const { show } = useAppState();
@@ -85,6 +87,8 @@ function EinvoiceCard() {
     return () => { active = false; };
   }, []);
 
+  const pct = data ? Math.round(data.score * 100) : 0;
+
   return (
     <CardShell
       tone="einvoice"
@@ -95,11 +99,25 @@ function EinvoiceCard() {
       {state === "loading" && <div className="fb-fine">Loading…</div>}
       {state === "error" && <div className="fb-fine">Couldn't load e-Invoicing data.</div>}
       {state === "loaded" && data && (
-        <>
-          <div className="fb-home-card-headline"><span className="num">{data.score}</span><span className="unit">/ 100 readiness score</span></div>
-          <div className="fb-home-readiness-bar"><div className="fb-home-readiness-fill" style={{ width: `${data.score}%` }} /></div>
-          <div className="fb-home-card-sub">{data.critical.count} critical · {data.warning.count} warning · {data.passing_count} passing</div>
-        </>
+        <div className="fb-home-ring-row">
+          <div className="fb-home-ring-wrap">
+            <svg width="60" height="60" viewBox="0 0 60 60" aria-hidden="true">
+              <circle cx="30" cy="30" r={RING_RADIUS} fill="none" stroke="var(--bg-alt)" strokeWidth="6" />
+              <circle
+                cx="30" cy="30" r={RING_RADIUS} fill="none" stroke="var(--accent)" strokeWidth="6" strokeLinecap="round"
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={RING_CIRCUMFERENCE * (1 - pct / 100)}
+                transform="rotate(-90 30 30)"
+              />
+            </svg>
+            <span className="fb-home-ring-value">{pct}<small>%</small></span>
+          </div>
+          <div className="fb-home-ring-legend">
+            <span style={{ color: "var(--chart-attn)" }}>{data.critical.count} critical</span>
+            <span>{data.warning.count} warning</span>
+            <span style={{ color: "var(--chart-good)" }}>{data.passing_count} passing</span>
+          </div>
+        </div>
       )}
     </CardShell>
   );
@@ -192,8 +210,8 @@ function ApprovalsCard() {
   const visible = capabilities.viewRecommendations || capabilities.manageEinvoiceReadiness;
   const total = (recCount ?? 0) + (outreachCount ?? 0);
   const parts = [
-    recCount !== null && `${recCount} AI recommendation${recCount === 1 ? "" : "s"}`,
-    outreachCount !== null && `${outreachCount} outreach draft${outreachCount === 1 ? "" : "s"}`,
+    recCount !== null && recCount > 0 && `${recCount} AI recommendation${recCount === 1 ? "" : "s"}`,
+    outreachCount !== null && outreachCount > 0 && `${outreachCount} outreach draft${outreachCount === 1 ? "" : "s"}`,
   ].filter(Boolean) as string[];
 
   return (
@@ -209,7 +227,7 @@ function ApprovalsCard() {
       {visible && state === "loaded" && (
         <>
           <div className="fb-home-card-headline"><span className="num">{total}</span><span className="unit">awaiting your review</span></div>
-          <div className="fb-home-card-sub">{parts.length ? parts.join(" · ") : "Nothing pending right now"}</div>
+          <div className="fb-home-card-sub">{total === 0 ? "You're all caught up" : parts.join(" · ")}</div>
         </>
       )}
     </CardShell>
@@ -253,9 +271,17 @@ function CaptureCard() {
       {state === "error" && <div className="fb-fine">Couldn't load capture status.</div>}
       {state === "loaded" && (
         <>
-          <div className="fb-home-card-headline"><span className="num">{todayCount}</span><span className="unit">captured today</span></div>
+          <div className="fb-home-card-headline">
+            <span className="num">{totalCount}</span>
+            <span className="unit">protected record{totalCount === 1 ? "" : "s"}</span>
+          </div>
+          <div className="fb-home-card-foot">
+            <span className={"fb-home-delta-badge" + (todayCount > 0 ? " is-active" : "")}>
+              {todayCount > 0 ? `+${todayCount} today` : "No new captures today"}
+            </span>
+          </div>
           <div className="fb-home-card-sub">
-            {totalCount} protected record{totalCount === 1 ? "" : "s"} total · {connected.length ? connected.join(" + ") + " connected" : "Nothing connected yet"}
+            {connected.length ? connected.join(" + ") + " connected" : "Nothing connected yet"}
           </div>
         </>
       )}
@@ -263,21 +289,21 @@ function CaptureCard() {
   );
 }
 
-function FinanceCard() {
+function FinanceBanner() {
   const { show } = useAppState();
   return (
-    <CardShell
-      tone="finance"
-      label="Finance Dashboard"
-      onClick={() => show("finance")}
-      disconnected
-      icon={<path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />}
-    >
+    <button className="fb-home-finance-banner" type="button" onClick={() => show("finance")}>
+      <span className="fb-home-card-icon is-finance">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" /></svg>
+      </span>
+      <div className="fb-home-finance-banner-text">
+        <strong>Finance Dashboard</strong>
+        <span>Revenue and AR tracking will appear here once the finance module is wired to real data.</span>
+      </div>
       <span className="fb-home-not-connected">
         <span className="fb-home-dot attn"></span>Not connected yet
       </span>
-      <div className="fb-home-card-sub">Revenue and AR tracking will appear here once the finance module is wired to real data.</div>
-    </CardShell>
+    </button>
   );
 }
 
@@ -301,8 +327,9 @@ export default function Home() {
           <AuditCard />
           <ApprovalsCard />
           <CaptureCard />
-          <FinanceCard />
         </div>
+
+        <FinanceBanner />
 
         <div className="fb-home-ask-cta">
           <div className="fb-home-ask-cta-copy">
