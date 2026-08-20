@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
@@ -84,6 +84,8 @@ export default function Agents() {
     sampleBanner,
     dismissSampleBanner,
     openApprovalRecommendation,
+    pendingAskPrompt,
+    clearPendingAskPrompt,
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
@@ -198,6 +200,22 @@ export default function Agents() {
   };
 
   const handleSuggestion = (text: string) => send(text);
+
+  // A screen elsewhere (e.g. "Ask FinBrain about this" on Financial
+  // Intelligence) can hand off a question via askAbout() — consume it once
+  // on arrival so the conversation starts immediately instead of leaving
+  // the visitor to retype what they already asked to see answered.
+  useEffect(() => {
+    if (pendingAskPrompt) {
+      const prompt = pendingAskPrompt;
+      clearPendingAskPrompt();
+      // send()'s own setMessages calls are the intended immediate UI update
+      // (showing the handed-off question right away), not an unwanted cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void send(prompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startNewConversation = () => {
     setConversationId(null);

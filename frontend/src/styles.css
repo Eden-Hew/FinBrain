@@ -463,6 +463,13 @@ img{max-width:100%}
 .fb-chart-card{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:1.2rem 1rem;overflow-x:auto;}
 .fb-chart-legend{display:flex;gap:1.2rem;margin:0 0 .7rem;font-size:.7rem;color:var(--ink-soft);}
 .fb-chart-legend span{display:inline-flex;align-items:center;gap:.4rem;}
+
+.fb-scenario-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;}
+.fb-scenario-card{border:1px solid var(--line);border-top-width:3px;border-radius:14px;background:var(--card);padding:1.1rem 1.2rem;font-family:'Inter',-apple-system,sans-serif;}
+.fb-scenario-card .fb-kpi-value{font-family:'Inter Tight','Inter',sans-serif;font-size:1.3rem;font-weight:800;font-variant-numeric:tabular-nums;}
+.fb-scenario-card.is-best{border-top-color:var(--chart-good);}
+.fb-scenario-card.is-likely{border-top-color:var(--accent);}
+.fb-scenario-card.is-worst{border-top-color:var(--chart-attn);}
 .fb-legend-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
 .fb-chart-card svg{display:block;width:100%;height:auto;min-width:280px;}
 .fb-chart-card text{font-family:Arial,Helvetica,sans-serif;}
@@ -598,7 +605,7 @@ img{max-width:100%}
 .fb-briefing-tier.is-urgent{background:var(--chart-attn);border-color:var(--chart-attn);color:#fff;}
 .fb-briefing-tier.is-high{border-color:color-mix(in srgb, var(--chart-attn) 45%, var(--line));color:var(--chart-attn);}
 .fb-briefing-tier.is-monitoring{color:var(--ink-soft);}
-.fb-briefing-name{flex:1;min-width:0;font-weight:700;font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fb-briefing-name{flex:1;min-width:0;font-weight:700;font-size:.85rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .fb-briefing-detail{flex:0 0 auto;font-size:.78rem;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
 @media (max-width:640px){
   .fb-briefing-row{flex-wrap:wrap;}
