@@ -12,6 +12,7 @@ from app.integrations.email_connector.adapter import (
 )
 from app.integrations.email_connector.correlation import correlate_reply
 from app.integrations.email_connector.extractor import extract_email, extract_reply_references
+from app.integrations.email_connector.identity import link_verified_sender
 from app.integrations.email_connector.sender import message_reference_hash
 from app.models import EmailIngestionReceipt, EmailSyncState, TokenizedContent, utcnow
 from app.services.ingestion import ingest_canonical_record
@@ -103,7 +104,13 @@ def sync_mailbox(db: Session) -> SyncResult:
                 if status != "OK" or not fetched or not isinstance(fetched[0], tuple):
                     raise RuntimeError("message_fetch_failed")
                 raw_message = fetched[0][1]
-                extracted, occurred_at, message_id, attachment_count = extract_email(raw_message)
+                (
+                    extracted,
+                    occurred_at,
+                    message_id,
+                    attachment_count,
+                    sender_address,
+                ) = extract_email(raw_message)
                 reply_hashes = tuple(
                     message_reference_hash(value)
                     for value in extract_reply_references(raw_message)
@@ -130,6 +137,7 @@ def sync_mailbox(db: Session) -> SyncResult:
                     occurred_at=occurred_at,
                     extracted=extracted,
                     attachment_count=attachment_count,
+                    sender_address=sender_address,
                 )
                 result = ingest_canonical_record(db, record)
                 receipt.source_record_id = result.source_record_id
@@ -144,12 +152,18 @@ def sync_mailbox(db: Session) -> SyncResult:
                     )
                 )
                 if protected_row is not None:
-                    correlate_reply(
+                    correlated_action = correlate_reply(
                         db,
                         receipt=receipt,
                         protected_row=protected_row,
                         reference_hashes=reply_hashes,
                     )
+                    if correlated_action is None:
+                        link_verified_sender(
+                            db,
+                            receipt=receipt,
+                            protected_row=protected_row,
+                        )
                 protected += 1
                 if result.processing_status == "ready":
                     ready += 1

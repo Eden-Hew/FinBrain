@@ -31,18 +31,22 @@ def canonical_record(
     occurred_at: datetime | None,
     extracted: ExtractedContent,
     attachment_count: int,
+    sender_address: str | None = None,
 ) -> CanonicalIngestionRecord:
+    metadata = {
+        "channel": "email",
+        "input_kind": "email",
+        "mime_type": extracted.mime_type,
+        "has_attachments": str(attachment_count > 0).lower(),
+        "attachment_count": str(attachment_count),
+    }
+    if sender_address:
+        metadata["sender_email"] = sender_address
     return CanonicalIngestionRecord(
         source_record_id=f"email:{message_ref_hash[:32]}",
         source_system="email",
         record_type="email",
         text=extracted.text,
         occurred_at=occurred_at,
-        metadata={
-            "channel": "email",
-            "input_kind": "email",
-            "mime_type": extracted.mime_type,
-            "has_attachments": str(attachment_count > 0).lower(),
-            "attachment_count": str(attachment_count),
-        },
+        metadata=metadata,
     )

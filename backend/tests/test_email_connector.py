@@ -13,7 +13,7 @@ from app.models import Base, EmailSyncState
 def _message() -> bytes:
     message = EmailMessage()
     message["Subject"] = "Delayed invoice for Ahmad"
-    message["From"] = "ahmad@example.com"
+    message["From"] = "Ahmad Rahman <ahmad@example.com>"
     message["To"] = "finance@example.com"
     message["Message-ID"] = "<example-1@example.com>"
     message.set_content("Please call 012-345 6789 about the overdue approval.")
@@ -21,7 +21,9 @@ def _message() -> bytes:
 
 
 def test_email_extraction_normalizes_to_canonical_record():
-    extracted, occurred_at, message_id, attachment_count = extract_email(_message())
+    extracted, occurred_at, message_id, attachment_count, sender_address = extract_email(
+        _message()
+    )
     reference = message_reference(
         connector_key="imap-primary",
         folder="INBOX",
@@ -33,12 +35,38 @@ def test_email_extraction_normalizes_to_canonical_record():
         occurred_at=occurred_at,
         extracted=extracted,
         attachment_count=attachment_count,
+        sender_address=sender_address,
     )
 
     assert record.source_record_id.startswith("email:")
     assert "ahmad@example.com" in record.text
+    assert record.metadata["sender_email"] == "ahmad@example.com"
     assert record.source_system == "email"
     assert record.metadata["has_attachments"] == "false"
+
+
+def test_email_extraction_gets_bare_sender_without_guessing_a_name():
+    message = EmailMessage()
+    message["From"] = "bare.sender@example.com"
+    message["To"] = "finance@example.com"
+    message.set_content("No person name appears in this email.")
+
+    extracted, _occurred_at, _message_id, _attachments, sender_address = extract_email(
+        message.as_bytes()
+    )
+
+    assert sender_address == "bare.sender@example.com"
+    assert "bare.sender@example.com" in extracted.text
+
+
+def test_email_extraction_rejects_ambiguous_sender_headers():
+    raw = (
+        b"From: first@example.com, second@example.com\r\n"
+        b"To: finance@example.com\r\n"
+        b"Content-Type: text/plain\r\n\r\nMessage"
+    )
+    _extracted, _occurred_at, _message_id, _attachments, sender_address = extract_email(raw)
+    assert sender_address is None
 
 
 def test_email_reference_is_deterministic_and_hides_message_id():

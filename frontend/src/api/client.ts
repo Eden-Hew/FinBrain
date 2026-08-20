@@ -426,6 +426,7 @@ export interface CustomerEndpoint {
   customer_id: number;
   channel: "email";
   masked_value: string;
+  authorized_value: string | null;
   verification_status: "observed" | "verified" | "revoked";
   created_at: string;
 }
@@ -469,6 +470,12 @@ export async function createCustomerEndpoint(id: number, value: string): Promise
 
 export async function verifyCustomerEndpoint(id: number): Promise<CustomerEndpoint> {
   return parse<CustomerEndpoint>(await authenticatedFetch(`/customer-endpoints/${id}/verify`, {
+    method: "POST",
+  }));
+}
+
+export async function revokeCustomerEndpoint(id: number): Promise<CustomerEndpoint> {
+  return parse<CustomerEndpoint>(await authenticatedFetch(`/customer-endpoints/${id}/revoke`, {
     method: "POST",
   }));
 }

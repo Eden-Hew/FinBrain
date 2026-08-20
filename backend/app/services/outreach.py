@@ -42,7 +42,8 @@ def _response(db: Session, row: OutreachAction) -> OutreachActionResponse:
 
 
 def register_email_endpoint(
-    db: Session, *, tenant_id: str, customer_id: int, value: str
+    db: Session, *, tenant_id: str, customer_id: int, value: str,
+    actor_role: str = "system", actor_ref: str = "system",
 ) -> CustomerEndpoint:
     customer = db.get(Customer, customer_id)
     if customer is None or customer.tenant_id != tenant_id:
@@ -62,6 +63,16 @@ def register_email_endpoint(
         )
     )
     if existing:
+        if existing.verification_status == "revoked":
+            existing.verification_status = "observed"
+            existing.verified_by_user_id = None
+            existing.verified_at = None
+            write_workflow_event(
+                db, event_type="customer_endpoint_restored", actor_role=actor_role,
+                actor_ref=actor_ref, resource_type="customer_endpoint",
+                resource_id=str(existing.id), tenant_id=tenant_id,
+                event_payload={"customer_id": customer_id, "channel": "email"},
+            )
         db.commit()
         return existing
     row = CustomerEndpoint(
@@ -69,6 +80,32 @@ def register_email_endpoint(
         endpoint_token=tokens[0], verification_status="observed",
     )
     db.add(row)
+    db.commit()
+    return row
+
+
+def revoke_endpoint(
+    db: Session, endpoint_id: int, *, tenant_id: str,
+    actor_role: str, actor_ref: str,
+) -> CustomerEndpoint:
+    row = db.get(CustomerEndpoint, endpoint_id)
+    if row is None or row.tenant_id != tenant_id:
+        raise LookupError("customer_endpoint_not_found")
+    if row.verification_status == "revoked":
+        return row
+    previous_status = row.verification_status
+    row.verification_status = "revoked"
+    write_workflow_event(
+        db, event_type="customer_endpoint_revoked", actor_role=actor_role,
+        actor_ref=actor_ref, resource_type="customer_endpoint",
+        resource_id=str(row.id), tenant_id=tenant_id,
+        event_payload={
+            "customer_id": row.customer_id,
+            "channel": row.channel,
+            "previous_status": previous_status,
+            "status": "revoked",
+        },
+    )
     db.commit()
     return row
 
@@ -173,7 +210,7 @@ def transition_action(
     row = db.get(OutreachAction, action_id)
     if row is None or row.tenant_id != tenant_id:
         raise LookupError("outreach_action_not_found")
-    if operation == "submit":
+    if operation in {"submit", "approve"}:
         endpoint = db.get(CustomerEndpoint, row.customer_endpoint_id)
         if endpoint is None or endpoint.verification_status != "verified":
             raise ValueError("verified_email_endpoint_required")

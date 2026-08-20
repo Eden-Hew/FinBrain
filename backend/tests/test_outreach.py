@@ -1,11 +1,23 @@
-from sqlalchemy import create_engine
+from uuid import UUID
+
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.models import Base, Customer, CustomerEndpoint, OutreachAction, Tenant
+from app.auth.principal import AuthPrincipal
+from app.models import (
+    Base,
+    Customer,
+    CustomerEndpoint,
+    OutreachAction,
+    Tenant,
+    WorkflowAuditEntry,
+)
+from app.routes.outreach import _endpoint_response
 from app.schemas import UserRole
 from app.services.outreach import (
     create_action,
     register_email_endpoint,
+    revoke_endpoint,
     transition_action,
     verify_endpoint,
 )
@@ -56,6 +68,82 @@ def test_endpoint_is_protected_and_requires_verification_before_submit():
             role=UserRole.FINANCE_OPS, user_id=USER, actor_ref="actor",
         )
         assert submitted.status == "pending_approval"
+    finally:
+        db.close()
+
+
+def test_only_owner_receives_audited_authorized_endpoint_value():
+    db, customer = _session()
+    try:
+        endpoint = register_email_endpoint(
+            db, tenant_id=TENANT, customer_id=customer.id, value="owner-view@example.com"
+        )
+        finance = AuthPrincipal(
+            user_id=UUID(USER), email="finance@example.com",
+            role=UserRole.FINANCE_OPS, tenant_id=UUID(TENANT),
+        )
+        owner = AuthPrincipal(
+            user_id=UUID(USER), email="owner@example.com",
+            role=UserRole.OWNER_DIRECTOR, tenant_id=UUID(TENANT),
+        )
+
+        finance_response = _endpoint_response(db, endpoint, finance)
+        owner_response = _endpoint_response(db, endpoint, owner)
+
+        assert finance_response.authorized_value is None
+        assert finance_response.masked_value == "*****@*******.***"
+        assert owner_response.authorized_value == "owner-view@example.com"
+        assert owner_response.masked_value == "*****@*******.***"
+    finally:
+        db.close()
+
+
+def test_revoked_endpoint_blocks_approval_and_requires_explicit_restore():
+    db, customer = _session()
+    try:
+        endpoint = register_email_endpoint(
+            db, tenant_id=TENANT, customer_id=customer.id, value="revoke@example.com"
+        )
+        verify_endpoint(db, endpoint.id, tenant_id=TENANT, reviewer_id=USER)
+        action = create_action(
+            db, tenant_id=TENANT, customer_id=customer.id, endpoint_id=endpoint.id,
+            subject="Protected subject", body="Protected body",
+            idempotency_key="test-action-revoke", evidence_ids=[],
+            created_by_user_id=USER, actor_role=UserRole.FINANCE_OPS.value,
+            actor_ref="finance",
+        )
+        transition_action(
+            db, action.id, "submit", tenant_id=TENANT,
+            role=UserRole.FINANCE_OPS, user_id=USER, actor_ref="finance",
+        )
+
+        revoked = revoke_endpoint(
+            db, endpoint.id, tenant_id=TENANT,
+            actor_role=UserRole.OWNER_DIRECTOR.value, actor_ref="owner",
+        )
+        assert revoked.verification_status == "revoked"
+        try:
+            transition_action(
+                db, action.id, "approve", tenant_id=TENANT,
+                role=UserRole.OWNER_DIRECTOR, user_id=USER, actor_ref="owner",
+            )
+        except ValueError as error:
+            assert str(error) == "verified_email_endpoint_required"
+        else:
+            raise AssertionError("revoked endpoint was approved for delivery")
+
+        restored = register_email_endpoint(
+            db, tenant_id=TENANT, customer_id=customer.id,
+            value="revoke@example.com", actor_role=UserRole.OWNER_DIRECTOR.value,
+            actor_ref="owner",
+        )
+        assert restored.id == endpoint.id
+        assert restored.verification_status == "observed"
+        assert restored.verified_by_user_id is None
+        assert restored.verified_at is None
+        event_types = set(db.scalars(select(WorkflowAuditEntry.event_type)).all())
+        assert "customer_endpoint_revoked" in event_types
+        assert "customer_endpoint_restored" in event_types
     finally:
         db.close()
 

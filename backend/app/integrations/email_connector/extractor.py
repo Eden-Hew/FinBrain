@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from email import policy
 from email.message import Message
 from email.parser import BytesParser
-from email.utils import parsedate_to_datetime
+from email.utils import getaddresses, parsedate_to_datetime
 
 from bs4 import BeautifulSoup
 
@@ -51,7 +51,18 @@ def _occurred_at(message: Message) -> datetime | None:
         return None
 
 
-def extract_email(data: bytes) -> tuple[ExtractedContent, datetime | None, str, int]:
+def _sender_address(message: Message) -> str | None:
+    addresses = {
+        address.strip().casefold()
+        for _name, address in getaddresses(message.get_all("from", []))
+        if address.strip() and "@" in address
+    }
+    return next(iter(addresses)) if len(addresses) == 1 else None
+
+
+def extract_email(
+    data: bytes,
+) -> tuple[ExtractedContent, datetime | None, str, int, str | None]:
     try:
         message = BytesParser(policy=policy.default).parsebytes(data)
     except Exception as error:
@@ -110,4 +121,5 @@ def extract_email(data: bytes) -> tuple[ExtractedContent, datetime | None, str, 
         _occurred_at(message),
         message_id,
         attachment_count,
+        _sender_address(message),
     )

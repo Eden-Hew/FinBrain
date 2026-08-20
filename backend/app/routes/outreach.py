@@ -14,10 +14,12 @@ from app.schemas import (
     OutreachCreateRequest,
     UserRole,
 )
+from app.security.detokenize import detokenize_response_with_trace, hash_query
 from app.services.outreach import (
     create_action,
     endpoint_mask,
     register_email_endpoint,
+    revoke_endpoint,
     transition_action,
     verify_endpoint,
 )
@@ -31,10 +33,25 @@ def _enabled() -> None:
         raise HTTPException(status_code=503, detail="customer_intelligence_disabled")
 
 
-def _endpoint_response(db: Session, row: CustomerEndpoint) -> CustomerEndpointResponse:
+def _endpoint_response(
+    db: Session, row: CustomerEndpoint, principal: AuthPrincipal
+) -> CustomerEndpointResponse:
+    authorized_value = None
+    if principal.role is UserRole.OWNER_DIRECTOR:
+        trace = detokenize_response_with_trace(
+            db,
+            row.endpoint_token,
+            principal.role.value,
+            hash_query(f"customer-endpoint:{row.customer_id}:{row.id}"),
+            actor_ref=principal.actor_ref,
+            turn_ref=f"customer-endpoint:{row.id}",
+        )
+        if trace.restored_tokens == 1 and trace.withheld_tokens == 0:
+            authorized_value = trace.text
     return CustomerEndpointResponse(
         id=row.id, customer_id=row.customer_id, channel=row.channel,
-        masked_value=endpoint_mask(db, row), verification_status=row.verification_status,
+        masked_value=endpoint_mask(db, row), authorized_value=authorized_value,
+        verification_status=row.verification_status,
         created_at=row.created_at,
     )
 
@@ -49,8 +66,9 @@ def create_endpoint(
     try:
         return _endpoint_response(db, register_email_endpoint(
             db, tenant_id=str(principal.tenant_id), customer_id=customer_id,
-            value=payload.value,
-        ))
+            value=payload.value, actor_role=principal.role.value,
+            actor_ref=principal.actor_ref,
+        ), principal)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
@@ -71,7 +89,7 @@ def list_endpoints(
         CustomerEndpoint.tenant_id == str(principal.tenant_id),
         CustomerEndpoint.customer_id == customer_id,
     ).order_by(CustomerEndpoint.created_at.desc())).all()
-    return [_endpoint_response(db, row) for row in rows]
+    return [_endpoint_response(db, row, principal) for row in rows]
 
 
 @router.post("/customer-endpoints/{endpoint_id}/verify", response_model=CustomerEndpointResponse)
@@ -85,11 +103,30 @@ def confirm_endpoint(
         return _endpoint_response(db, verify_endpoint(
             db, endpoint_id, tenant_id=str(principal.tenant_id),
             reviewer_id=str(principal.user_id),
-        ))
+        ), principal)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post(
+    "/customer-endpoints/{endpoint_id}/revoke",
+    response_model=CustomerEndpointResponse,
+)
+def revoke_customer_endpoint(
+    endpoint_id: int,
+    principal: AuthPrincipal = Depends(require_roles(UserRole.OWNER_DIRECTOR)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    try:
+        return _endpoint_response(db, revoke_endpoint(
+            db, endpoint_id, tenant_id=str(principal.tenant_id),
+            actor_role=principal.role.value, actor_ref=principal.actor_ref,
+        ), principal)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @router.post("/customers/{customer_id}/outreach", response_model=OutreachActionResponse)

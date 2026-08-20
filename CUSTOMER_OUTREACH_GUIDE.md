@@ -55,6 +55,9 @@ authorization boundary used by the rest of FinBrain.
 - `customer_aliases` stores deterministic protected aliases such as `ORG_...` and `PERSON_...`.
 - `customer_record_links` records which protected sources are linked to a customer and whether the
   match is verified, probable, ambiguous, or rejected.
+- Gmail ingestion parses the RFC `From` address transiently, protects it as `sender_email`, and
+  links a standalone inbound message when its `EMAIL_...` token uniquely matches a verified
+  customer endpoint in the same tenant. It never guesses a person's name from an address.
 - Existing protected records can be linked after an alias becomes known by running the idempotent
   backfill script.
 
@@ -178,8 +181,18 @@ If environment variables were changed while the application was running, stop an
 ## 7. Prepare one useful customer
 
 The migration creates empty customer-intelligence tables; it does not reinterpret historical
-records automatically. The clearest additive test is to create one new e-invoice whose buyer name
-also appears in existing protected evidence.
+records automatically. For a repeatable, non-destructive fixture, run from `backend`:
+
+```powershell
+uv run --active --no-sync python -m scripts.seed_demo_customer
+```
+
+The command is idempotent. It adds or reuses `Luma Retail Sdn Bhd`, invoice `LUMA-INV-3001`, a
+protected customer email, verified evidence links, an attention snapshot, and an `observed`
+protected endpoint. It does not reset or delete existing data.
+
+Alternatively, the clearest manual test is to create one new e-invoice whose buyer name also
+appears in existing protected evidence.
 
 Log in as `finance@finbrain-demo.test` and create an e-invoice with values similar to:
 
@@ -262,7 +275,7 @@ Select **Protect endpoint**.
 Expected behavior:
 
 - the API accepts the raw address only at the trusted backend boundary;
-- the UI subsequently displays a masked value;
+- the finance UI subsequently displays a masked value;
 - `customer_endpoints.endpoint_token` contains an `EMAIL_...` token;
 - the plaintext address is stored only as encrypted vault material;
 - the endpoint begins in `observed` state;
@@ -283,6 +296,10 @@ verified_email_endpoint_required
 
 Expected behavior:
 
+- the owner view displays the authorized original address and labels it as an authorized owner
+  view;
+- retrieving the original address uses the normal single-use disclosure flow and writes a
+  disclosure audit event;
 - status changes from `observed` to `verified`;
 - `verified_by_user_id` and `verified_at` are recorded;
 - a finance JWT still cannot perform the same update;
@@ -329,6 +346,20 @@ to the selected customer.
 
 Finance can inspect the pending action but cannot approve or reject it. A direct API attempt should
 return HTTP 403 with `owner_director_required`.
+
+### Endpoint revocation
+
+An owner/director can select **Revoke endpoint** for an observed or verified address. Revocation
+preserves the protected endpoint, existing outreach references, and hash-chained audit history, but
+immediately prevents new submission, approval, or delivery through that address. Re-entering the
+same address is an explicit restore operation: the existing endpoint returns to `observed` and must
+be verified again before it can be used. No plaintext address is duplicated in the database.
+
+Verification also controls inbound identity linking. A new standalone Gmail message from a unique,
+verified endpoint is linked to that customer using the protected sender token, even when the body
+does not mention the person's or company's name. Observed, revoked, unknown, cross-tenant, or
+multi-customer matches remain unlinked. Replies to governed outreach continue to use the stronger
+exact `In-Reply-To`/`References` correlation first.
 
 ### Compliance
 
@@ -640,4 +671,3 @@ applied with forced RLS.
 - [ ] Workflow audit contains the expected state transitions.
 - [ ] Optional controlled SMTP delivery reaches `sent`.
 - [ ] Optional reply through the original thread reaches `replied`.
-

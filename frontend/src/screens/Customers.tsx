@@ -6,6 +6,7 @@ import {
   fetchCustomerEndpoints,
   fetchCustomers,
   fetchOutreachActions,
+  revokeCustomerEndpoint,
   transitionOutreachAction,
   verifyCustomerEndpoint,
   type CustomerDetail,
@@ -69,6 +70,12 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
     catch (error) { setMessage(error instanceof Error ? error.message : "Verification failed."); }
     finally { setBusy(false); }
   };
+  const revoke = async (id: number) => {
+    setBusy(true); setMessage("");
+    try { await revokeCustomerEndpoint(id); await refresh(); setMessage("Endpoint revoked. It can no longer be used for outreach."); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Revocation failed."); }
+    finally { setBusy(false); }
+  };
   const submitOutreach = async () => {
     const endpoint = endpoints.find((row) => row.verification_status === "verified");
     if (!endpoint) { setMessage("A verified email endpoint is required."); return; }
@@ -114,8 +121,13 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
       <div className="fb-callout">
         <strong>Protected endpoints</strong>
         {endpoints.map((endpoint) => <div key={endpoint.id} style={{ display: "flex", gap: ".6rem", alignItems: "center", marginTop: ".5rem", flexWrap: "wrap" }}>
-          <span>{endpoint.masked_value} · {endpoint.verification_status}</span>
+          <span>
+            {endpoint.authorized_value ?? endpoint.masked_value} · {endpoint.verification_status}
+            {endpoint.authorized_value && <span className="fb-fine"> · authorized owner view</span>}
+          </span>
           {endpoint.verification_status === "observed" && canVerify && <button className="fb-btn fb-btn-outline" type="button" disabled={busy} onClick={() => void verify(endpoint.id)}>Verify endpoint</button>}
+          {endpoint.verification_status !== "revoked" && canVerify && <button className="fb-btn fb-btn-outline" type="button" disabled={busy} onClick={() => void revoke(endpoint.id)}>Revoke endpoint</button>}
+          {endpoint.verification_status === "revoked" && <span className="fb-fine">Re-enter the same address to restore it as observed.</span>}
         </div>)}
         <div style={{ display: "flex", gap: ".6rem", marginTop: ".7rem", flexWrap: "wrap" }}>
           <input className="fb-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="customer@example.com" aria-label="Customer email" />

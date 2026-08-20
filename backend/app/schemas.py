@@ -678,6 +678,7 @@ class CustomerEndpointResponse(BaseModel):
     customer_id: int
     channel: str
     masked_value: str
+    authorized_value: str | None = None
     verification_status: str
     created_at: datetime
 

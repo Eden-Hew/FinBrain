@@ -230,8 +230,9 @@ export default function Approvals() {
   const showSop = (activeFilter === null || activeFilter === "sop") && draftSops.length > 0;
   const showAction = (activeFilter === null || activeFilter === "action") && activeActions.length > 0;
   const showOutreach = (activeFilter === null || activeFilter === "outreach") && outreachDrafts.length > 0;
+  const showCustomerOutreach = (activeFilter === null || activeFilter === "outreach") && visibleCustomerOutreach.length > 0;
   const showDecisionSection = showRec || showInv || showSop;
-  const showSendSection = showAction || showOutreach;
+  const showSendSection = showAction || showOutreach || showCustomerOutreach;
 
   const summary: { type: CardType; tone: string; count: number }[] = [
     { type: "invoice" as const, tone: "is-blue", count: pendingInvoices.length },
@@ -410,7 +411,7 @@ export default function Approvals() {
               </div>
               {/send/i.test(act.approveLabel) && (
                 <div className="fb-fine" style={{ marginTop: ".6rem" }}>
-                  Approving marks this ready — actual delivery needs an email or Telegram send provider connected, which isn't set up yet.
+                  This agent-action card records the decision only. It is not connected to governed message delivery.
                 </div>
               )}
             </div>
@@ -431,11 +432,11 @@ export default function Approvals() {
                 <button className="fb-btn fb-btn-outline" type="button" onClick={() => decideOutreach(draft.id, "reject")}>Discard</button>
               </div>
               <div className="fb-fine" style={{ marginTop: ".6rem" }}>
-                Approving marks this ready — actual delivery needs an email or Telegram send provider connected, which isn't set up yet.
+                This legacy e-invoice readiness draft records the approval only. It does not queue an outbound message.
               </div>
             </div>
           ))}
-          {(activeFilter === null || activeFilter === "outreach") && visibleCustomerOutreach.map((action) => (
+          {showCustomerOutreach && visibleCustomerOutreach.map((action) => (
             <div className="fb-rec-card is-type-outreach" key={`customer-outreach-${action.id}`}>
               <TypeBadge type="outreach" />
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>Customer intelligence · protected email · waiting for approval</div>
@@ -450,6 +451,9 @@ export default function Approvals() {
                   onConfirm={() => void decideCustomerOutreach(action.id, "approve")}
                 />
                 <button className="fb-btn fb-btn-outline" type="button" disabled={askRole !== "owner_director"} onClick={() => void decideCustomerOutreach(action.id, "reject")}>Reject</button>
+              </div>
+              <div className="fb-fine" style={{ marginTop: ".6rem" }}>
+                Approval queues this governed message. The email worker delivers it when outbound SMTP is enabled and configured.
               </div>
             </div>
           ))}
