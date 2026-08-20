@@ -360,37 +360,52 @@ def normalize_einvoice_data(
         status=status,
     )
 
-    supplier_email_val = str(
-        raw.get("supplier_email")
-        or f"billing@{re.sub(r'[^a-zA-Z0-9]', '', supplier_name.lower())[:10]}.com.my"
+    supplier_email_val = str(raw.get("supplier_email") or raw.get("email") or "—")
+    buyer_email_val = str(raw.get("buyer_email") or "—")
+    supplier_reg_no = str(raw.get("supplier_reg_no") or raw.get("registration_no") or "—")
+    supplier_address = str(raw.get("supplier_address") or raw.get("address") or "—")
+    supplier_phone = str(raw.get("supplier_phone") or raw.get("contact") or "—")
+
+    buyer_tin = str(raw.get("buyer_tin") or (raw.get("tin") if raw.get("buyer_name") and raw.get("tin") != supplier_tin else "—") or "—")
+    buyer_reg_no = str(raw.get("buyer_reg_no") or "—")
+    buyer_address = str(raw.get("buyer_address") or "—")
+    buyer_phone = str(raw.get("buyer_phone") or "—")
+
+    item_desc = str(
+        raw.get("item_description")
+        or raw.get("description")
+        or f"Commercial supply / services as per invoice {invoice_no}"
     )
-    buyer_email_val = str(raw.get("buyer_email") or "finance@finbrain.os")
+    bank_acc = str(raw.get("bank_account_no") or "—")
+    pay_terms = str(raw.get("payment_terms") or raw.get("terms") or "Net 30 Days")
 
     supplier = SupplierInfo(
         name=supplier_name,
         tin=supplier_tin,
-        registration_no="199001008888",
-        sst_registration_no="W10-1808-32000018" if tax_type == "SST" else None,
-        address="Bangsar Corporate Tower, No. 129 Jalan Bangsar, 59200 Kuala Lumpur",
-        contact="+603-2296 5566",
+        registration_no=supplier_reg_no,
+        sst_registration_no=raw.get("sst_registration_no")
+        if raw.get("sst_registration_no")
+        else ("W10-1808-32000018" if tax_type == "SST" else None),
+        address=supplier_address,
+        contact=supplier_phone,
         email=supplier_email_val,
-        msic_code="35101",
-        business_activity="Commercial Supply & Services",
+        msic_code=str(raw.get("msic_code") or "62010"),
+        business_activity=str(raw.get("business_activity") or "Commercial Supply & Services"),
     )
 
     buyer = BuyerInfo(
         name=buyer_name,
-        tin="C2589012300" if buyer_name else "—",
-        registration_no="202401012345",
-        sst_registration_no=None,
-        address="Level 20, Menara FinTech, 50450 Kuala Lumpur, Malaysia",
-        contact="+603-2111 2222",
+        tin=buyer_tin,
+        registration_no=buyer_reg_no,
+        sst_registration_no=raw.get("buyer_sst_registration_no"),
+        address=buyer_address,
+        contact=buyer_phone,
         email=buyer_email_val,
     )
 
     line_items = [
         LineItemInfo(
-            description=f"Supply of commercial goods/services as per invoice {invoice_no}",
+            description=item_desc,
             classification_code="001",
             quantity=Decimal("1"),
             unit_of_measure="Lot",
@@ -416,12 +431,14 @@ def normalize_einvoice_data(
     paid_at_val = _format_date(raw.get("paid_at")) if raw.get("paid_at") else None
     payment = PaymentInfo(
         mode=str(raw.get("payment_method") or raw.get("mode") or "Bank Transfer"),
-        bank_account_no=str(raw.get("bank_account_no") or "Maybank 514011223344"),
-        terms=str(raw.get("terms") or "Net 30 Days"),
+        bank_account_no=bank_acc,
+        terms=pay_terms,
         due_date=_format_date(raw.get("due_date")) if raw.get("due_date") else issue_date_val,
         paid_at=paid_at_val,
         payment_reference_no=str(raw.get("payment_reference_no") or invoice_no),
-        bill_reference_no=str(raw.get("bill_reference_no") or f"BIL-{invoice_no.replace('-', '')[-4:]}"),
+        bill_reference_no=str(
+            raw.get("bill_reference_no") or f"BIL-{invoice_no.replace('-', '')[-4:]}"
+        ),
     )
 
     return EInvoicePdfData(
@@ -634,7 +651,7 @@ def render_einvoice_pdf(
         ],
         [
             Paragraph(
-                f"<font color='{MID_GREY.hexval()}'><b>DATE &amp; TIME:</b></font> {data.document.issue_date} {data.document.issue_time}",
+                f"<font color='{MID_GREY.hexval()}'><b>DATE:</b></font> {data.document.issue_date} &nbsp;|&nbsp; <font color='{MID_GREY.hexval()}'><b>DUE:</b></font> <b>{data.payment.due_date or data.document.issue_date}</b>",
                 style_meta_val_r,
             )
         ],

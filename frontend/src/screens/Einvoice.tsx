@@ -235,15 +235,27 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
     supplier_name: "",
     supplier_tin: "",
     supplier_email: "",
+    supplier_reg_no: "",
+    supplier_phone: "",
+    supplier_address: "",
     buyer_name: "",
     buyer_email: "",
+    buyer_tin: "",
+    buyer_reg_no: "",
+    buyer_phone: "",
+    buyer_address: "",
     invoice_no: "",
+    item_description: "",
     issue_date: "",
+    due_date: "",
     currency: "MYR",
     tax_type: "",
     tax_rate: "",
+    payment_terms: "",
+    bank_account_no: "",
     total_amount: "",
   });
+  const [showCompanyDetails, setShowCompanyDetails] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -264,11 +276,10 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
     try {
       const extracted = await extractEinvoiceFields(selected);
       setForm((f) => ({
+        ...f,
         supplier_name: extracted.supplier_name ?? f.supplier_name,
         supplier_tin: extracted.supplier_tin ?? f.supplier_tin,
-        supplier_email: f.supplier_email,
         buyer_name: extracted.buyer_name ?? f.buyer_name,
-        buyer_email: f.buyer_email,
         invoice_no: extracted.invoice_no ?? f.invoice_no,
         issue_date: extracted.issue_date ?? f.issue_date,
         currency: extracted.currency ?? f.currency,
@@ -297,13 +308,24 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         supplier_name: form.supplier_name.trim(),
         supplier_tin: form.supplier_tin.trim() || null,
         supplier_email: form.supplier_email.trim() || null,
+        supplier_reg_no: form.supplier_reg_no.trim() || null,
+        supplier_phone: form.supplier_phone.trim() || null,
+        supplier_address: form.supplier_address.trim() || null,
         buyer_name: form.buyer_name.trim() || null,
         buyer_email: form.buyer_email.trim() || null,
+        buyer_tin: form.buyer_tin.trim() || null,
+        buyer_reg_no: form.buyer_reg_no.trim() || null,
+        buyer_phone: form.buyer_phone.trim() || null,
+        buyer_address: form.buyer_address.trim() || null,
         invoice_no: form.invoice_no.trim() || null,
+        item_description: form.item_description.trim() || null,
         issue_date: form.issue_date || null,
+        due_date: form.due_date || null,
         currency: form.currency.trim() || null,
         tax_type: form.tax_type.trim() || null,
         tax_rate: form.tax_rate.trim() || null,
+        payment_terms: form.payment_terms.trim() || null,
+        bank_account_no: form.bank_account_no.trim() || null,
         total_amount: form.total_amount.trim(),
       };
       const created = await createEinvoiceRecord(payload);
@@ -341,43 +363,94 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
       </label>
       {extracting && <div className="fb-fine">Reading the PDF and extracting fields…</div>}
       {extractNotice && !extracting && <div className="fb-fine">{extractNotice}</div>}
+      
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
-        <label className="fb-field-label">Supplier / Seller name
-          <input className="fb-field-mock" {...field("supplier_name")} required />
+        <label className="fb-field-label">Supplier / Seller name *
+          <input className="fb-field-mock" {...field("supplier_name")} placeholder="e.g. Tenaga Nasional Berhad" required />
         </label>
         <label className="fb-field-label">Seller email
-          <input className="fb-field-mock" type="email" {...field("supplier_email")} placeholder="e.g. billing@seller.com" />
-        </label>
-        <label className="fb-field-label">Supplier TIN
-          <input className="fb-field-mock" {...field("supplier_tin")} placeholder="Leave blank if unknown" />
+          <input className="fb-field-mock" type="email" {...field("supplier_email")} placeholder="e.g. billing@supplier.com" />
         </label>
         <label className="fb-field-label">Buyer name
-          <input className="fb-field-mock" {...field("buyer_name")} />
+          <input className="fb-field-mock" {...field("buyer_name")} placeholder="e.g. FINBRAIN Sdn Bhd" />
         </label>
         <label className="fb-field-label">Buyer email
           <input className="fb-field-mock" type="email" {...field("buyer_email")} placeholder="e.g. finance@buyer.com" />
         </label>
         <label className="fb-field-label">Invoice no.
-          <input className="fb-field-mock" {...field("invoice_no")} />
+          <input className="fb-field-mock" {...field("invoice_no")} placeholder="e.g. INV-2026-001" />
+        </label>
+        <label className="fb-field-label">Item / Service description
+          <input className="fb-field-mock" {...field("item_description")} placeholder="e.g. Cloud Compute & Storage Q3" />
         </label>
         <label className="fb-field-label">Issue date
           <input className="fb-field-mock" type="date" {...field("issue_date")} />
         </label>
+        <label className="fb-field-label">Payment due date (Last pay by date)
+          <input className="fb-field-mock" type="date" {...field("due_date")} />
+        </label>
         <label className="fb-field-label">Currency
-          <input className="fb-field-mock" {...field("currency")} placeholder="e.g. MYR, USD" />
+          <input className="fb-field-mock" {...field("currency")} placeholder="e.g. MYR, USD, SGD, EUR" />
         </label>
-        <label className="fb-field-label">Tax type
-          <input className="fb-field-mock" {...field("tax_type")} placeholder="e.g. SST" />
-        </label>
-        <label className="fb-field-label">Tax rate
-          <input className="fb-field-mock" {...field("tax_rate")} placeholder="e.g. 6%" />
-        </label>
-        <label className="fb-field-label">Total amount ({form.currency?.trim() ? form.currency.trim().toUpperCase() : "RM"})
+        <label className="fb-field-label">Total amount ({form.currency?.trim() ? form.currency.trim().toUpperCase() : "RM"}) *
           <input className="fb-field-mock" type="number" step="0.01" min="0.01" {...field("total_amount")} required />
         </label>
+        <label className="fb-field-label">Tax type
+          <input className="fb-field-mock" {...field("tax_type")} placeholder="e.g. SST, Exempt" />
+        </label>
+        <label className="fb-field-label">Tax rate
+          <input className="fb-field-mock" {...field("tax_rate")} placeholder="e.g. 6%, 0%" />
+        </label>
       </div>
+
+      <div style={{ marginTop: ".4rem" }}>
+        <button
+          type="button"
+          className="fb-btn fb-btn-outline"
+          style={{ fontSize: ".72rem", padding: ".3rem .6rem" }}
+          onClick={() => setShowCompanyDetails((v) => !v)}
+        >
+          {showCompanyDetails ? "Hide additional company & payment details ▲" : "Add company addresses, TINs & remittance bank details ▼"}
+        </button>
+      </div>
+
+      {showCompanyDetails && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem", background: "var(--card-subtle, #f9fafb)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--line)" }}>
+          <label className="fb-field-label">Supplier TIN
+            <input className="fb-field-mock" {...field("supplier_tin")} placeholder="e.g. C1234567890" />
+          </label>
+          <label className="fb-field-label">Supplier Reg No.
+            <input className="fb-field-mock" {...field("supplier_reg_no")} placeholder="e.g. 199001008888" />
+          </label>
+          <label className="fb-field-label">Supplier Phone
+            <input className="fb-field-mock" {...field("supplier_phone")} placeholder="e.g. +603-2296 5566" />
+          </label>
+          <label className="fb-field-label">Supplier Address
+            <input className="fb-field-mock" {...field("supplier_address")} placeholder="e.g. No. 129, Jalan Bangsar, Kuala Lumpur" />
+          </label>
+          <label className="fb-field-label">Buyer TIN
+            <input className="fb-field-mock" {...field("buyer_tin")} placeholder="e.g. C9876543210" />
+          </label>
+          <label className="fb-field-label">Buyer Reg No.
+            <input className="fb-field-mock" {...field("buyer_reg_no")} placeholder="e.g. 202401012345" />
+          </label>
+          <label className="fb-field-label">Buyer Phone
+            <input className="fb-field-mock" {...field("buyer_phone")} placeholder="e.g. +603-2111 2222" />
+          </label>
+          <label className="fb-field-label">Buyer Address
+            <input className="fb-field-mock" {...field("buyer_address")} placeholder="e.g. Level 20, Menara FinTech, Kuala Lumpur" />
+          </label>
+          <label className="fb-field-label">Payment Terms
+            <input className="fb-field-mock" {...field("payment_terms")} placeholder="e.g. Net 30 Days, Due on Receipt" />
+          </label>
+          <label className="fb-field-label">Remittance Bank Account No.
+            <input className="fb-field-mock" {...field("bank_account_no")} placeholder="e.g. Maybank 514011223344" />
+          </label>
+        </div>
+      )}
+
       {error && <div className="fb-fine" style={{ color: "var(--chart-attn)" }} role="alert">{error}</div>}
-      <div style={{ display: "flex", gap: ".6rem" }}>
+      <div style={{ display: "flex", gap: ".6rem", marginTop: ".4rem" }}>
         <button type="submit" className="fb-btn fb-btn-solid" disabled={submitting || extracting}>
           {submitting ? "Saving…" : "Save invoice"}
         </button>

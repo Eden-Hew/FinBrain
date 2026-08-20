@@ -545,14 +545,24 @@ class EInvoiceCreatePayload(BaseModel):
     supplier_name: str = Field(min_length=1, max_length=255)
     supplier_tin: str | None = Field(default=None, max_length=64)
     supplier_email: str | None = Field(default=None, max_length=255)
+    supplier_reg_no: str | None = Field(default=None, max_length=64)
+    supplier_phone: str | None = Field(default=None, max_length=64)
+    supplier_address: str | None = Field(default=None, max_length=500)
     buyer_name: str | None = Field(default=None, max_length=255)
     buyer_email: str | None = Field(default=None, max_length=255)
+    buyer_tin: str | None = Field(default=None, max_length=64)
+    buyer_reg_no: str | None = Field(default=None, max_length=64)
+    buyer_phone: str | None = Field(default=None, max_length=64)
+    buyer_address: str | None = Field(default=None, max_length=500)
     invoice_no: str | None = Field(default=None, max_length=64)
+    item_description: str | None = Field(default=None, max_length=500)
     issue_date: date | None = None
     due_date: date | None = None
     currency: str | None = Field(default="MYR", max_length=8)
     tax_type: str | None = Field(default=None, max_length=32)
     tax_rate: str | None = Field(default=None, max_length=16)
+    payment_terms: str | None = Field(default=None, max_length=64)
+    bank_account_no: str | None = Field(default=None, max_length=128)
     total_amount: Decimal = Field(gt=0)
 
 
