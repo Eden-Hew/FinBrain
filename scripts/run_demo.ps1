@@ -108,7 +108,8 @@ try {
       -WorkingDirectory (Join-Path $repoRoot "backend")
   }
   $emailEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "EMAIL_CONNECTOR_ENABLED"
-  if ($emailEnabled) {
+  $outboundEmailEnabled = Test-DemoEnvFlag -EnvFile $envFile -Name "OUTBOUND_EMAIL_ENABLED"
+  if ($emailEnabled -or $outboundEmailEnabled) {
     Start-DemoComponent -Name "email" -Executable $pythonRuntime.executable `
       -Arguments (@($pythonRuntime.arguments) + @("-m", "app.integrations.email_connector.runner")) `
       -WorkingDirectory (Join-Path $repoRoot "backend")
@@ -153,7 +154,7 @@ try {
   Write-Output "FinBrain frontend: http://127.0.0.1:5173"
   Write-Output "FinBrain API docs: http://127.0.0.1:8000/docs"
   Write-Output "Telegram worker: $(if ($telegramEnabled) { 'started' } else { 'disabled' })"
-  Write-Output "Email worker: $(if ($emailEnabled) { 'started' } else { 'disabled' })"
+  Write-Output "Email worker: $(if ($emailEnabled -or $outboundEmailEnabled) { 'started' } else { 'disabled' })"
   Write-Output "Vault rotation worker: $(if ($rotationEnabled) { 'started' } else { 'disabled' })"
 } catch {
   $cleanupEntries = [object[]]$processes.Clone()

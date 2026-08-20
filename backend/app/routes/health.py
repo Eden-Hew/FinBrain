@@ -72,7 +72,9 @@ def _row_service(db: Session) -> list[dict]:
     return [
         build("telegram", "Telegram worker", bool(settings.telegram_bot_token), "polling",
               max(settings.telegram_heartbeat_seconds * 3, 90)),
-        build("email", "Email worker", settings.email_configured, "imap",
+        build("email", "Email worker",
+              getattr(settings, "email_worker_configured", settings.email_configured),
+              "imap+smtp" if getattr(settings, "email_smtp_configured", False) else "imap",
               max(settings.email_sync_interval_seconds * 3, 90)),
         build("vault-rotation", "Vault rotation worker",
               settings.vault_auto_rotation_enabled, "scheduled",

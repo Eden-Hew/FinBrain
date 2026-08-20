@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     email_sync_interval_seconds: int = 60
     email_max_messages_per_sync: int = 25
     email_include_attachments: bool = True
+    email_smtp_host: str = "smtp.gmail.com"
+    email_smtp_port: int = 587
+    email_smtp_username: str = ""
+    email_smtp_password: str = ""
+    email_smtp_use_starttls: bool = True
+    email_smtp_from_address: str = ""
+    email_outbound_batch_size: int = 5
+    email_send_timeout_seconds: int = 15
+    email_sending_stale_seconds: int = 120
     structured_csv_max_file_bytes: int = 10_000_000
     structured_csv_max_rows: int = 500
     structured_csv_max_columns: int = 20
@@ -111,6 +120,10 @@ class Settings(BaseSettings):
         "email_imap_port",
         "email_sync_interval_seconds",
         "email_max_messages_per_sync",
+        "email_smtp_port",
+        "email_outbound_batch_size",
+        "email_send_timeout_seconds",
+        "email_sending_stale_seconds",
         "structured_csv_max_file_bytes",
         "structured_csv_max_rows",
         "structured_csv_max_columns",
@@ -187,6 +200,23 @@ class Settings(BaseSettings):
             and self.email_imap_username
             and self.email_imap_password
         )
+
+    @property
+    def email_smtp_configured(self) -> bool:
+        username = self.email_smtp_username or self.email_imap_username
+        password = self.email_smtp_password or self.email_imap_password
+        sender = self.email_smtp_from_address or username
+        return bool(
+            self.outbound_email_enabled
+            and self.email_smtp_host
+            and username
+            and password
+            and sender
+        )
+
+    @property
+    def email_worker_configured(self) -> bool:
+        return self.email_configured or self.email_smtp_configured
 
     @property
     def database_backend(self) -> str:

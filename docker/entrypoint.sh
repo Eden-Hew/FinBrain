@@ -24,7 +24,7 @@ if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   start_worker "telegram" python -m app.integrations.telegram.runner
 fi
 
-if [ "${EMAIL_CONNECTOR_ENABLED:-}" = "true" ]; then
+if [ "${EMAIL_CONNECTOR_ENABLED:-}" = "true" ] || [ "${OUTBOUND_EMAIL_ENABLED:-}" = "true" ]; then
   start_worker "email" python -m app.integrations.email_connector.runner
 fi
 

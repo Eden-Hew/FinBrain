@@ -97,7 +97,7 @@ def email_status(
     settings = get_settings()
     row = get_state(db)
     return EmailIntegrationStatusResponse(
-        configured=settings.email_configured,
+        configured=getattr(settings, "email_worker_configured", settings.email_configured),
         status=row.status if row else "not_configured",
         folder_name=settings.email_imap_folder,
         last_uid=row.last_uid if row else 0,
