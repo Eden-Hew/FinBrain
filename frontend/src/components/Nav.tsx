@@ -42,7 +42,6 @@ const MARKETING_NAV_ITEMS = [
 
 export function MarketingNav() {
   const { show } = useAppState();
-  const { theme, toggle } = useTheme();
   const scrollY = useScrollY();
   const active = useActiveSection(MARKETING_SECTIONS);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -62,14 +61,6 @@ export function MarketingNav() {
         ))}
       </div>
       <div className="fb-mkt-nav-actions">
-        <button
-          className="fb-mkt-theme-toggle"
-          type="button"
-          onClick={toggle}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          {theme === "dark" ? "☀" : "☾"}
-        </button>
         <span tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
         <button className="fb-mkt-btn is-accent" onClick={() => show("signup")}>Get Started</button>
         <button
@@ -225,6 +216,7 @@ export function AppTopBar({ current }: { current: Screen }) {
   const { openAsk, openPalette } = useUiChrome();
   const { identity, signOut } = useAuth();
   const { lang, setLang, t } = useI18n();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [profileOpen, setProfileOpen] = useState(false);
   const activeRole = identity?.role ?? askRole;
   const email = identity?.email ?? "Authenticated user";
@@ -282,6 +274,10 @@ export function AppTopBar({ current }: { current: Screen }) {
                 <button className={lang === "en" ? "is-current" : undefined} type="button" onClick={() => setLang("en")}>EN</button>
                 <button className={lang === "ms" ? "is-current" : undefined} type="button" onClick={() => setLang("ms")}>BM</button>
                 <button className={lang === "zh" ? "is-current" : undefined} type="button" onClick={() => setLang("zh")}>中文</button>
+              </div>
+              <div className="fb-sidebar-lang-row" role="tablist" aria-label="Appearance">
+                <button className={theme === "light" ? "is-current" : undefined} type="button" onClick={() => theme === "dark" && toggleTheme()}>☾ Light</button>
+                <button className={theme === "dark" ? "is-current" : undefined} type="button" onClick={() => theme === "light" && toggleTheme()}>☀ Dark</button>
               </div>
               <button className="fb-sidebar-logout" type="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</button>
             </div>
