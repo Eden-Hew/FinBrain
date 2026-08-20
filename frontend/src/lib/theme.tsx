@@ -26,18 +26,3 @@ export function useTheme() {
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
   return ctx;
 }
-
-export function ThemeToggleButton() {
-  const { theme, toggle } = useTheme();
-  return (
-    <button
-      id="fb-theme-toggle"
-      className="fb-theme-toggle"
-      type="button"
-      onClick={toggle}
-      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-    >
-      {theme === "dark" ? "☀" : "☾"}
-    </button>
-  );
-}

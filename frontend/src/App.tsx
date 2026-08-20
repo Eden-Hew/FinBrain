@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { AppStateProvider, useAppState } from "./lib/appState";
 import { I18nProvider } from "./lib/i18n";
-import { ThemeProvider, ThemeToggleButton } from "./lib/theme";
+import { ThemeProvider } from "./lib/theme";
 import { UiChromeProvider } from "./lib/uiChrome";
 import { AskDrawer } from "./components/AskDrawer";
 import { QuickActionsPalette } from "./components/QuickActionsPalette";
@@ -26,15 +26,6 @@ const Finance = lazy(() => import("./screens/Finance"));
 const Audit = lazy(() => import("./screens/Audit"));
 const Approvals = lazy(() => import("./screens/Approvals"));
 const Ingestion = lazy(() => import("./screens/Ingestion"));
-
-function GlobalThemeToggle() {
-  // The landing page has its own inline toggle in the marketing nav, so the
-  // floating one is suppressed there to avoid stacking two theme controls
-  // in the same bottom-right corner as the support chat launcher.
-  const { screen } = useAppState();
-  if (screen === "landing") return null;
-  return <ThemeToggleButton />;
-}
 
 function Screens() {
   const { screen, show, setAskRole } = useAppState();
@@ -91,7 +82,6 @@ export default function App() {
                 <QuickActionsPalette />
               </UiChromeProvider>
             </AuthProvider>
-            <GlobalThemeToggle />
           </AppStateProvider>
         </I18nProvider>
       </ThemeProvider>
