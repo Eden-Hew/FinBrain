@@ -7,10 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import TokenizedContent, TokenVaultEntry
+from app.models import TokenizedContent
 from app.schemas import CanonicalIngestionRecord, IngestionResult, ProcessingStatus
-from app.security.detect import contains_known_pii, detect_spans
-from app.security.tokenize import persist_vault_entries, tokenize_record
+from app.security.detect import contains_known_pii
+from app.security.protection import protect_metadata, protect_text
+from app.security.tokenize import persist_vault_entries
 from app.services.embeddings import embed_text
 from app.services.summarization import summarize_protected_text
 
@@ -21,8 +22,8 @@ def preview_canonical_record(record: CanonicalIngestionRecord) -> str:
     """Return protected text without persistence or external model calls."""
     if contains_known_pii(record.source_record_id):
         raise ValueError("source_record_id must be an opaque identifier without recognizable PII")
-    protected_text, _entries = _protect_text(record.text, record.source_record_id, record.tenant_id)
-    _protect_metadata(record.metadata, record.source_record_id, record.tenant_id)
+    protected_text, _entries = protect_text(record.text, record.source_record_id, record.tenant_id)
+    protect_metadata(record.metadata, record.source_record_id, record.tenant_id)
     return protected_text
 
 
@@ -43,32 +44,6 @@ def _content_fingerprint(record: CanonicalIngestionRecord) -> str:
     return hmac.new(
         get_settings().token_identity_secret.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()
-
-
-def _protect_text(
-    text: str,
-    source_record_id: str,
-    tenant_id: str,
-    db: Session | None = None,
-) -> tuple[str, list[TokenVaultEntry]]:
-    protected, entries = tokenize_record(
-        text, detect_spans(text), source_record_id, tenant_id, db=db
-    )
-    if contains_known_pii(protected):
-        raise ValueError(f"Safety-net PII detection failed for source {source_record_id}")
-    return protected, entries
-
-
-def _protect_metadata(
-    metadata: dict[str, str], source_record_id: str, tenant_id: str, db: Session | None = None
-) -> tuple[dict[str, str], list[TokenVaultEntry]]:
-    protected_metadata: dict[str, str] = {}
-    entries: dict[str, TokenVaultEntry] = {}
-    for key, value in metadata.items():
-        protected_value, value_entries = _protect_text(value, source_record_id, tenant_id, db)
-        protected_metadata[key] = protected_value
-        entries.update({entry.token: entry for entry in value_entries})
-    return protected_metadata, list(entries.values())
 
 
 def _result(
@@ -132,10 +107,10 @@ def protect_canonical_record(
     ):
         return _result(existing, created=False, refreshed=False)
 
-    protected_text, content_entries = _protect_text(
+    protected_text, content_entries = protect_text(
         record.text, record.source_record_id, record.tenant_id, db
     )
-    protected_metadata, metadata_entries = _protect_metadata(
+    protected_metadata, metadata_entries = protect_metadata(
         record.metadata, record.source_record_id, record.tenant_id, db
     )
     entries = {entry.token: entry for entry in content_entries + metadata_entries}
