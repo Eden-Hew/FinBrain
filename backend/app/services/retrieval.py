@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import numpy as np
-from sqlalchemy import select, text
+from sqlalchemy import literal_column, select, text
 from sqlalchemy.orm import Session
 
 from app.models import TokenizedContent
@@ -77,12 +77,12 @@ def retrieve_hits(
         statement = (
             apply_content_filters(select(TokenizedContent), filters)
             .where(TokenizedContent.embedding.is_not(None))
-            .add_columns(text(f"1 - ({distance_sql})").label("similarity"))
+            .add_columns(text(f"1 - ({distance_sql}) AS similarity"))
             .order_by(text(distance_sql))
             .limit(k)
         )
         rows = db.execute(statement, {"query_embedding": vector_literal}).all()
-        return [_hit_from_row(row.TokenizedContent, float(row.similarity)) for row in rows]
+        return [_hit_from_row(row[0], 0.0 if np.isnan(row[1]) else float(row[1])) for row in rows]
 
     statement = apply_content_filters(select(TokenizedContent), filters).where(
         TokenizedContent.embedding.is_not(None)

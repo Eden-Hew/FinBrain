@@ -377,7 +377,12 @@ def authorize_brief_with_trace(
         actor_ref=actor_ref,
         turn_ref=turn_ref,
     )
-    return CustomerIntelligenceBrief.model_validate_json(trace.text), trace
+    try:
+        parsed = json.loads(trace.text, strict=False)
+        return CustomerIntelligenceBrief.model_validate(parsed), trace
+    except Exception as error:
+        logger.warning("Failed to parse detokenized brief JSON; falling back to original: %s", error)
+        return brief, trace
 
 
 def authorize_brief(
