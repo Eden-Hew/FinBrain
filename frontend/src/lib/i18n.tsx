@@ -52,9 +52,9 @@ const FB_I18N: Record<string, Record<Lang, string>> = {
 };
 
 export const FB_UI_STRINGS: Record<Lang, { placeholder: string; send: string; switched: string }> = {
-  en: { placeholder: "Ask FINBRAIN anything, or tell it what to do...", send: "Send", switched: "Switched to English." },
-  ms: { placeholder: "Tanya FINBRAIN apa-apa, atau beritahu ia apa yang perlu dilakukan...", send: "Hantar", switched: "Ditukar kepada Bahasa Malaysia." },
-  zh: { placeholder: "向 FINBRAIN 提问，或告诉它该做什么...", send: "发送", switched: "已切换为中文。" },
+  en: { placeholder: "Ask FinBrain anything, or tell it what to do...", send: "Send", switched: "Switched to English." },
+  ms: { placeholder: "Tanya FinBrain apa-apa, atau beritahu ia apa yang perlu dilakukan...", send: "Hantar", switched: "Ditukar kepada Bahasa Malaysia." },
+  zh: { placeholder: "向 FinBrain 提问，或告诉它该做什么...", send: "发送", switched: "已切换为中文。" },
 };
 
 interface I18nContextValue {

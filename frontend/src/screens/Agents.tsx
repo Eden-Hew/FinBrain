@@ -69,11 +69,11 @@ const VOICE_LANG: Record<string, string> = { en: "en-US", ms: "ms-MY", zh: "zh-C
 type UploadState = "idle" | "previewing" | "protected" | "committing" | "complete" | "failed";
 
 const SUGGESTIONS = [
-  "Why are payment approvals being delayed, and what should we do next?",
-  "Summarize all approval-delay records and cite every source.",
-  "Which records have no assigned owner?",
-  "How many high-priority approval delays came from email this week?",
-  "Which invoices need fixes before MyInvois submission?",
+  { text: "Why are payment approvals being delayed, and what should we do next?", icon: "📋" },
+  { text: "Summarize all approval-delay records and cite every source.", icon: "📋" },
+  { text: "Which records have no assigned owner?", icon: "🔍" },
+  { text: "How many high-priority approval delays came from email this week?", icon: "📋" },
+  { text: "Which invoices need fixes before MyInvois submission?", icon: "🧾" },
 ];
 
 let msgId = 1;
@@ -90,7 +90,7 @@ export default function Agents() {
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
-    { id: msgId++, from: "agent", text: "Hi, I’m FINBRAIN. I can handle invoicing, spreadsheets, files, sales follow-ups, compliance checks, and more — ask me anything, or try one of the suggestions above." },
+    { id: msgId++, from: "agent", text: "Hi, I’m FinBrain. I can handle invoicing, spreadsheets, files, sales follow-ups, compliance checks, and more — ask me anything, or try one of the suggestions above." },
   ]);
   const [input, setInput] = useState("");
   const [chips, setChips] = useState<ContextChip[]>([]);
@@ -298,7 +298,7 @@ export default function Agents() {
       <div className="fb-chat-page">
         {sampleBanner && (
           <div className="fb-callout fb-sample-banner">
-            <span>You're exploring FINBRAIN with sample data from a demo workspace — connect your own sources anytime.</span>
+            <span>You're exploring FinBrain with sample data from a demo workspace — connect your own sources anytime.</span>
             <button className="fb-icon-btn" type="button" onClick={dismissSampleBanner} aria-label="Dismiss">✕</button>
           </div>
         )}
@@ -314,14 +314,17 @@ export default function Agents() {
               <button className="fb-overview-stat" type="button" onClick={() => show("approvals")}>
                 <span className="fb-overview-value">{approvalsCount}</span>
                 <span className="fb-overview-label">Pending approvals</span>
+                <span className="fb-overview-arrow" aria-hidden="true">→</span>
               </button>
               <button className="fb-overview-stat" type="button" onClick={() => show("einvoice")}>
                 <span className="fb-overview-value">{einvoicesPending}</span>
                 <span className="fb-overview-label">e-Invoices to review</span>
+                <span className="fb-overview-arrow" aria-hidden="true">→</span>
               </button>
               <button className="fb-overview-stat" type="button" onClick={() => show("finance")}>
                 <span className="fb-overview-value">RM 94K</span>
                 <span className="fb-overview-label">Outstanding AR</span>
+                <span className="fb-overview-arrow" aria-hidden="true">→</span>
               </button>
             </div>
           </div>
@@ -332,7 +335,9 @@ export default function Agents() {
             <div className="fb-suggest-row">
               <span className="fb-eyebrow fb-suggest-label">Try asking</span>
               {SUGGESTIONS.map((s) => (
-                <button key={s} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s)}>{s}</button>
+                <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
+                  <span className="fb-suggest-chip-icon" aria-hidden="true">{s.icon}</span>{s.text}
+                </button>
               ))}
             </div>
           )}
@@ -541,21 +546,25 @@ export default function Agents() {
 
             <div className="fb-composer2-toolbar-row">
               <div className="fb-composer2-tools">
-                <button
-                  className="fb-btn fb-btn-outline"
-                  type="button"
-                  onClick={startNewConversation}
-                  title={conversationId ? "Clear protected conversation context" : "Start a new conversation"}
-                >
-                  New chat
-                </button>
+                {hasConversation && (
+                  <button
+                    className="fb-btn fb-btn-outline"
+                    type="button"
+                    onClick={startNewConversation}
+                    title="Clear this conversation and start a new one"
+                  >
+                    New chat
+                  </button>
+                )}
                 <button className="fb-icon-btn" type="button" title="Upload a file" onClick={() => fileInputRef.current?.click()} aria-label="Upload from computer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
                 <button className="fb-icon-btn" type="button" disabled title="Web search isn't connected in this prototype" aria-label="Web search isn't connected in this prototype" aria-disabled="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" strokeLinecap="round" /><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" strokeLinecap="round" /></svg>
                 </button>
-                <span className="fb-fine">Context: {protectedTurnCount} protected turns</span>
+                <span className="fb-fine" title="FinBrain masks personal details before any question reaches the AI model.">
+                  🔒 Privacy protected{protectedTurnCount > 0 ? ` · ${protectedTurnCount} ${protectedTurnCount === 1 ? "reply" : "replies"}` : ""}
+                </span>
               </div>
               <button className="fb-send-btn2" type="button" onClick={() => send(input)} aria-label={FB_UI_STRINGS[lang].send}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
