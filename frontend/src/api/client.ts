@@ -386,6 +386,9 @@ export async function askQuestion(
 export interface CustomerSummary {
   id: number;
   name: string;
+  profile_status: "provisional" | "confirmed";
+  identity_review_status: "clear" | "review_required";
+  profile_origin: "manual" | "einvoice" | "email";
   attention_score: number;
   priority: "urgent" | "high" | "monitoring" | "healthy";
   outstanding_total: string;
@@ -428,7 +431,22 @@ export interface CustomerEndpoint {
   masked_value: string;
   authorized_value: string | null;
   verification_status: "observed" | "verified" | "revoked";
+  origin: "manual" | "inbound_email";
   created_at: string;
+}
+
+export interface CustomerIdentityClaim {
+  id: number;
+  customer_id: number;
+  endpoint_id: number;
+  masked_value: string;
+  authorized_value: string | null;
+  claim_basis: "display_name" | "self_identification";
+  confidence: number;
+  status: "observed" | "accepted" | "rejected" | "conflicting";
+  occurrence_count: number;
+  evidence_content_id: number;
+  last_seen_at: string;
 }
 
 export interface OutreachAction {
@@ -458,6 +476,21 @@ export async function fetchCustomer(id: number): Promise<CustomerDetail> {
 
 export async function fetchCustomerEndpoints(id: number): Promise<CustomerEndpoint[]> {
   return parse<CustomerEndpoint[]>(await authenticatedFetch(`/customers/${id}/endpoints`));
+}
+
+export async function fetchCustomerIdentityClaims(id: number): Promise<CustomerIdentityClaim[]> {
+  return parse<CustomerIdentityClaim[]>(await authenticatedFetch(`/customers/${id}/identity-claims`));
+}
+
+export async function resolveCustomerIdentityClaim(
+  id: number,
+  decision: "accept_primary" | "accept_alias" | "reject",
+): Promise<CustomerIdentityClaim> {
+  return parse<CustomerIdentityClaim>(await authenticatedFetch(`/customer-identity-claims/${id}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision }),
+  }));
 }
 
 export async function createCustomerEndpoint(id: number, value: string): Promise<CustomerEndpoint> {

@@ -4,13 +4,16 @@ import {
   createOutreachAction,
   fetchCustomer,
   fetchCustomerEndpoints,
+  fetchCustomerIdentityClaims,
   fetchCustomers,
   fetchOutreachActions,
   revokeCustomerEndpoint,
+  resolveCustomerIdentityClaim,
   transitionOutreachAction,
   verifyCustomerEndpoint,
   type CustomerDetail,
   type CustomerEndpoint,
+  type CustomerIdentityClaim,
   type CustomerSummary,
   type OutreachAction,
 } from "../api/client";
@@ -21,9 +24,11 @@ import { formatRm } from "../lib/customerAggregation";
 
 type LoadState = "loading" | "loaded" | "error";
 
-function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onBack: () => void }) {
+function CustomerWorkspace({ customer: initialCustomer, onBack }: { customer: CustomerDetail; onBack: () => void }) {
   const { show, askRole } = useAppState();
+  const [customer, setCustomer] = useState(initialCustomer);
   const [endpoints, setEndpoints] = useState<CustomerEndpoint[]>([]);
+  const [identityClaims, setIdentityClaims] = useState<CustomerIdentityClaim[]>([]);
   const [actions, setActions] = useState<OutreachAction[]>([]);
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -33,11 +38,15 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
   const canManage = askRole === "finance_ops" || askRole === "owner_director";
   const canVerify = askRole === "owner_director";
   const refresh = async () => {
-    const [endpointRows, actionRows] = await Promise.all([
+    const [currentCustomer, endpointRows, claimRows, actionRows] = await Promise.all([
+      fetchCustomer(customer.id),
       fetchCustomerEndpoints(customer.id),
+      fetchCustomerIdentityClaims(customer.id),
       fetchOutreachActions(),
     ]);
+    setCustomer(currentCustomer);
     setEndpoints(endpointRows);
+    setIdentityClaims(claimRows);
     setActions(actionRows.filter((row) => row.customer_id === customer.id));
   };
   useEffect(() => {
@@ -45,10 +54,12 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
     let active = true;
     void Promise.all([
       fetchCustomerEndpoints(customer.id),
+      fetchCustomerIdentityClaims(customer.id),
       fetchOutreachActions(),
-    ]).then(([endpointRows, actionRows]) => {
+    ]).then(([endpointRows, claimRows, actionRows]) => {
       if (!active) return;
       setEndpoints(endpointRows);
+      setIdentityClaims(claimRows);
       setActions(actionRows.filter((row) => row.customer_id === customer.id));
     }).catch(() => {
       if (active) setMessage("Outreach records could not be loaded for this role.");
@@ -76,6 +87,15 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
     catch (error) { setMessage(error instanceof Error ? error.message : "Revocation failed."); }
     finally { setBusy(false); }
   };
+  const resolveClaim = async (id: number, decision: "accept_primary" | "accept_alias" | "reject") => {
+    setBusy(true); setMessage("");
+    try {
+      await resolveCustomerIdentityClaim(id, decision);
+      await refresh();
+      setMessage("Identity evidence reviewed and the customer safety gate was recalculated.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Identity review failed."); }
+    finally { setBusy(false); }
+  };
   const submitOutreach = async () => {
     const endpoint = endpoints.find((row) => row.verification_status === "verified");
     if (!endpoint) { setMessage("A verified email endpoint is required."); return; }
@@ -96,7 +116,7 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
   return <div className="fb-page-body">
     <button className="fb-link-toggle" type="button" onClick={onBack}>← All customers</button>
     <div className="fb-customer-detail-head">
-      <div><h2>{customer.name}</h2><p className="fb-fine">Verified cross-source customer workspace</p></div>
+      <div><h2>{customer.name}</h2><p className="fb-fine">{customer.profile_status} · {customer.profile_origin} profile · identity {customer.identity_review_status.replaceAll("_", " ")}</p></div>
       <span className="fb-status-pill is-review"><span className="fb-status-dot"></span>{customer.priority} · {customer.attention_score}/100</span>
     </div>
     <div className="fb-kpi-row" style={{ padding: "0 0 1.4rem" }}>
@@ -122,7 +142,7 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
         <strong>Protected endpoints</strong>
         {endpoints.map((endpoint) => <div key={endpoint.id} style={{ display: "flex", gap: ".6rem", alignItems: "center", marginTop: ".5rem", flexWrap: "wrap" }}>
           <span>
-            {endpoint.authorized_value ?? endpoint.masked_value} · {endpoint.verification_status}
+            {endpoint.authorized_value ?? endpoint.masked_value} · {endpoint.verification_status} · {endpoint.origin.replaceAll("_", " ")}
             {endpoint.authorized_value && <span className="fb-fine"> · authorized owner view</span>}
           </span>
           {endpoint.verification_status === "observed" && canVerify && <button className="fb-btn fb-btn-outline" type="button" disabled={busy} onClick={() => void verify(endpoint.id)}>Verify endpoint</button>}
@@ -134,11 +154,25 @@ function CustomerWorkspace({ customer, onBack }: { customer: CustomerDetail; onB
           <button className="fb-btn fb-btn-outline" type="button" disabled={busy || !email.trim()} onClick={() => void addEndpoint()}>Protect endpoint</button>
         </div>
       </div>
+      {!!identityClaims.length && <div className="fb-callout">
+        <strong>Protected identity evidence</strong>
+        <p className="fb-fine">Names are claims, not automatic profile mutations. Conflicts block outreach until an owner resolves them.</p>
+        {identityClaims.map((claim) => <div key={claim.id} style={{ marginTop: ".7rem", paddingTop: ".7rem", borderTop: "1px solid var(--line)" }}>
+          <div>{claim.authorized_value ?? claim.masked_value} · {claim.claim_basis.replaceAll("_", " ")} · {claim.status}</div>
+          <div className="fb-fine">Seen {claim.occurrence_count} time(s) · {Math.round(claim.confidence * 100)}% confidence</div>
+          {canVerify && (claim.status === "observed" || claim.status === "conflicting") && <div style={{ display: "flex", gap: ".5rem", marginTop: ".5rem", flexWrap: "wrap" }}>
+            <button className="fb-btn fb-btn-outline" type="button" disabled={busy} onClick={() => void resolveClaim(claim.id, "accept_primary")}>Use as primary</button>
+            <button className="fb-btn fb-btn-outline" type="button" disabled={busy} onClick={() => void resolveClaim(claim.id, "accept_alias")}>Accept as alias</button>
+            <button className="fb-btn fb-btn-outline" type="button" disabled={busy} onClick={() => void resolveClaim(claim.id, "reject")}>Reject claim</button>
+          </div>}
+        </div>)}
+      </div>}
       <div className="fb-callout">
         <strong>Draft a response</strong>
         <input className="fb-input" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" aria-label="Outreach subject" style={{ display: "block", width: "100%", marginTop: ".6rem" }} />
         <textarea className="fb-input" value={body} onChange={(event) => setBody(event.target.value)} placeholder="Message" aria-label="Outreach message" rows={5} style={{ display: "block", width: "100%", marginTop: ".6rem" }} />
-        <button className="fb-btn fb-btn-solid" type="button" disabled={busy || !subject.trim() || !body.trim()} onClick={() => void submitOutreach()} style={{ marginTop: ".6rem" }}>Submit for approval</button>
+        {customer.profile_status !== "confirmed" || customer.identity_review_status !== "clear" ? <div className="fb-fine" style={{ marginTop: ".6rem" }}>Outreach is blocked until an owner confirms this profile and resolves identity conflicts.</div> : null}
+        <button className="fb-btn fb-btn-solid" type="button" disabled={busy || !subject.trim() || !body.trim() || customer.profile_status !== "confirmed" || customer.identity_review_status !== "clear"} onClick={() => void submitOutreach()} style={{ marginTop: ".6rem" }}>Submit for approval</button>
       </div>
       <h3>Outreach history</h3>
       {actions.length ? actions.map((action) => <div className="fb-callout" key={action.id}>
@@ -172,13 +206,13 @@ export default function Customers() {
   };
   return <div className="fb-root fb-shell">
     <Sidebar current="customers" /><AppTopBar current="customers" />
-    <header className="fb-app-header"><h1>Customers</h1><p>Verified cross-source evidence ranked by deterministic attention signals.</p></header>
+    <header className="fb-app-header"><h1>Customers</h1><p>Confirmed and provisional customer context ranked by deterministic attention signals.</p></header>
     {state === "loading" && <div className="fb-callout">Loading customer intelligence…</div>}
     {state === "error" && <div className="fb-callout">Customer intelligence is not enabled or could not be loaded.</div>}
     {state === "loaded" && selected && <CustomerWorkspace customer={selected} onBack={() => setSelected(null)} />}
     {state === "loaded" && !selected && <div className="fb-page-body">
       {!rows.length ? <EmptyState icon="◎" title="No linked customers yet" description="Customers appear after structured buyer identities are linked to protected records." /> :
-        <div className="fb-table-wrap"><table className="fb-table"><thead><tr><th>Customer</th><th>Attention</th><th>Outstanding</th><th>Overdue</th><th>Sources</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} onClick={() => void open(row.id)} style={{ cursor: "pointer" }}><td>{row.name}</td><td>{row.attention_score} · {row.priority}</td><td>{formatRm(Number(row.outstanding_total))}</td><td>{formatRm(Number(row.overdue_total))}</td><td>{row.linked_source_count}</td></tr>)}</tbody></table></div>}
+        <div className="fb-table-wrap"><table className="fb-table"><thead><tr><th>Customer</th><th>Identity</th><th>Attention</th><th>Outstanding</th><th>Overdue</th><th>Sources</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} onClick={() => void open(row.id)} style={{ cursor: "pointer" }}><td>{row.name}</td><td>{row.profile_status}{row.identity_review_status === "review_required" ? " · review required" : ""}</td><td>{row.attention_score} · {row.priority}</td><td>{formatRm(Number(row.outstanding_total))}</td><td>{formatRm(Number(row.overdue_total))}</td><td>{row.linked_source_count}</td></tr>)}</tbody></table></div>}
     </div>}
   </div>;
 }

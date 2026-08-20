@@ -641,6 +641,9 @@ class CustomerAttentionSignalResponse(BaseModel):
 class CustomerSummaryResponse(BaseModel):
     id: int
     name: str
+    profile_status: Literal["provisional", "confirmed"] = "confirmed"
+    identity_review_status: Literal["clear", "review_required"] = "clear"
+    profile_origin: Literal["manual", "einvoice", "email"] = "manual"
     attention_score: int
     priority: str
     outstanding_total: Decimal
@@ -683,7 +686,26 @@ class CustomerEndpointResponse(BaseModel):
     masked_value: str
     authorized_value: str | None = None
     verification_status: str
+    origin: str = "manual"
     created_at: datetime
+
+
+class CustomerIdentityClaimResponse(BaseModel):
+    id: int
+    customer_id: int
+    endpoint_id: int
+    masked_value: str
+    authorized_value: str | None = None
+    claim_basis: Literal["display_name", "self_identification"]
+    confidence: float
+    status: Literal["observed", "accepted", "rejected", "conflicting"]
+    occurrence_count: int
+    evidence_content_id: int
+    last_seen_at: datetime
+
+
+class CustomerIdentityClaimDecisionRequest(BaseModel):
+    decision: Literal["accept_primary", "accept_alias", "reject"]
 
 
 class OutreachCreateRequest(BaseModel):

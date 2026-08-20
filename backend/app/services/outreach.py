@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Customer,
+    CustomerAlias,
     CustomerEndpoint,
+    CustomerIdentityClaim,
     CustomerRecordLink,
     OutreachAction,
     OutreachEvidence,
@@ -122,8 +124,97 @@ def verify_endpoint(
     row.verification_status = "verified"
     row.verified_by_user_id = reviewer_id
     row.verified_at = datetime.now(UTC)
+    customer = db.get(Customer, row.customer_id)
+    if customer is not None and customer.identity_review_status == "clear":
+        customer.profile_status = "confirmed"
     db.commit()
     return row
+
+
+def resolve_identity_claim(
+    db: Session,
+    claim_id: int,
+    *,
+    tenant_id: str,
+    decision: str,
+    reviewer_id: str,
+    actor_ref: str,
+) -> CustomerIdentityClaim:
+    claim = db.get(CustomerIdentityClaim, claim_id)
+    if claim is None or claim.tenant_id != tenant_id:
+        raise LookupError("customer_identity_claim_not_found")
+    if decision not in {"accept_primary", "accept_alias", "reject"}:
+        raise ValueError("unsupported_identity_claim_decision")
+    customer = db.get(Customer, claim.customer_id)
+    if customer is None:
+        raise LookupError("customer_not_found")
+    now = datetime.now(UTC)
+    if decision == "accept_primary":
+        customer.primary_name_token = claim.identity_token
+        claim.status = "accepted"
+        for other in db.scalars(
+            select(CustomerIdentityClaim).where(
+                CustomerIdentityClaim.tenant_id == tenant_id,
+                CustomerIdentityClaim.customer_id == customer.id,
+                CustomerIdentityClaim.id != claim.id,
+                CustomerIdentityClaim.status.in_(("observed", "conflicting")),
+                CustomerIdentityClaim.identity_token != claim.identity_token,
+            )
+        ).all():
+            other.status = "rejected"
+            other.reviewed_by_user_id = reviewer_id
+            other.reviewed_at = now
+    elif decision == "accept_alias":
+        existing_alias = db.scalar(
+            select(CustomerAlias).where(
+                CustomerAlias.tenant_id == tenant_id,
+                CustomerAlias.customer_id == customer.id,
+                CustomerAlias.alias_token == claim.identity_token,
+            )
+        )
+        if existing_alias is None:
+            db.add(
+                CustomerAlias(
+                    tenant_id=tenant_id,
+                    customer_id=customer.id,
+                    alias_token=claim.identity_token,
+                    alias_type="email_identity_claim",
+                    match_status="verified",
+                    confidence=claim.confidence,
+                    source_system="email",
+                    source_record_id=str(claim.evidence_content_id),
+                    reviewed_by_user_id=reviewer_id,
+                    reviewed_at=now,
+                )
+            )
+        claim.status = "accepted"
+    else:
+        claim.status = "rejected"
+    claim.reviewed_by_user_id = reviewer_id
+    claim.reviewed_at = now
+    unresolved = db.scalars(
+        select(CustomerIdentityClaim).where(
+            CustomerIdentityClaim.tenant_id == tenant_id,
+            CustomerIdentityClaim.customer_id == customer.id,
+            CustomerIdentityClaim.id != claim.id,
+            CustomerIdentityClaim.status == "conflicting",
+        )
+    ).all()
+    customer.identity_review_status = "review_required" if unresolved else "clear"
+    if customer.identity_review_status == "clear":
+        customer.profile_status = "confirmed"
+    write_workflow_event(
+        db,
+        event_type="customer_identity_claim_resolved",
+        actor_role=UserRole.OWNER_DIRECTOR.value,
+        actor_ref=actor_ref,
+        resource_type="customer_identity_claim",
+        resource_id=str(claim.id),
+        tenant_id=tenant_id,
+        event_payload={"customer_id": customer.id, "decision": decision},
+    )
+    db.commit()
+    return claim
 
 
 def create_action(

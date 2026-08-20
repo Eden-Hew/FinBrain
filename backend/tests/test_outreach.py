@@ -9,8 +9,10 @@ from app.models import (
     Base,
     Customer,
     CustomerEndpoint,
+    CustomerIdentityClaim,
     OutreachAction,
     Tenant,
+    TokenizedContent,
     WorkflowAuditEntry,
 )
 from app.routes.outreach import _endpoint_response
@@ -18,6 +20,7 @@ from app.schemas import UserRole
 from app.services.outreach import (
     create_action,
     register_email_endpoint,
+    resolve_identity_claim,
     revoke_endpoint,
     transition_action,
     verify_endpoint,
@@ -221,5 +224,44 @@ def test_provisional_or_conflicted_customer_cannot_enter_outreach_queue():
                 db, action.id, "submit", tenant_id=TENANT,
                 role=UserRole.FINANCE_OPS, user_id=USER, actor_ref="actor",
             )
+    finally:
+        db.close()
+
+
+def test_owner_resolves_identity_claim_without_storing_plaintext_name():
+    db, customer = _session()
+    try:
+        customer.profile_status = "provisional"
+        customer.identity_review_status = "review_required"
+        endpoint = CustomerEndpoint(
+            tenant_id=TENANT, customer_id=customer.id, channel="email",
+            endpoint_token="EMAIL_0123456789", verification_status="observed",
+            origin="inbound_email",
+        )
+        content = TokenizedContent(
+            tenant_id=TENANT, source_record_id="email:identity-review",
+            source_system="email", content_text="I am PERSON_aaaaaaaaaa.",
+            processing_status="ready",
+        )
+        db.add_all([endpoint, content])
+        db.flush()
+        claim = CustomerIdentityClaim(
+            tenant_id=TENANT, customer_id=customer.id, endpoint_id=endpoint.id,
+            identity_token="PERSON_aaaaaaaaaa", claim_basis="self_identification",
+            confidence=0.95, evidence_content_id=content.id, status="conflicting",
+        )
+        db.add(claim)
+        db.commit()
+
+        resolved = resolve_identity_claim(
+            db, claim.id, tenant_id=TENANT, decision="accept_primary",
+            reviewer_id=USER, actor_ref="owner",
+        )
+
+        assert resolved.status == "accepted"
+        assert customer.primary_name_token == "PERSON_aaaaaaaaaa"
+        assert customer.profile_status == "confirmed"
+        assert customer.identity_review_status == "clear"
+        assert "aaaaaaaaaa" not in customer.canonical_name.casefold()
     finally:
         db.close()

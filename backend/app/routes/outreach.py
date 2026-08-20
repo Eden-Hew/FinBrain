@@ -6,10 +6,17 @@ from app.auth.dependencies import require_roles
 from app.auth.principal import AuthPrincipal
 from app.config import get_settings
 from app.db import get_db
-from app.models import CustomerEndpoint, OutreachAction
+from app.models import (
+    CustomerEndpoint,
+    CustomerIdentityClaim,
+    OutreachAction,
+    ProtectedTokenRegistry,
+)
 from app.schemas import (
     CustomerEndpointCreateRequest,
     CustomerEndpointResponse,
+    CustomerIdentityClaimDecisionRequest,
+    CustomerIdentityClaimResponse,
     OutreachActionResponse,
     OutreachCreateRequest,
     UserRole,
@@ -19,6 +26,7 @@ from app.services.outreach import (
     create_action,
     endpoint_mask,
     register_email_endpoint,
+    resolve_identity_claim,
     revoke_endpoint,
     transition_action,
     verify_endpoint,
@@ -52,7 +60,39 @@ def _endpoint_response(
         id=row.id, customer_id=row.customer_id, channel=row.channel,
         masked_value=endpoint_mask(db, row), authorized_value=authorized_value,
         verification_status=row.verification_status,
+        origin=row.origin,
         created_at=row.created_at,
+    )
+
+
+def _identity_claim_response(
+    db: Session, row: CustomerIdentityClaim, principal: AuthPrincipal
+) -> CustomerIdentityClaimResponse:
+    registry = db.get(ProtectedTokenRegistry, row.identity_token)
+    authorized_value = None
+    if principal.role is UserRole.OWNER_DIRECTOR:
+        trace = detokenize_response_with_trace(
+            db,
+            row.identity_token,
+            principal.role.value,
+            hash_query(f"customer-identity-claim:{row.id}"),
+            actor_ref=principal.actor_ref,
+            turn_ref=f"customer-identity-claim:{row.id}",
+        )
+        if trace.restored_tokens == 1 and trace.withheld_tokens == 0:
+            authorized_value = trace.text
+    return CustomerIdentityClaimResponse(
+        id=row.id,
+        customer_id=row.customer_id,
+        endpoint_id=row.endpoint_id,
+        masked_value=registry.masked_value if registry else "Protected identity",
+        authorized_value=authorized_value,
+        claim_basis=row.claim_basis,
+        confidence=row.confidence,
+        status=row.status,
+        occurrence_count=row.occurrence_count,
+        evidence_content_id=row.evidence_content_id,
+        last_seen_at=row.last_seen_at,
     )
 
 
@@ -90,6 +130,52 @@ def list_endpoints(
         CustomerEndpoint.customer_id == customer_id,
     ).order_by(CustomerEndpoint.created_at.desc())).all()
     return [_endpoint_response(db, row, principal) for row in rows]
+
+
+@router.get(
+    "/customers/{customer_id}/identity-claims",
+    response_model=list[CustomerIdentityClaimResponse],
+)
+def list_identity_claims(
+    customer_id: int,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE, UserRole.COMPLIANCE)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    rows = db.scalars(
+        select(CustomerIdentityClaim).where(
+            CustomerIdentityClaim.tenant_id == str(principal.tenant_id),
+            CustomerIdentityClaim.customer_id == customer_id,
+        ).order_by(CustomerIdentityClaim.last_seen_at.desc())
+    ).all()
+    return [_identity_claim_response(db, row, principal) for row in rows]
+
+
+@router.post(
+    "/customer-identity-claims/{claim_id}/resolve",
+    response_model=CustomerIdentityClaimResponse,
+)
+def decide_identity_claim(
+    claim_id: int,
+    payload: CustomerIdentityClaimDecisionRequest,
+    principal: AuthPrincipal = Depends(require_roles(UserRole.OWNER_DIRECTOR)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    try:
+        row = resolve_identity_claim(
+            db,
+            claim_id,
+            tenant_id=str(principal.tenant_id),
+            decision=payload.decision,
+            reviewer_id=str(principal.user_id),
+            actor_ref=principal.actor_ref,
+        )
+        return _identity_claim_response(db, row, principal)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @router.post("/customer-endpoints/{endpoint_id}/verify", response_model=CustomerEndpointResponse)

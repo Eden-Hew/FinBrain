@@ -9,6 +9,7 @@ from app.models import (
     CustomerAttentionSignal,
     CustomerRecordLink,
     EInvoiceRecord,
+    ProtectedTokenRegistry,
     TokenizedContent,
 )
 from app.schemas import (
@@ -47,8 +48,16 @@ def customer_summary(db: Session, tenant_id: str, customer: Customer) -> Custome
             CustomerRecordLink.match_status == "verified",
         )
     ) or 0
+    registry = (
+        db.get(ProtectedTokenRegistry, customer.primary_name_token)
+        if customer.primary_name_token
+        else None
+    )
     return CustomerSummaryResponse(
-        id=customer.id, name=customer.canonical_name,
+        id=customer.id, name=registry.masked_value if registry else customer.canonical_name,
+        profile_status=customer.profile_status,
+        identity_review_status=customer.identity_review_status,
+        profile_origin=customer.profile_origin,
         attention_score=snapshot.score if snapshot else 0,
         priority=snapshot.priority if snapshot else "healthy",
         outstanding_total=outstanding, overdue_total=overdue,
