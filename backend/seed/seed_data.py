@@ -48,43 +48,50 @@ EINVOICE_SEED_RECORDS = [
     dict(
         supplier_name="Tenaga Nasional Berhad", supplier_tin="C1234567890",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="TNB-2026-88213",
-        issue_date=date(2026, 8, 10), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 10), due_date=date(2026, 8, 18), paid_at=date(2026, 8, 15),
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="1240.00", status="validated",
     ),
     dict(
         supplier_name="Grab Malaysia", supplier_tin="C9988776655",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="GRB-4471209",
-        issue_date=date(2026, 8, 9), currency="MYR", tax_type="SST", tax_rate="0%",
+        issue_date=date(2026, 8, 9), due_date=date(2026, 8, 30), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="0%",
         total_amount="86.40", status="submitted",
     ),
     dict(
         supplier_name="Petronas Dagangan", supplier_tin="C1122334455",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="PDB-990214",
-        issue_date=date(2026, 8, 8), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 8), due_date=date(2026, 8, 28), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="320.00", status="pending",
     ),
     dict(
         supplier_name="Office Supplies Sdn Bhd", supplier_tin=None,
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="OS-4471",
-        issue_date=date(2026, 8, 7), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 7), due_date=date(2026, 8, 25), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="545.90", status="review",
     ),
     dict(
         supplier_name="Astro Malaysia", supplier_tin="C5566778899",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="AST-118820",
-        issue_date=date(2026, 8, 5), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 5), due_date=date(2026, 8, 20), paid_at=date(2026, 8, 12),
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="129.00", status="validated",
     ),
     dict(
         supplier_name="Acme Retail", supplier_tin="C3344556677",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="ACM-77102",
-        issue_date=date(2026, 8, 4), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 4), due_date=date(2026, 8, 10), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="980.00", status="submitted",
     ),
     dict(
         supplier_name="ACME RETAIL SDN BHD", supplier_tin="C3344556677",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="ACM-77145",
-        issue_date=date(2026, 8, 2), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 2), due_date=date(2026, 8, 8), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="410.00", status="submitted",
     ),
     # --- Deliberate single-flaw test cases below, each isolating one readiness check ---
@@ -92,56 +99,64 @@ EINVOICE_SEED_RECORDS = [
         # Flaw: missing supplier TIN only -> critical (blocks submission).
         supplier_name="Kedai Runcit Maju", supplier_tin=None,
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="KRM-3021",
-        issue_date=date(2026, 8, 11), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 11), due_date=date(2026, 8, 27), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="212.50", status="review",
     ),
     dict(
         # Flaw: missing buyer name only -> warning.
         supplier_name="Segar Fresh Mart", supplier_tin="C4455667788",
         buyer_name=None, invoice_no="SFM-9012",
-        issue_date=date(2026, 8, 12), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 12), due_date=date(2026, 8, 28), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="88.20", status="submitted",
     ),
     dict(
         # Flaw: missing tax type only -> warning.
         supplier_name="Bina Jaya Hardware", supplier_tin="C6677889900",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="BJH-5510",
-        issue_date=date(2026, 8, 13), currency="MYR", tax_type=None, tax_rate=None,
+        issue_date=date(2026, 8, 13), due_date=date(2026, 8, 31), paid_at=None,
+        currency="MYR", tax_type=None, tax_rate=None,
         total_amount="1560.00", status="submitted",
     ),
     dict(
         # Flaw: name variant, spelling 1 of 3 -> warning (all three should flag).
         supplier_name="Impian Services", supplier_tin="C7788990011",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="IMP-1001",
-        issue_date=date(2026, 8, 14), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 14), due_date=date(2026, 8, 29), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="640.00", status="submitted",
     ),
     dict(
         # Flaw: name variant, spelling 2 of 3.
         supplier_name="IMPIAN SERVICES SDN BHD", supplier_tin="C7788990011",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="IMP-1014",
-        issue_date=date(2026, 8, 15), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 15), due_date=date(2026, 8, 30), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="720.00", status="submitted",
     ),
     dict(
         # Flaw: name variant, spelling 3 of 3.
         supplier_name="Impian Services Sdn. Bhd.", supplier_tin="C7788990011",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="IMP-1029",
-        issue_date=date(2026, 8, 16), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 16), due_date=date(2026, 8, 31), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="305.00", status="submitted",
     ),
     dict(
         # Flaw: combined (missing TIN AND missing buyer name) -> still critical, not double-counted.
         supplier_name="Damaged Goods Trading", supplier_tin=None,
         buyer_name=None, invoice_no="DGT-4400",
-        issue_date=date(2026, 8, 17), currency="MYR", tax_type=None, tax_rate=None,
+        issue_date=date(2026, 8, 17), due_date=date(2026, 8, 24), paid_at=None,
+        currency="MYR", tax_type=None, tax_rate=None,
         total_amount="95.00", status="review",
     ),
     dict(
-        # No flaws -> passing.
+        # No flaws -> passing. Paid.
         supplier_name="Bright Solutions Sdn Bhd", supplier_tin="C8899001122",
         buyer_name="FINBRAIN Sdn Bhd", invoice_no="BSS-7701",
-        issue_date=date(2026, 8, 18), currency="MYR", tax_type="SST", tax_rate="6%",
+        issue_date=date(2026, 8, 18), due_date=date(2026, 8, 25), paid_at=date(2026, 8, 19),
+        currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="1980.00", status="validated",
     ),
 ]
@@ -160,12 +175,13 @@ def seed_einvoice_records(db) -> None:
     from app.services.einvoice_pdf import render_einvoice_pdf
     from app.services.einvoice_readiness import sync_all_einvoice_tokenized_content
 
+    bucket = get_settings().einvoice_document_bucket
+    try:
+        storage.ensure_bucket(bucket)
+    except Exception:
+        pass
+
     if db.scalar(select(EInvoiceRecord.id).limit(1)) is None:
-        bucket = get_settings().einvoice_document_bucket
-        try:
-            storage.ensure_bucket(bucket)
-        except Exception:
-            pass
         for fields in EINVOICE_SEED_RECORDS:
             record_data = dict(fields)
             if record_data.get("status") == "validated" and not record_data.get("uin"):
@@ -182,6 +198,21 @@ def seed_einvoice_records(db) -> None:
                 pass
         db.commit()
         print(f"seeded {len(EINVOICE_SEED_RECORDS)} einvoice_records")
+    else:
+        # Update existing records with updated due_date and paid_at
+        for fields in EINVOICE_SEED_RECORDS:
+            inv_no = fields.get("invoice_no")
+            if not inv_no:
+                continue
+            existing = db.scalar(select(EInvoiceRecord).where(EInvoiceRecord.invoice_no == inv_no))
+            if existing:
+                if "due_date" in fields:
+                    existing.due_date = fields["due_date"]
+                if "paid_at" in fields:
+                    existing.paid_at = fields["paid_at"]
+        db.commit()
+        print("updated existing einvoice_records with due_date and paid_at")
+
     synced = sync_all_einvoice_tokenized_content(db)
     print(f"synced {synced} einvoice_records into protected search")
 
