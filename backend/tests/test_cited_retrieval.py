@@ -85,6 +85,50 @@ def test_hybrid_retrieval_prioritizes_exact_protected_token_and_invoice_id():
 
         assert by_invoice[0].source_record_id == "email:DGT-4400"
         assert by_person[0].source_record_id == "email:DGT-4400"
+        assert len(by_invoice) == 1
+        assert len(by_person) == 1
+
+
+def test_provider_may_repeat_a_protected_token_from_the_question(monkeypatch):
+    monkeypatch.setattr(
+        reasoning,
+        "get_settings",
+        lambda: type(
+            "MorpheusSettings",
+            (),
+            {
+                "morpheus_api_key": "configured",
+                "gemini_api_key": None,
+                "allow_offline_demo": False,
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        reasoning,
+        "morpheus_chat",
+        lambda *_args, **_kwargs: (
+            '{"answer":"PERSON_aabbccddee is the requested customer [SOURCE-1].",'
+            '"citations":["SOURCE-1"],"insufficient_evidence":false}'
+        ),
+    )
+    hit = RetrievalHit(
+        content_id=1,
+        source_record_id="email:legacy-token",
+        source_system="email",
+        record_type="customer_email",
+        occurred_at=None,
+        protected_excerpt="PERSON_0011223344 requested a refund.",
+        protected_summary=None,
+        similarity=1.0,
+    )
+
+    answer, mode = reasoning.answer_query_with_citations(
+        "Find customer PERSON_aabbccddee",
+        [hit],
+    )
+
+    assert mode == "morpheus"
+    assert "PERSON_aabbccddee" in answer.answer
 
 
 def test_analyze_all_batches_every_eligible_record(monkeypatch):

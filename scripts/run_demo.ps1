@@ -84,9 +84,19 @@ function Assert-DemoProcessesRunning {
 
 try {
   Write-Output "Python runtime: $($pythonRuntime.description)"
-  Start-DemoComponent -Name "backend" -Executable $pythonRuntime.executable `
-    -Arguments (@($pythonRuntime.arguments) + @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000")) `
-    -WorkingDirectory (Join-Path $repoRoot "backend") -Required $true
+  $previousPrewarm = [Environment]::GetEnvironmentVariable("PREWARM_GLINER_ON_STARTUP", "Process")
+  try {
+    $env:PREWARM_GLINER_ON_STARTUP = "true"
+    Start-DemoComponent -Name "backend" -Executable $pythonRuntime.executable `
+      -Arguments (@($pythonRuntime.arguments) + @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000")) `
+      -WorkingDirectory (Join-Path $repoRoot "backend") -Required $true
+  } finally {
+    if ($null -eq $previousPrewarm) {
+      Remove-Item -LiteralPath "Env:PREWARM_GLINER_ON_STARTUP" -ErrorAction SilentlyContinue
+    } else {
+      $env:PREWARM_GLINER_ON_STARTUP = $previousPrewarm
+    }
+  }
   Start-DemoComponent -Name "frontend" -Executable $node `
     -Arguments @($vite, "--host", "127.0.0.1", "--port", "5173", "--strictPort") `
     -WorkingDirectory (Join-Path $repoRoot "frontend") -Required $true
@@ -112,7 +122,9 @@ try {
 
   Write-Output "Waiting for the backend and frontend health checks..."
   $ready = $false
-  for ($attempt = 0; $attempt -lt 40; $attempt++) {
+  # A cold PyTorch/GLiNER load can take about a minute. The API only reports
+  # healthy after its in-process detector is ready, so the first chat query is warm.
+  for ($attempt = 0; $attempt -lt 240; $attempt++) {
     Assert-DemoProcessesRunning
     try {
       $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2

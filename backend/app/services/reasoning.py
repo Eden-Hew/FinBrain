@@ -173,7 +173,12 @@ def _answer_cited_context(
         "insufficient_evidence. citations must contain only supplied SOURCE-n identifiers. "
         "Set insufficient_evidence true when the context cannot support the answer."
     )
-    validation_context = protected_context if protected_context is not None else context
+    # Tokens supplied by the user are legitimate protected values too. During a
+    # tenant-token migration they may differ from legacy evidence tokens, and a
+    # provider is allowed to repeat the protected question without that being an
+    # invented-token violation.
+    validation_base = protected_context if protected_context is not None else context
+    validation_context = f"{validation_base}\n{question}"
     if settings.morpheus_api_key:
         try:
             response = morpheus_chat(

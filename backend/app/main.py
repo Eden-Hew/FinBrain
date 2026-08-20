@@ -26,6 +26,7 @@ from app.routes import (
     recommendations,
     uploads,
 )
+from app.security.detect import warm_detector
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -36,6 +37,16 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_local_schema()
+    if settings.prewarm_gliner_on_startup and settings.enable_gliner:
+        detector = warm_detector()
+        logger.info(
+            "startup_detector_warm_complete",
+            extra={
+                "loaded": detector.loaded,
+                "device": detector.device,
+                "failure_code": detector.failure_code,
+            },
+        )
     yield
 
 
