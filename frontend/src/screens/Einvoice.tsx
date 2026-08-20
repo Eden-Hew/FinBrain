@@ -126,7 +126,7 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
         </div>
       </div>
 
-      <div className="fb-kpi-row" style={{ padding: "0 1.5rem", margin: "1.4rem 0" }}>
+      <div className="fb-kpi-row">
         {(["critical", "warning", "passing"] as const).map((key) => (
           <button
             key={key}
