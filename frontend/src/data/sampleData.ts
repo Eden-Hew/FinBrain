@@ -231,9 +231,57 @@ export interface EinvoiceRecord {
   compliance: [string, string][];
 }
 
-export const FB_EINVOICE_ORDER = ["inv-4", "inv-1", "inv-2", "inv-3", "inv-5"];
+export const FB_EINVOICE_ORDER = ["inv-6", "inv-7", "inv-8", "inv-3", "inv-4", "inv-1", "inv-2", "inv-5"];
 
 export const initialEinvoices = (): Record<string, EinvoiceRecord> => ({
+  "inv-6": {
+    id: "inv-6", date: "16 Aug 2026", supplier: "Telekom Malaysia Berhad", amount: "RM 489.00",
+    status: "pending", uin: null, submitter: "aiman@finbrain.my",
+    description: "Unifi High-Speed Business Broadband & VoIP — Aug 2026.",
+    fields: [
+      ["Supplier name", "Telekom Malaysia Berhad"], ["Supplier TIN", "C0123456789"],
+      ["Buyer name", "FINBRAIN Sdn Bhd"], ["Invoice no.", "TM-2026-99318"],
+      ["Issue date", "16 Aug 2026"], ["Currency", "MYR"],
+      ["Tax type / rate", "SST 6%"], ["Total (incl. tax)", "RM 489.00"],
+    ],
+    compliance: [
+      ["OCR extracted", "No personal identifiers found on this bill."],
+      ["Fields mapped", "8 of 55 mandatory UBL fields populated."],
+      ["Awaiting approval", "Ready to submit to MyInvois once approved below."],
+    ],
+  },
+  "inv-7": {
+    id: "inv-7", date: "15 Aug 2026", supplier: "AWS Cloud Services Malaysia", amount: "RM 2,450.00",
+    status: "pending", uin: null, submitter: "aiman@finbrain.my",
+    description: "Cloud Compute & S3 Object Storage — Production Cluster.",
+    fields: [
+      ["Supplier name", "AWS Cloud Services Malaysia"], ["Supplier TIN", "C8877665544"],
+      ["Buyer name", "FINBRAIN Sdn Bhd"], ["Invoice no.", "AWS-MY-881920"],
+      ["Issue date", "15 Aug 2026"], ["Currency", "MYR"],
+      ["Tax type / rate", "SST 6%"], ["Total (incl. tax)", "RM 2,450.00"],
+    ],
+    compliance: [
+      ["OCR extracted", "No personal identifiers found on this invoice."],
+      ["Fields mapped", "8 of 55 mandatory UBL fields populated."],
+      ["Awaiting approval", "Ready to submit to MyInvois once approved below."],
+    ],
+  },
+  "inv-8": {
+    id: "inv-8", date: "14 Aug 2026", supplier: "Dell Technologies Malaysia", amount: "RM 5,800.00",
+    status: "pending", uin: null, submitter: "aiman@finbrain.my",
+    description: "Workstation Hardware & IT Upgrades.",
+    fields: [
+      ["Supplier name", "Dell Technologies Malaysia"], ["Supplier TIN", "C5544332211"],
+      ["Buyer name", "FINBRAIN Sdn Bhd"], ["Invoice no.", "DELL-MY-44102"],
+      ["Issue date", "14 Aug 2026"], ["Currency", "MYR"],
+      ["Tax type / rate", "SST 6%"], ["Total (incl. tax)", "RM 5,800.00"],
+    ],
+    compliance: [
+      ["OCR extracted", "No personal identifiers found on this receipt."],
+      ["Fields mapped", "8 of 55 mandatory UBL fields populated."],
+      ["Awaiting approval", "Ready to submit to MyInvois once approved below."],
+    ],
+  },
   "inv-1": {
     id: "inv-1", date: "10 Aug 2026", supplier: "Tenaga Nasional Berhad", amount: "RM 1,240.00",
     status: "validated", uin: "MY29A8F1Q3RT", submitter: "aiman@finbrain.my",

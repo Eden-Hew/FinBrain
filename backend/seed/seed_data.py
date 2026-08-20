@@ -94,6 +94,34 @@ EINVOICE_SEED_RECORDS = [
         currency="MYR", tax_type="SST", tax_rate="6%",
         total_amount="410.00", status="submitted",
     ),
+    dict(
+        supplier_name="Telekom Malaysia Berhad", supplier_tin="C0123456789",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="TM-2026-99318",
+        issue_date=date(2026, 8, 16), due_date=date(2026, 8, 31), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="489.00", status="pending",
+    ),
+    dict(
+        supplier_name="AWS Cloud Services Malaysia", supplier_tin="C8877665544",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="AWS-MY-881920",
+        issue_date=date(2026, 8, 15), due_date=date(2026, 8, 30), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="2450.00", status="pending",
+    ),
+    dict(
+        supplier_name="Dell Technologies Malaysia", supplier_tin="C5544332211",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="DELL-MY-44102",
+        issue_date=date(2026, 8, 14), due_date=date(2026, 8, 28), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="5800.00", status="pending",
+    ),
+    dict(
+        supplier_name="Sunway Resort & Catering", supplier_tin="C2233445566",
+        buyer_name="FINBRAIN Sdn Bhd", invoice_no="SW-CAT-1102",
+        issue_date=date(2026, 8, 13), due_date=date(2026, 8, 27), paid_at=None,
+        currency="MYR", tax_type="SST", tax_rate="6%",
+        total_amount="750.00", status="pending",
+    ),
     # --- Deliberate single-flaw test cases below, each isolating one readiness check ---
     dict(
         # Flaw: missing supplier TIN only -> critical (blocks submission).
