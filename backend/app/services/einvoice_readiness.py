@@ -15,6 +15,7 @@ from app.schemas import (
     EinvoiceReadinessCategory,
     EinvoiceReadinessResponse,
     EInvoiceRecordResponse,
+    EInvoiceUpdatePayload,
     UserRole,
 )
 from app.services import storage
@@ -64,7 +65,10 @@ def list_records(db: Session, tenant_id: str) -> list[EInvoiceRecordResponse]:
         .where(EInvoiceRecord.tenant_id == tenant_id)
         .order_by(EInvoiceRecord.issue_date.desc(), EInvoiceRecord.created_at.desc())
     ).all()
-    return [record_response(r) for r in rows]
+    name_groups: dict[str, set[str]] = defaultdict(set)
+    for r in rows:
+        name_groups[normalize_business_name(r.supplier_name)].add(r.supplier_name)
+    return [record_response(r, reason=_classify(r, name_groups)[1]) for r in rows]
 
 
 def _canonical_einvoice_text(record: EInvoiceRecord) -> str:
@@ -203,7 +207,108 @@ def get_record(db: Session, record_id: int, tenant_id: str) -> EInvoiceRecordRes
     record = db.get(EInvoiceRecord, record_id)
     if record is None or record.tenant_id != tenant_id:
         raise LookupError(f"e-invoice record {record_id} not found")
-    return record_response(record)
+    rows = db.scalars(
+        select(EInvoiceRecord).where(EInvoiceRecord.tenant_id == tenant_id)
+    ).all()
+    name_groups: dict[str, set[str]] = defaultdict(set)
+    for r in rows:
+        name_groups[normalize_business_name(r.supplier_name)].add(r.supplier_name)
+    _, reason = _classify(record, name_groups)
+    return record_response(record, reason=reason)
+
+
+def update_record(
+    db: Session,
+    record_id: int,
+    payload: EInvoiceUpdatePayload,
+    *,
+    role: UserRole,
+    actor_ref: str,
+    tenant_id: str,
+) -> EInvoiceRecordResponse:
+    record = db.get(EInvoiceRecord, record_id)
+    if record is None or record.tenant_id != tenant_id:
+        raise LookupError(f"e-invoice record {record_id} not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in {
+            "supplier_name",
+            "supplier_tin",
+            "buyer_name",
+            "invoice_no",
+            "issue_date",
+            "due_date",
+            "currency",
+            "tax_type",
+            "tax_rate",
+            "total_amount",
+        }:
+            setattr(record, field, value)
+
+    if "buyer_name" in update_data:
+        if record.buyer_name:
+            buyer_customer = resolve_customer(db, tenant_id, record.buyer_name)
+            record.buyer_customer_id = buyer_customer.id if buyer_customer else None
+            if (
+                get_settings().customer_intelligence_enabled
+                and buyer_customer
+            ):
+                register_structured_customer_aliases(
+                    db,
+                    buyer_customer,
+                    record.buyer_name,
+                    source_system="einvoice",
+                    source_record_id=f"einvoice:{record.id}",
+                )
+        else:
+            record.buyer_customer_id = None
+
+    if record.status == "review" and record.supplier_tin and record.supplier_tin.strip():
+        record.status = "pending"
+
+    db.flush()
+
+    try:
+        pdf_bytes = render_einvoice_pdf(record)
+        bucket = get_settings().einvoice_document_bucket
+        storage.ensure_bucket(bucket)
+        path = f"{record.id}.pdf"
+        storage.upload_bytes(bucket, path, pdf_bytes, content_type="application/pdf")
+        record.document_storage_path = path
+    except Exception:
+        pass
+
+    write_workflow_event(
+        db,
+        event_type="einvoice_record_updated",
+        actor_role=role.value,
+        actor_ref=actor_ref,
+        resource_type="einvoice_record",
+        resource_id=str(record.id),
+        tenant_id=tenant_id,
+        event_payload={
+            "supplier_name": record.supplier_name,
+            "supplier_tin": record.supplier_tin,
+            "total_amount": str(record.total_amount),
+            "status": record.status,
+            "updated_fields": list(update_data.keys()),
+        },
+    )
+    db.commit()
+
+    sync_einvoice_tokenized_content(db, record)
+    _recalculate_attention_if_enabled(db, record)
+
+    rows = db.scalars(
+        select(EInvoiceRecord).where(EInvoiceRecord.tenant_id == tenant_id)
+    ).all()
+    name_groups: dict[str, set[str]] = defaultdict(set)
+    for r in rows:
+        name_groups[normalize_business_name(r.supplier_name)].add(r.supplier_name)
+    _cat, reason = _classify(record, name_groups)
+
+    return record_response(record, reason=reason)
 
 
 def upload_record_document(
@@ -320,7 +425,7 @@ def _classify(row: EInvoiceRecord, name_groups: dict[str, set[str]]) -> tuple[st
             "invoice for submission without it."
         )
 
-    variants = name_groups[normalize_business_name(row.supplier_name)]
+    variants = name_groups.get(normalize_business_name(row.supplier_name), set())
     if len(variants) > 1:
         others = sorted(v for v in variants if v != row.supplier_name)
         issues.append(

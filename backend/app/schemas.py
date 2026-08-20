@@ -566,6 +566,19 @@ class EInvoiceCreatePayload(BaseModel):
     total_amount: Decimal = Field(gt=0)
 
 
+class EInvoiceUpdatePayload(BaseModel):
+    supplier_name: str | None = Field(default=None, min_length=1, max_length=255)
+    supplier_tin: str | None = Field(default=None, max_length=64)
+    buyer_name: str | None = Field(default=None, max_length=255)
+    invoice_no: str | None = Field(default=None, max_length=64)
+    issue_date: date | None = None
+    due_date: date | None = None
+    currency: str | None = Field(default=None, max_length=8)
+    tax_type: str | None = Field(default=None, max_length=32)
+    tax_rate: str | None = Field(default=None, max_length=16)
+    total_amount: Decimal | None = Field(default=None, gt=0)
+
+
 class MarkPaidPayload(BaseModel):
     paid_at: date | None = None
 

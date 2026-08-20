@@ -11,6 +11,7 @@ from app.schemas import (
     EinvoiceOutreachDraftResponse,
     EinvoiceReadinessResponse,
     EInvoiceRecordResponse,
+    EInvoiceUpdatePayload,
     InvoiceExtraction,
     MarkPaidPayload,
     RequestFixPayload,
@@ -29,6 +30,7 @@ from app.services.einvoice_readiness import (
     list_outreach_drafts,
     list_records,
     mark_invoice_paid,
+    update_record,
     upload_record_document,
 )
 
@@ -124,6 +126,46 @@ def einvoice_record(
 ) -> EInvoiceRecordResponse:
     try:
         return get_record(db, record_id, str(principal.tenant_id))
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.patch("/einvoice-records/{record_id}", response_model=EInvoiceRecordResponse)
+def einvoice_record_patch(
+    record_id: int,
+    payload: EInvoiceUpdatePayload,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),
+    db: Session = Depends(get_db),
+) -> EInvoiceRecordResponse:
+    try:
+        return update_record(
+            db,
+            record_id,
+            payload,
+            role=principal.role,
+            actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.put("/einvoice-records/{record_id}", response_model=EInvoiceRecordResponse)
+def einvoice_record_put(
+    record_id: int,
+    payload: EInvoiceUpdatePayload,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),
+    db: Session = Depends(get_db),
+) -> EInvoiceRecordResponse:
+    try:
+        return update_record(
+            db,
+            record_id,
+            payload,
+            role=principal.role,
+            actor_ref=principal.actor_ref,
+            tenant_id=str(principal.tenant_id),
+        )
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
