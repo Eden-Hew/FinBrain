@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from app.security.detect import contains_known_pii, detect_spans
 from app.security.tokenize import persist_vault_entries, tokenize_record
 from app.services.embeddings import embed_text
 from app.services.summarization import summarize_protected_text
+
+logger = logging.getLogger(__name__)
 
 
 def preview_canonical_record(record: CanonicalIngestionRecord) -> str:
@@ -159,6 +162,18 @@ def protect_canonical_record(
     if created:
         db.add(row)
     db.commit()
+
+    if get_settings().customer_intelligence_enabled:
+        try:
+            from app.services.entity_resolution import link_record_from_known_aliases
+
+            link_record_from_known_aliases(db, row)
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "customer_identity_link_failed",
+                extra={"source_record_id": row.source_record_id},
+            )
 
     return _result(row, created=created, refreshed=not created)
 

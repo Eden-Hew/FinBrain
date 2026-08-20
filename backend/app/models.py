@@ -501,6 +501,64 @@ class Customer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class CustomerAlias(Base):
+    __tablename__ = "customer_aliases"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "customer_id", "alias_token", name="customer_alias_unique"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
+    customer_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    alias_token: Mapped[str] = mapped_column(String, nullable=False)
+    alias_type: Mapped[str] = mapped_column(String, nullable=False)
+    match_status: Mapped[str] = mapped_column(String, default="probable", nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source_system: Mapped[str] = mapped_column(String, nullable=False)
+    source_record_id: Mapped[str | None] = mapped_column(String)
+    created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    reviewed_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CustomerRecordLink(Base):
+    __tablename__ = "customer_record_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "customer_id", "tokenized_content_id", "alias_id",
+            name="customer_record_alias_link_unique",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
+    customer_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    tokenized_content_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT"), nullable=False
+    )
+    alias_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customer_aliases.id", ondelete="RESTRICT"), nullable=False
+    )
+    match_status: Mapped[str] = mapped_column(String, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    match_basis: Mapped[str] = mapped_column(String, nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    reviewed_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class EInvoiceRecord(Base):
     __tablename__ = "einvoice_records"
 

@@ -19,7 +19,11 @@ from app.schemas import (
 )
 from app.services import storage
 from app.services.einvoice_pdf import render_einvoice_pdf
-from app.services.entity_resolution import normalize_business_name, resolve_customer
+from app.services.entity_resolution import (
+    normalize_business_name,
+    register_structured_customer_aliases,
+    resolve_customer,
+)
 from app.services.ingestion import ingest_canonical_record
 from app.services.workflow_audit import write_workflow_event
 
@@ -142,6 +146,14 @@ def create_record(
     )
     db.add(record)
     db.flush()
+    if buyer_customer and payload.buyer_name:
+        register_structured_customer_aliases(
+            db,
+            buyer_customer,
+            payload.buyer_name,
+            source_system="einvoice",
+            source_record_id=f"einvoice:{record.id}",
+        )
 
     write_workflow_event(
         db,
