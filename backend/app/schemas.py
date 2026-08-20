@@ -73,6 +73,9 @@ class ProtectedSummary(BaseModel):
     category: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9_]+$")
     action_required: bool
     priority: SummaryPriority
+    sender_identity_token: str | None = None
+    sender_identity_basis: Literal["display_name", "self_identification"] | None = None
+    sender_identity_confidence: float | None = Field(default=None, ge=0, le=1)
 
 
 class IngestionResult(BaseModel):

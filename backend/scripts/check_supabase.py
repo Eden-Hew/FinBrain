@@ -31,6 +31,7 @@ REQUIRED_TABLES = (
     "customer_attention_snapshots",
     "customer_attention_signals",
     "customer_endpoints",
+    "customer_identity_claims",
     "outreach_actions",
     "outreach_evidence",
     "email_reply_correlations",
@@ -52,7 +53,15 @@ REQUIRED_VAULT_COLUMNS = {
     "encryption_algorithm",
 }
 REQUIRED_CURRENT_COLUMNS = {
-    "customers": {"tenant_id", "canonical_name", "normalized_name"},
+    "customers": {
+        "tenant_id", "canonical_name", "normalized_name", "profile_status",
+        "identity_review_status", "profile_origin", "primary_name_token"
+    },
+    "customer_endpoints": {"origin"},
+    "customer_identity_claims": {
+        "tenant_id", "customer_id", "endpoint_id", "identity_token", "claim_basis",
+        "confidence", "evidence_content_id", "status", "occurrence_count"
+    },
     "einvoice_records": {
         "tenant_id", "buyer_customer_id", "due_date", "paid_at", "source_record_id"
     },
@@ -218,6 +227,7 @@ def main() -> None:
                 "customer_endpoints_customer_idx",
                 "outreach_queue_idx",
                 "email_reply_customer_idx",
+                "customer_identity_claims_review_idx",
             )
         }
 
@@ -299,7 +309,10 @@ def main() -> None:
     print("Supabase Auth role and ownership schema: present")
     print("Versioned vault schema and role-enforced ciphertext RLS: present")
     print("Append-only audit triggers: present")
-    print("Customer identity, attention, governed outreach, and reply correlation: present")
+    print(
+        "Email-first customer identity, attention, governed outreach, "
+        "and reply correlation: present"
+    )
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 

@@ -4,6 +4,9 @@ from seed.seed_data import RESET_TABLES
 def test_reset_includes_new_foreign_key_dependents_before_their_parents():
     positions = {name: index for index, name in enumerate(RESET_TABLES)}
     dependencies = {
+        "customer_identity_claims": (
+            "customer_endpoints", "customers", "tokenized_content"
+        ),
         "email_reply_correlations": ("email_ingestion_receipts", "outreach_actions"),
         "outreach_evidence": ("outreach_actions", "tokenized_content"),
         "outreach_actions": ("customer_endpoints", "customers"),

@@ -536,6 +536,10 @@ class Customer(Base):
     )
     canonical_name: Mapped[str] = mapped_column(String, nullable=False)
     normalized_name: Mapped[str] = mapped_column(String, nullable=False)
+    profile_status: Mapped[str] = mapped_column(String, default="confirmed", nullable=False)
+    identity_review_status: Mapped[str] = mapped_column(String, default="clear", nullable=False)
+    profile_origin: Mapped[str] = mapped_column(String, default="manual", nullable=False)
+    primary_name_token: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -650,10 +654,9 @@ class CustomerEndpoint(Base):
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
-            "customer_id",
             "channel",
             "endpoint_token",
-            name="customer_endpoint_unique",
+            name="customer_endpoint_tenant_channel_token_unique",
         ),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -664,9 +667,49 @@ class CustomerEndpoint(Base):
     channel: Mapped[str] = mapped_column(String, nullable=False)
     endpoint_token: Mapped[str] = mapped_column(String, nullable=False)
     verification_status: Mapped[str] = mapped_column(String, default="observed", nullable=False)
+    origin: Mapped[str] = mapped_column(String, default="manual", nullable=False)
     verified_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CustomerIdentityClaim(Base):
+    """Protected, reviewable identity evidence observed for an inbound endpoint."""
+
+    __tablename__ = "customer_identity_claims"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "customer_id",
+            "endpoint_id",
+            "identity_token",
+            "claim_basis",
+            name="customer_identity_claim_unique",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    customer_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    endpoint_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("customer_endpoints.id", ondelete="RESTRICT"), nullable=False
+    )
+    identity_token: Mapped[str] = mapped_column(String, nullable=False)
+    claim_basis: Mapped[str] = mapped_column(String, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    evidence_content_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String, default="observed", nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reviewed_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OutreachAction(Base):

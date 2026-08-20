@@ -19,6 +19,7 @@ RESET_TABLES = (
     "email_ingestion_receipts",
     "outreach_evidence",
     "outreach_actions",
+    "customer_identity_claims",
     "customer_endpoints",
     "customer_attention_signals",
     "customer_attention_snapshots",

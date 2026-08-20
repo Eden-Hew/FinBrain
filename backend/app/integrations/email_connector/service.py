@@ -12,7 +12,7 @@ from app.integrations.email_connector.adapter import (
 )
 from app.integrations.email_connector.correlation import correlate_reply
 from app.integrations.email_connector.extractor import extract_email, extract_reply_references
-from app.integrations.email_connector.identity import link_verified_sender
+from app.integrations.email_connector.identity import route_email_sender
 from app.integrations.email_connector.sender import message_reference_hash
 from app.models import EmailIngestionReceipt, EmailSyncState, TokenizedContent, utcnow
 from app.services.ingestion import ingest_canonical_record
@@ -152,18 +152,17 @@ def sync_mailbox(db: Session) -> SyncResult:
                     )
                 )
                 if protected_row is not None:
-                    correlated_action = correlate_reply(
+                    correlate_reply(
                         db,
                         receipt=receipt,
                         protected_row=protected_row,
                         reference_hashes=reply_hashes,
                     )
-                    if correlated_action is None:
-                        link_verified_sender(
-                            db,
-                            receipt=receipt,
-                            protected_row=protected_row,
-                        )
+                    route_email_sender(
+                        db,
+                        receipt=receipt,
+                        protected_row=protected_row,
+                    )
                 protected += 1
                 if result.processing_status == "ready":
                     ready += 1

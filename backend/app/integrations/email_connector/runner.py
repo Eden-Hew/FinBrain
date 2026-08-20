@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.db import SessionLocal, initialize_local_schema, set_worker_context
 from app.integrations.email_connector.sender import dispatch_pending, recover_stale_sends
 from app.integrations.email_connector.service import sync_mailbox
+from app.models import DEFAULT_TENANT_ID
 from app.services.health import write_heartbeat
 
 
@@ -20,7 +21,9 @@ def main() -> None:
     while True:
         try:
             with SessionLocal() as db:
-                set_worker_context(db, actor_ref="email-worker")
+                set_worker_context(
+                    db, actor_ref="email-worker", tenant_id=DEFAULT_TENANT_ID
+                )
                 write_heartbeat(
                     db,
                     key="email",
@@ -36,14 +39,18 @@ def main() -> None:
         if settings.email_configured:
             try:
                 with SessionLocal() as db:
-                    set_worker_context(db, actor_ref="email-worker")
+                    set_worker_context(
+                        db, actor_ref="email-worker", tenant_id=DEFAULT_TENANT_ID
+                    )
                     sync_mailbox(db)
             except Exception:
                 logging.exception("email_sync_failed")
         try:
             if settings.email_smtp_configured:
                 with SessionLocal() as db:
-                    set_worker_context(db, actor_ref="email-worker")
+                    set_worker_context(
+                        db, actor_ref="email-worker", tenant_id=DEFAULT_TENANT_ID
+                    )
                     recover_stale_sends(db)
                     dispatch_pending(db)
         except Exception:

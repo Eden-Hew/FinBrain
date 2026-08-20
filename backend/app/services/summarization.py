@@ -13,7 +13,11 @@ SYSTEM_INSTRUCTION = (
     "privacy tokens representing values you cannot see. An AMOUNT_BAND_n_xxxxxxxxxx token is an "
     "exact hidden amount whose band indicates only an approximate range. Preserve every token you "
     "use completely and exactly. Never expand, alter, infer, or invent a token or hidden value. "
-    "Base the output only on the supplied record. Use a short snake_case category."
+    "Base the output only on the supplied record. Use a short snake_case category. "
+    "For an email only, optionally report sender_identity_token when a PERSON_ or ORG_ token "
+    "is explicitly the From display name or follows a first-person introduction such as "
+    "'I am', 'I'm', 'My name is', or 'This is'. Set the matching sender_identity_basis and a "
+    "0-to-1 confidence. Never treat a person merely mentioned in the message as the sender."
 )
 
 
@@ -63,6 +67,20 @@ def _validate_summary(summary: ProtectedSummary, protected_text: str) -> None:
     output_tokens = set(TOKEN_PATTERN.findall(serialized))
     if invented := output_tokens - allowed_tokens:
         raise ValueError(f"The generated summary contains unknown protected tokens: {invented}")
+    identity_values = (
+        summary.sender_identity_token,
+        summary.sender_identity_basis,
+        summary.sender_identity_confidence,
+    )
+    if any(value is not None for value in identity_values) and not all(
+        value is not None for value in identity_values
+    ):
+        raise ValueError("Sender identity claim fields must be supplied together")
+    if summary.sender_identity_token is not None:
+        if not summary.sender_identity_token.startswith(("PERSON_", "ORG_")):
+            raise ValueError("Sender identity claim must use a protected person or organization")
+        if summary.sender_identity_token not in allowed_tokens:
+            raise ValueError("Sender identity claim token is not present in the protected record")
 
 
 def summarize_protected_text(text: str) -> tuple[ProtectedSummary, str]:

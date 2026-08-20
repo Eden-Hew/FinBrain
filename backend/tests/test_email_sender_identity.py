@@ -1,4 +1,6 @@
+import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.integrations.email_connector.identity import link_verified_sender
@@ -6,6 +8,7 @@ from app.models import (
     Base,
     Customer,
     CustomerEndpoint,
+    CustomerIdentityClaim,
     CustomerRecordLink,
     EmailIngestionReceipt,
     Tenant,
@@ -129,10 +132,85 @@ def test_sender_token_shared_by_multiple_customers_is_ambiguous(monkeypatch):
                 endpoint_token=TOKEN, verification_status="verified",
             ),
         ])
+        with pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.close()
+
+
+def test_unknown_sender_creates_one_provisional_profile_and_reuses_it(monkeypatch):
+    db = _session()
+    try:
+        monkeypatch.setattr(
+            "app.integrations.email_connector.identity.get_settings",
+            lambda: type("Settings", (), {"customer_attention_enabled": False})(),
+        )
         receipt, content = _email_rows(db)
 
-        assert link_verified_sender(db, receipt=receipt, protected_row=content) is None
-        assert receipt.customer_id is None
-        assert db.scalar(select(CustomerRecordLink)) is None
+        customer_id = link_verified_sender(db, receipt=receipt, protected_row=content)
+
+        customer = db.get(Customer, customer_id)
+        endpoint = db.scalar(select(CustomerEndpoint))
+        assert customer is not None
+        assert customer.profile_status == "provisional"
+        assert customer.profile_origin == "email"
+        assert customer.canonical_name.startswith("Email contact · ")
+        assert endpoint is not None
+        assert endpoint.origin == "inbound_email"
+        assert endpoint.verification_status == "observed"
+
+        second = TokenizedContent(
+            tenant_id=TENANT,
+            source_record_id="email:sender-match-2",
+            source_system="email",
+            record_type="email",
+            content_text="A later message from the same protected sender.",
+            safe_metadata={"sender_email": TOKEN},
+            processing_status="ready",
+        )
+        second_receipt = EmailIngestionReceipt(message_ref_hash="receipt-sender-match-2")
+        db.add_all([second, second_receipt])
+        db.commit()
+        assert link_verified_sender(
+            db, receipt=second_receipt, protected_row=second
+        ) == customer_id
+        assert db.query(Customer).filter(Customer.tenant_id == TENANT).count() == 1
+        assert db.query(CustomerEndpoint).filter(CustomerEndpoint.tenant_id == TENANT).count() == 1
+    finally:
+        db.close()
+
+
+def test_self_identification_is_protected_claim_and_name_change_requires_review(monkeypatch):
+    db = _session()
+    try:
+        monkeypatch.setattr(
+            "app.integrations.email_connector.identity.get_settings",
+            lambda: type("Settings", (), {"customer_attention_enabled": False})(),
+        )
+        receipt, content = _email_rows(db)
+        content.content_text = "From: PERSON_aaaaaaaaaa <EMAIL_0123456789>\nI am PERSON_aaaaaaaaaa."
+        db.commit()
+        customer_id = link_verified_sender(db, receipt=receipt, protected_row=content)
+        customer = db.get(Customer, customer_id)
+        assert customer.primary_name_token == "PERSON_aaaaaaaaaa"
+        assert customer.identity_review_status == "clear"
+
+        second = TokenizedContent(
+            tenant_id=TENANT,
+            source_record_id="email:name-conflict",
+            source_system="email",
+            record_type="email",
+            content_text="From: PERSON_bbbbbbbbbb <EMAIL_0123456789>\nI am PERSON_bbbbbbbbbb.",
+            safe_metadata={"sender_email": TOKEN},
+            processing_status="ready",
+        )
+        second_receipt = EmailIngestionReceipt(message_ref_hash="receipt-name-conflict")
+        db.add_all([second, second_receipt])
+        db.commit()
+        link_verified_sender(db, receipt=second_receipt, protected_row=second)
+        db.refresh(customer)
+        assert customer.primary_name_token == "PERSON_aaaaaaaaaa"
+        assert customer.identity_review_status == "review_required"
+        assert db.query(CustomerIdentityClaim).filter_by(status="conflicting").count() >= 1
     finally:
         db.close()
