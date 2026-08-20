@@ -24,7 +24,7 @@ begin
 end $$;
 
 alter table public.customer_endpoints
-  drop constraint customer_endpoints_tenant_id_customer_id_channel_endpoint_token_key;
+  drop constraint customer_endpoints_tenant_id_customer_id_channel_endpoint_t_key;
 alter table public.customer_endpoints
   add constraint customer_endpoint_tenant_channel_token_unique
   unique(tenant_id,channel,endpoint_token);

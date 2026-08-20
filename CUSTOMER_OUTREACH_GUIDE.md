@@ -8,7 +8,8 @@ database verification, optional SMTP delivery, and exact reply correlation.
 
 The feature connects five previously separate concerns into one controlled workflow:
 
-1. Resolve a structured customer identity without exposing that identity to an external model.
+1. Resolve a structured identity or create a provisional profile from a first-time Gmail sender
+   without exposing that identity to an external model.
 2. Link matching protected records from email, Telegram, e-invoices, and other ingested sources.
 3. Calculate a deterministic attention score from verified evidence.
 4. Let an authorized operator prepare an evidence-bound email without sending it immediately.
@@ -18,7 +19,7 @@ The feature connects five previously separate concerns into one controlled workf
 The intended flow is:
 
 ```text
-Structured customer record
+Structured customer record OR first inbound Gmail address
         |
         v
 Verified protected aliases -----> matching protected source records
@@ -52,12 +53,22 @@ authorization boundary used by the rest of FinBrain.
 ### Customer identity
 
 - `customers` stores the tenant-scoped canonical customer record.
+- A previously unknown Gmail sender creates one `provisional` email-origin customer and one
+  `observed` protected endpoint. Later messages from that address reuse the same profile; no
+  invoice is required.
 - `customer_aliases` stores deterministic protected aliases such as `ORG_...` and `PERSON_...`.
+- `customer_identity_claims` stores protected display-name and explicit first-person claims with
+  confidence, evidence, occurrence count, and owner review status.
 - `customer_record_links` records which protected sources are linked to a customer and whether the
   match is verified, probable, ambiguous, or rejected.
-- Gmail ingestion parses the RFC `From` address transiently, protects it as `sender_email`, and
-  links a standalone inbound message when its `EMAIL_...` token uniquely matches a verified
-  customer endpoint in the same tenant. It never guesses a person's name from an address.
+- Gmail ingestion parses the RFC `From` address transiently and protects it as `sender_email`.
+  One address can belong to only one customer within a tenant. The address, not a guessed name,
+  establishes continuity.
+- Morpheus receives only protected email text. It may propose a sender claim already present as a
+  `PERSON_...` or `ORG_...` token, but strict backend validation and deterministic rules decide
+  whether to record evidence. Model failure cannot prevent the provisional profile or ingestion.
+- A later different name never overwrites the primary claim. It sets `review_required`, blocks
+  outreach, and waits for an owner to accept it as primary/alias or reject it.
 - Existing protected records can be linked after an alias becomes known by running the idempotent
   backfill script.
 
@@ -88,7 +99,9 @@ authorization boundary used by the rest of FinBrain.
 - Outbound RFC `Message-ID` values are HMAC-hashed with tenant context before persistence.
 - Incoming `In-Reply-To` and `References` headers are parsed transiently and immediately hashed.
 - `email_reply_correlations` stores the exact protected correlation result.
-- A unique exact match creates a verified customer-record link and changes the action to `replied`.
+- A unique exact reference plus the exact protected sender endpoint creates a verified
+  customer-record link and changes the action to `replied`.
+- A reference from a different address is stored as `identity_conflict`; the action stays sent.
 - Reply correlation never changes invoice, payment, or refund state automatically.
 
 ## 3. Role and authorization matrix
@@ -99,6 +112,7 @@ authorization boundary used by the rest of FinBrain.
 | Use customer-scoped chat | Yes | Yes | Yes | Yes |
 | Register a protected email endpoint | No | Yes | No | Yes |
 | Verify an endpoint | No | No | No | Yes |
+| Resolve protected identity claims | No | No | No | Yes |
 | Create and submit a draft | No | Yes | No | Yes |
 | Inspect pending governed outreach | No | Yes | Yes | Yes |
 | Approve or reject delivery | No | No | No | Yes |
@@ -141,7 +155,10 @@ Keep `OUTBOUND_EMAIL_ENABLED=false` during the first acceptance test. This prove
 delivery are separate controls: an approved action must remain queued and no SMTP connection should
 be attempted.
 
-The database must include migrations `202608200001` through `202608200005`. Verify from `backend`:
+The database must include migrations `202608200001` through `202608200006`. Before pushing
+`202608200006`, ensure no protected endpoint token is owned by multiple customers. The migration
+also performs this preflight and aborts without partial application if duplicates exist. Verify
+from `backend`:
 
 ```powershell
 uv run --active --no-sync python -m scripts.check_supabase
@@ -150,7 +167,7 @@ uv run --active --no-sync python -m scripts.check_supabase
 Expected final lines include:
 
 ```text
-Customer identity, attention, governed outreach, and reply correlation: present
+Email-first customer identity, attention, governed outreach, and reply correlation: present
 RLS: enabled and forced
 Supabase database check passed.
 ```

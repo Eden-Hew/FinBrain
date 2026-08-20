@@ -60,7 +60,11 @@ def _claims(row: TokenizedContent, sender_token: str) -> list[tuple[str, str, fl
         and 0 <= float(model_confidence) <= 1
     ):
         claims.append((model_token, model_basis, float(model_confidence)))
-    return list(dict.fromkeys(claims))
+    strongest: dict[tuple[str, str], float] = {}
+    for token, basis, confidence in claims:
+        key = (token, basis)
+        strongest[key] = max(strongest.get(key, 0), confidence)
+    return [(token, basis, confidence) for (token, basis), confidence in strongest.items()]
 
 
 def _create_provisional_customer(
@@ -196,7 +200,6 @@ def route_email_sender(
             customer, endpoint = _create_provisional_customer(
                 db, tenant_id=protected_row.tenant_id, sender_token=sender_token
             )
-            db.commit()
             created = True
         except IntegrityError:
             db.rollback()

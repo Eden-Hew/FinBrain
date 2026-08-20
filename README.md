@@ -32,6 +32,8 @@ multi-source records
 - Strict `invoice_register_v1` CSV parsing with stable row identity and one citation per invoice.
 - Private Telegram capture bot using local long polling.
 - Read-only IMAP ingestion of new unread email and supported attachments.
+- Email-first provisional customer profiles keyed by protected sender address, with protected
+  self-identification claims and owner-reviewed conflict handling.
 - Regex and optional GLiNER sensitive-data detection.
 - Stable HMAC token identities separated from a versioned AES-256-GCM encrypted token vault.
 - Random wrapped vault generations, per-token HKDF keys, authenticated row context, resumable
@@ -599,6 +601,15 @@ The frontend also provides a local **Sync now** action. Marking an older message
 saved UID cursor has passed it does not trigger a historical rescan. For production, replace app
 password authentication with provider OAuth.
 
+Every new single-sender Gmail address is protected before persistence and becomes the stable
+endpoint of a provisional customer profile. The first message is linked immediately; later
+messages from the same address reuse that profile without requiring an invoice. A protected
+display-name or explicit first-person introduction may become an identity claim. Morpheus can
+return that already-tokenized claim during summarization, but only validated protected tokens are
+accepted and the model cannot mutate a customer row. A different later name creates an owner
+review task and never silently renames the customer. Shared mailboxes and Telegram-created
+profiles are intentionally outside this email-first scope.
+
 ## Tokenization and role views
 
 Names, identifiers, contact details, accounts, addresses, organizations, and monetary values use
@@ -691,13 +702,16 @@ Decision events are appended to a separate hash-chained workflow audit log.
 ## Unified customer intelligence and governed outreach
 
 When `CUSTOMER_INTELLIGENCE_ENABLED=true`, FinBrain exposes a tenant-scoped customer workspace
-that joins only verified identity links across protected sources. Optional deterministic attention
-scoring is enabled with `CUSTOMER_ATTENTION_ENABLED=true`. Selecting **Ask about this customer**
-binds the protected conversation to that customer instead of relying on a name-only follow-up.
+that joins exact protected identity links across sources. Gmail can create a provisional customer
+from a first-time sender; e-invoice and reviewed identities remain confirmed customer records.
+Optional deterministic attention scoring is enabled with `CUSTOMER_ATTENTION_ENABLED=true`.
+Selecting **Ask about this customer** binds the protected conversation to that customer instead of
+relying on a name-only follow-up.
 
 Finance or an owner can register a customer email endpoint, but its plaintext value is immediately
 tokenized and stored only in the encrypted vault. An owner must verify the endpoint before a draft
-can move to `pending_approval`, and only an owner can approve delivery:
+can move to `pending_approval`. The customer must also be confirmed with no unresolved identity
+claim. Only an owner can approve delivery:
 
 ```text
 draft -> pending_approval -> approved -> sending -> sent -> replied
@@ -709,8 +723,10 @@ email worker deliver approved messages. Automated tests use a fake SMTP transpor
 real mail. A network failure before delivery begins is recorded as `failed`; an interruption during
 SMTP delivery is `delivery_unknown` and is never retried automatically. With
 `EMAIL_REPLY_CORRELATION_ENABLED=true`, incoming `In-Reply-To` and `References` identifiers are
-HMAC-hashed in memory and matched exactly to the outbound hash. A unique match links the protected
-reply to the customer and marks the action `replied`; it never changes invoice or payment state.
+HMAC-hashed in memory and matched exactly to the outbound hash. A unique reference marks the action
+`replied` only when the inbound protected sender token also equals the action's protected endpoint.
+A mismatched sender is ingested but recorded as `identity_conflict`, never attached to the wrong
+customer, and never changes invoice or payment state.
 
 ## Reset and verify demonstration data
 
