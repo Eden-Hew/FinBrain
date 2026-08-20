@@ -620,3 +620,46 @@ class FinanceSummaryResponse(BaseModel):
     status_breakdown: list[InvoiceStatusBreakdown]
     validated_invoice_count: int
     avg_days_to_pay: float | None
+
+
+class CustomerAttentionSignalResponse(BaseModel):
+    signal_type: str
+    points: int
+    label: str
+    freshness: str
+    confidence: float
+    tokenized_content_id: int | None = None
+    einvoice_record_id: int | None = None
+
+
+class CustomerSummaryResponse(BaseModel):
+    id: int
+    name: str
+    attention_score: int
+    priority: str
+    outstanding_total: Decimal
+    overdue_total: Decimal
+    invoice_count: int
+    linked_source_count: int
+
+
+class CustomerTimelineItemResponse(BaseModel):
+    event_id: str
+    event_type: str
+    source_system: str
+    occurred_at: datetime | None
+    protected_summary: str
+    tokenized_content_id: int | None = None
+    einvoice_record_id: int | None = None
+    identity_status: str = "verified"
+
+
+class CustomerDetailResponse(CustomerSummaryResponse):
+    attention_version: str | None = None
+    attention_signals: list[CustomerAttentionSignalResponse] = Field(default_factory=list)
+    timeline: list[CustomerTimelineItemResponse] = Field(default_factory=list)
+
+
+class CustomerBriefingResponse(BaseModel):
+    generated_at: datetime
+    customers: list[CustomerSummaryResponse]

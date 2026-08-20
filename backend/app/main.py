@@ -15,6 +15,7 @@ from app.routes import (
     audit_log,
     auth,
     conversations,
+    customers,
     einvoice,
     finance,
     health,
@@ -111,6 +112,7 @@ app.include_router(einvoice.router)
 app.include_router(finance.router)
 app.include_router(uploads.router)
 app.include_router(conversations.router)
+app.include_router(customers.router)
 app.include_router(privacy.router)
 app.include_router(health.router)
 
