@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
@@ -85,9 +85,8 @@ export default function Agents() {
     sampleBanner,
     dismissSampleBanner,
     openApprovalRecommendation,
-    show,
-    approvalsCount,
-    einvoices,
+    pendingAskPrompt,
+    clearPendingAskPrompt,
   } = useAppState();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
@@ -106,6 +105,7 @@ export default function Agents() {
   const [protectedTurnCount, setProtectedTurnCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceTranscriptRef = useRef("");
   const voiceSupported = typeof window !== "undefined"
@@ -115,6 +115,16 @@ export default function Agents() {
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    });
+  };
+
+  // A finished answer can be much taller than the panel (headline, claims,
+  // timeline, recommended action…) — scrolling to the container's absolute
+  // bottom would crop its own heading off the top of the view, so scroll to
+  // the top of the message itself instead of the bottom of the list.
+  const scrollToLastMessage = () => {
+    requestAnimationFrame(() => {
+      lastMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -189,11 +199,27 @@ export default function Agents() {
             }
           : message
       )));
-      scrollToBottom();
+      scrollToLastMessage();
     }, 650);
   };
 
   const handleSuggestion = (text: string) => send(text);
+
+  // A screen elsewhere (e.g. "Ask FinBrain about this" on Financial
+  // Intelligence) can hand off a question via askAbout() — consume it once
+  // on arrival so the conversation starts immediately instead of leaving
+  // the visitor to retype what they already asked to see answered.
+  useEffect(() => {
+    if (pendingAskPrompt) {
+      const prompt = pendingAskPrompt;
+      clearPendingAskPrompt();
+      // send()'s own setMessages calls are the intended immediate UI update
+      // (showing the handed-off question right away), not an unwanted cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void send(prompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startNewConversation = () => {
     setConversationId(null);
@@ -291,7 +317,6 @@ export default function Agents() {
     recognitionRef.current?.stop();
   };
 
-  const einvoicesPending = Object.values(einvoices).filter((inv) => inv.status === "pending").length;
   const hasConversation = messages.length > 1;
 
   return (
@@ -310,46 +335,21 @@ export default function Agents() {
         {!hasConversation && (
           <div className="fb-chat-welcome">
             <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
-              <h1>{t("nav.aiAgents")}</h1>
+              <h1>{t("agents.title")}</h1>
               <p>{t("agents.desc")}</p>
             </header>
-
-            <div className="fb-agents-overview">
-              <button className="fb-overview-stat" type="button" onClick={() => show("approvals")}>
-                <span className="fb-overview-value">{approvalsCount}</span>
-                <span className="fb-overview-label">Pending approvals</span>
-                <span className="fb-overview-arrow" aria-hidden="true">→</span>
-              </button>
-              <button className="fb-overview-stat" type="button" onClick={() => show("einvoice")}>
-                <span className="fb-overview-value">{einvoicesPending}</span>
-                <span className="fb-overview-label">e-Invoices to review</span>
-                <span className="fb-overview-arrow" aria-hidden="true">→</span>
-              </button>
-              <button className="fb-overview-stat" type="button" onClick={() => show("finance")}>
-                <span className="fb-overview-value">RM 94K</span>
-                <span className="fb-overview-label">Outstanding AR</span>
-                <span className="fb-overview-arrow" aria-hidden="true">→</span>
-              </button>
-            </div>
           </div>
         )}
 
         <div className={"fb-chat-transcript-wrap" + (hasConversation ? " is-active" : "")}>
-          {!hasConversation && (
-            <div className="fb-suggest-row">
-              <span className="fb-eyebrow fb-suggest-label">Try asking</span>
-              {SUGGESTIONS.map((s) => (
-                <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
-                  <span className="fb-suggest-chip-icon" aria-hidden="true">{s.icon}</span>{s.text}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
-            {messages.map((msg) => (
-              <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}>
+            {messages.map((msg, idx) => (
+              <div
+                key={msg.id}
+                ref={idx === messages.length - 1 ? lastMessageRef : undefined}
+                className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}
+              >
                 {msg.thinking ? (
                   <div className="fb-intel-building" role="status">
                     <span className="fb-thinking"><span></span><span></span><span></span></span>
@@ -431,6 +431,17 @@ export default function Agents() {
               </div>
             ))}
           </div>
+
+          {!hasConversation && (
+            <div className="fb-suggest-row">
+              <span className="fb-eyebrow fb-suggest-label">Try asking</span>
+              {SUGGESTIONS.map((s) => (
+                <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
+                  <span className="fb-suggest-chip-icon" aria-hidden="true">{s.icon}</span>{s.text}
+                </button>
+              ))}
+            </div>
+          )}
 
           {uploadState !== "idle" && (
             <section className="fb-upload-preview" aria-live="polite">

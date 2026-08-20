@@ -17,7 +17,9 @@ const Signup = lazy(() => import("./screens/Signup"));
 const Onboarding = lazy(() => import("./screens/Onboarding"));
 const Security = lazy(() => import("./screens/Security"));
 const Legal = lazy(() => import("./screens/Legal"));
+const Home = lazy(() => import("./screens/Home"));
 const Agents = lazy(() => import("./screens/Agents"));
+const Customers = lazy(() => import("./screens/Customers"));
 const Einvoice = lazy(() => import("./screens/Einvoice"));
 const EinvoiceDetail = lazy(() => import("./screens/EinvoiceDetail"));
 const Finance = lazy(() => import("./screens/Finance"));
@@ -45,7 +47,7 @@ function Screens() {
 
   useEffect(() => {
     if (!loading && !identity && !isPublic) show("login");
-    if (!loading && identity && (screen === "login" || screen === "signup")) show("agents");
+    if (!loading && identity && (screen === "login" || screen === "signup")) show("home");
   }, [identity, isPublic, loading, screen, show]);
 
   if (loading) {
@@ -59,7 +61,9 @@ function Screens() {
     case "onboarding": return <Onboarding />;
     case "security": return <Security />;
     case "legal": return <Legal />;
+    case "home": return <Home />;
     case "agents": return <Agents />;
+    case "customers": return <Customers />;
     case "einvoice": return <Einvoice />;
     case "einvoice-detail": return <EinvoiceDetail />;
     case "finance": return <Finance />;

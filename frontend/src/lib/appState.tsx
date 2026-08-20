@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   FB_ROLE_IDENTITY,
   initialAuditRows,
@@ -13,10 +13,12 @@ import {
   type Recommendation,
   type Sop,
 } from "../data/sampleData";
+import { PERSONAS } from "./personas";
+import { fetchEinvoiceOutreachDrafts, fetchRecommendations } from "../api/client";
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
-  | "agents" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
+  | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
 
 interface AppStateValue {
   screen: Screen;
@@ -44,6 +46,13 @@ interface AppStateValue {
   showEinvoiceDetail: (id: string) => void;
   approveEinvoiceById: (id: string) => void;
   rejectEinvoiceById: (id: string) => void;
+
+  currentCustomerKey: string | null;
+  showCustomerDetail: (key: string) => void;
+
+  pendingAskPrompt: string | null;
+  askAbout: (prompt: string) => void;
+  clearPendingAskPrompt: () => void;
 
   einvoiceFilterMine: boolean;
   setEinvoiceFilterMine: (mine: boolean) => void;
@@ -81,6 +90,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [askRole, setAskRoleState] = useState<AskRole>("general_employee");
   const [einvoices, setEinvoices] = useState<Record<string, EinvoiceRecord>>(() => initialEinvoices());
   const [currentEinvoiceId, setCurrentEinvoiceId] = useState<string | null>(null);
+  const [currentCustomerKey, setCurrentCustomerKey] = useState<string | null>(null);
+  const [pendingAskPrompt, setPendingAskPrompt] = useState<string | null>(null);
   const [einvoiceFilterMine, setEinvoiceFilterMine] = useState(false);
   const [sops, setSops] = useState<Sop[]>(() => initialSops());
   const [recommendations, setRecommendations] = useState<Recommendation[]>(() => initialRecommendations());
@@ -104,7 +115,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const pathname = window.location.pathname.replace(/^\//, "");
         const matchedScreen: Screen = pathname && [
           "landing", "login", "signup", "onboarding", "security", "legal",
-          "agents", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
+          "home", "agents", "customers", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
         ].includes(pathname) ? (pathname as Screen) : "landing";
         setScreen(matchedScreen);
       }
@@ -141,7 +152,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const enterSampleWorkspace = useCallback(() => {
     setSampleBanner(true);
-    show("agents");
+    show("home");
   }, [show]);
 
   const dismissSampleBanner = useCallback(() => setSampleBanner(false), []);
@@ -163,6 +174,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setCurrentEinvoiceId(id);
     show("einvoice-detail");
   }, [show]);
+
+  const showCustomerDetail = useCallback((key: string) => {
+    setCurrentCustomerKey(key);
+    show("customers");
+  }, [show]);
+
+  const askAbout = useCallback((prompt: string) => {
+    setPendingAskPrompt(prompt);
+    show("agents");
+  }, [show]);
+
+  const clearPendingAskPrompt = useCallback(() => setPendingAskPrompt(null), []);
 
   const approveEinvoiceById = useCallback((id: string) => {
     setEinvoices((prev) => {
@@ -257,13 +280,33 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }, [pushAuditRow]);
 
-  const approvalsCount = useMemo(() => {
-    let count = 0;
-    Object.values(einvoices).forEach((inv) => { if (inv.status === "pending") count++; });
-    sops.forEach((s) => { if (s.status === "draft") count++; });
-    pendingActions.forEach((a) => { if (a.active) count++; });
-    return count;
-  }, [einvoices, sops, pendingActions]);
+  // Counts real recommendations + outreach drafts only (matches Home's
+  // Approvals card) — the sidebar/topbar badge is meant to answer the same
+  // "how many things actually need my review" question shown there, so it
+  // must use the same source rather than the local demo seed data.
+  const [approvalsCount, setApprovalsCount] = useState(0);
+  useEffect(() => {
+    let active = true;
+    const capabilities = PERSONAS[askRole].capabilities;
+    const load = async () => {
+      try {
+        let count = 0;
+        if (capabilities.viewRecommendations) {
+          const rows = await fetchRecommendations();
+          count += rows.filter((r) => r.status === "proposed" || r.status === "approved").length;
+        }
+        if (capabilities.manageEinvoiceReadiness) {
+          const drafts = await fetchEinvoiceOutreachDrafts();
+          count += drafts.length;
+        }
+        if (active) setApprovalsCount(count);
+      } catch {
+        if (active) setApprovalsCount(0);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [askRole]);
 
   const value: AppStateValue = {
     screen, show,
@@ -272,6 +315,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     sampleBanner, enterSampleWorkspace, dismissSampleBanner,
     askRole, setAskRole,
     einvoices, currentEinvoiceId, showEinvoiceDetail, approveEinvoiceById, rejectEinvoiceById,
+    currentCustomerKey, showCustomerDetail,
+    pendingAskPrompt, askAbout, clearPendingAskPrompt,
     einvoiceFilterMine, setEinvoiceFilterMine,
     sops, approveSop, rejectSop, draftSop,
     recommendations,

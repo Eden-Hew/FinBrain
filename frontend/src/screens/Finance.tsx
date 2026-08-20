@@ -1,14 +1,17 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import {
+  fetchEinvoiceRecords,
   fetchFinanceSummary,
   type ARAgingBucket,
+  type EInvoiceApiRecord,
   type FinancePeriod,
   type FinanceSummaryResponse,
   type TopCustomer,
 } from "../api/client";
+import { buildCustomers, isOutstanding, toAmount } from "../lib/customerAggregation";
 
 function downloadCsv(filename: string, rows: (string | number)[][]) {
   const csv = rows
@@ -132,7 +135,7 @@ function RevenueTrendChart({ data }: { data: FinanceSummaryResponse }) {
   );
 }
 
-function TopCustomersChart({ customers }: { customers: TopCustomer[] }) {
+function TopCustomersChart({ customers, onSelect }: { customers: TopCustomer[]; onSelect: (customerId: number) => void }) {
   const [hover, setHover] = useState<number | null>(null);
   if (customers.length === 0) {
     return <div className="fb-callout">No validated invoices linked to a customer yet.</div>;
@@ -161,7 +164,8 @@ function TopCustomersChart({ customers }: { customers: TopCustomer[] }) {
             key={customer.customer_id}
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => setHover(null)}
-            style={{ cursor: "default" }}
+            onClick={() => onSelect(customer.customer_id)}
+            style={{ cursor: "pointer" }}
           >
             <text x={barLeft - 8} y={top + 14} textAnchor="end" fontSize="10.5" fill="var(--ink)">{customer.name}</text>
             <path
@@ -175,6 +179,121 @@ function TopCustomersChart({ customers }: { customers: TopCustomer[] }) {
         );
       })}
     </svg>
+  );
+}
+
+function buyerKey(r: EInvoiceApiRecord): string {
+  return r.buyer_customer_id != null ? `id:${r.buyer_customer_id}` : `name:${(r.buyer_name ?? "").trim().toLowerCase()}`;
+}
+
+// A lightweight, real-data stand-in for the full spec's promise/complaint-
+// weighted scenario model: best case assumes every outstanding invoice
+// arrives; likely case weights each outstanding invoice by that specific
+// buyer's own historical on-time-payment rate (buyers with no payment
+// history yet fall back to the tenant-wide average rate); worst case only
+// counts buyers whose entire paid history has been on time. No promise or
+// dispute data exists to weight this further without backend work.
+function computeScenarios(records: EInvoiceApiRecord[]): { best: number; likely: number; worst: number } {
+  const outstanding = records.filter(isOutstanding);
+  const best = outstanding.reduce((sum, r) => sum + toAmount(r.total_amount), 0);
+
+  const history = new Map<string, { onTime: number; total: number }>();
+  for (const r of records) {
+    if (!r.paid_at || !r.due_date) continue;
+    const entry = history.get(buyerKey(r)) ?? { onTime: 0, total: 0 };
+    entry.total += 1;
+    if (r.paid_at <= r.due_date) entry.onTime += 1;
+    history.set(buyerKey(r), entry);
+  }
+  const rates = [...history.values()].map((e) => e.onTime / e.total);
+  const globalRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0.7;
+
+  let likely = 0;
+  let worst = 0;
+  for (const r of outstanding) {
+    const entry = history.get(buyerKey(r));
+    const amount = toAmount(r.total_amount);
+    likely += amount * (entry ? entry.onTime / entry.total : globalRate);
+    if (entry && entry.total > 0 && entry.onTime === entry.total) worst += amount;
+  }
+  return { best, likely, worst };
+}
+
+const TIER_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", monitoring: "Monitoring", healthy: "Healthy" };
+
+function CustomerInsightsSection() {
+  const { showCustomerDetail, askAbout } = useAppState();
+  const [records, setRecords] = useState<EInvoiceApiRecord[]>([]);
+  const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
+
+  useEffect(() => {
+    let active = true;
+    fetchEinvoiceRecords()
+      .then((res) => { if (active) { setRecords(res); setState("loaded"); } })
+      .catch(() => { if (active) setState("error"); });
+    return () => { active = false; };
+  }, []);
+
+  const customers = useMemo(() => buildCustomers(records, new Set()), [records]);
+  const atRisk = customers.filter((c) => c.overdueTotal > 0).slice(0, 5);
+  const scenarios = useMemo(() => computeScenarios(records), [records]);
+
+  if (state === "loading") return <div className="fb-callout">Loading customer risk…</div>;
+  if (state === "error") return null;
+
+  return (
+    <>
+      <div className="fb-chart-section">
+        <h2>Collections scenarios</h2>
+        <p className="fb-chart-caption">
+          A lightweight estimate from each customer's own payment history — best case assumes everything outstanding arrives, worst case counts only customers who have never paid late.
+        </p>
+        <div className="fb-scenario-row">
+          <div className="fb-scenario-card is-best">
+            <div className="fb-kpi-label">Best case</div>
+            <div className="fb-kpi-value">{formatCurrency(scenarios.best)}</div>
+          </div>
+          <div className="fb-scenario-card is-likely">
+            <div className="fb-kpi-label">Likely case</div>
+            <div className="fb-kpi-value">{formatCurrency(scenarios.likely)}</div>
+          </div>
+          <div className="fb-scenario-card is-worst">
+            <div className="fb-kpi-label">Worst case</div>
+            <div className="fb-kpi-value">{formatCurrency(scenarios.worst)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="fb-chart-section">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <h2>Customers at risk</h2>
+            <p className="fb-chart-caption">Ranked the same way as the Briefing — urgency tier first, overdue amount as the tiebreaker.</p>
+          </div>
+          <button
+            className="fb-link-toggle"
+            type="button"
+            onClick={() => askAbout("Which customers should I prioritize for collections this week, and why?")}
+          >
+            Ask FinBrain about this →
+          </button>
+        </div>
+        {atRisk.length === 0 ? (
+          <div className="fb-callout">No customers have an overdue invoice right now.</div>
+        ) : (
+          <div className="fb-briefing-list">
+            {atRisk.map((c) => (
+              <button key={c.key} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(c.key)}>
+                <span className={"fb-briefing-tier is-" + c.tier}>{TIER_LABEL[c.tier]}</span>
+                <span className="fb-briefing-name">{c.name}</span>
+                <span className="fb-briefing-detail">{formatCurrency(c.overdueTotal)} overdue · {c.oldestOverdueDays} day{c.oldestOverdueDays === 1 ? "" : "s"}</span>
+                <span className="fb-home-card-arrow" aria-hidden="true">→</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -272,7 +391,7 @@ function buildMockFinanceSummary(period: FinancePeriod, offset: number): Finance
 
 export default function Finance() {
   const { t } = useI18n();
-  const { show } = useAppState();
+  const { show, showCustomerDetail } = useAppState();
   const [period, setPeriod] = useState<FinancePeriod>("month");
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<FinanceSummaryResponse | null>(null);
@@ -414,11 +533,11 @@ export default function Finance() {
                   : `${data.revenue_change_pct >= 0 ? "▲" : "▼"} ${Math.abs(data.revenue_change_pct).toFixed(1)}% vs prior ${data.period}`}
               </div>
             </div>
-            <button className="fb-kpi-tile fb-kpi-tile-link" type="button" onClick={() => show("einvoice")} title="See the invoices behind this number">
+            <button className="fb-kpi-tile fb-kpi-tile-link" type="button" onClick={() => show("customers")} title="See which customers owe this">
               <div className="fb-kpi-label">Outstanding AR</div>
               <div className="fb-kpi-value">{formatCurrency(data.outstanding_ar)}</div>
               <div className="fb-kpi-delta">Validated, unpaid invoices</div>
-              <span className="fb-kpi-tile-cta">View invoices →</span>
+              <span className="fb-kpi-tile-cta">View customers →</span>
             </button>
             <div className="fb-kpi-tile">
               <div className="fb-kpi-label">Invoices validated</div>
@@ -431,6 +550,8 @@ export default function Finance() {
               <div className="fb-kpi-delta">{data.avg_days_to_pay === null ? "No paid invoices yet" : "Issue date to payment date"}</div>
             </div>
           </div>
+
+          <CustomerInsightsSection />
 
           <div className="fb-chart-section">
             <h2>Revenue trend</h2>
@@ -447,7 +568,7 @@ export default function Finance() {
             <h2>Top customers by revenue</h2>
             <p className="fb-chart-caption">Validated invoices, all time, ranked by total billed.</p>
             <div className="fb-chart-card">
-              <TopCustomersChart customers={data.top_customers} />
+              <TopCustomersChart customers={data.top_customers} onSelect={(id) => showCustomerDetail(`id:${id}`)} />
             </div>
           </div>
 
