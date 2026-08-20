@@ -15,8 +15,13 @@ from app.models import (
     TokenizedContent,
     WorkflowAuditEntry,
 )
+from app.routes.customers import _authorized_customer_summary
 from app.routes.outreach import _endpoint_response
 from app.schemas import UserRole
+from app.security.detect import Span
+from app.security.protection import protect_text
+from app.security.tokenize import persist_vault_entries
+from app.services.customer_intelligence import customer_summary
 from app.services.outreach import (
     create_action,
     register_email_endpoint,
@@ -263,5 +268,52 @@ def test_owner_resolves_identity_claim_without_storing_plaintext_name():
         assert customer.profile_status == "confirmed"
         assert customer.identity_review_status == "clear"
         assert "aaaaaaaaaa" not in customer.canonical_name.casefold()
+    finally:
+        db.close()
+
+
+def test_accepted_customer_name_uses_authorized_detokenization():
+    db, customer = _session()
+    try:
+        raw_name = "Alicia Tan"
+        protected_name, entries = protect_text(
+            raw_name,
+            "customer-name-test",
+            TENANT,
+            db,
+            spans=[Span(0, len(raw_name), raw_name, "person", "test")],
+        )
+        persist_vault_entries(db, entries)
+        customer.primary_name_token = protected_name
+        customer.profile_status = "confirmed"
+        customer.identity_review_status = "clear"
+        endpoint = CustomerEndpoint(
+            tenant_id=TENANT, customer_id=customer.id, channel="email",
+            endpoint_token="EMAIL_0123456789", verification_status="verified",
+        )
+        content = TokenizedContent(
+            tenant_id=TENANT, source_record_id="email:accepted-name",
+            source_system="email", content_text=f"From: {protected_name}",
+            processing_status="ready",
+        )
+        db.add_all([endpoint, content])
+        db.flush()
+        db.add(CustomerIdentityClaim(
+            tenant_id=TENANT, customer_id=customer.id, endpoint_id=endpoint.id,
+            identity_token=protected_name, claim_basis="display_name", confidence=1.0,
+            evidence_content_id=content.id, status="accepted",
+        ))
+        db.commit()
+        principal = AuthPrincipal(
+            user_id=UUID(USER), email="owner@example.com",
+            role=UserRole.OWNER_DIRECTOR, tenant_id=UUID(TENANT),
+        )
+
+        result = _authorized_customer_summary(
+            db, principal, customer_summary(db, TENANT, customer)
+        )
+
+        assert result.name == raw_name
+        assert customer.canonical_name == "Demo"
     finally:
         db.close()
