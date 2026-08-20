@@ -309,17 +309,6 @@ export default function Agents() {
         )}
 
         <div className={"fb-chat-transcript-wrap" + (hasConversation ? " is-active" : "")}>
-          {!hasConversation && (
-            <div className="fb-suggest-row">
-              <span className="fb-eyebrow fb-suggest-label">Try asking</span>
-              {SUGGESTIONS.map((s) => (
-                <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
-                  <span className="fb-suggest-chip-icon" aria-hidden="true">{s.icon}</span>{s.text}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
             {messages.map((msg) => (
@@ -400,6 +389,17 @@ export default function Agents() {
               </div>
             ))}
           </div>
+
+          {!hasConversation && (
+            <div className="fb-suggest-row">
+              <span className="fb-eyebrow fb-suggest-label">Try asking</span>
+              {SUGGESTIONS.map((s) => (
+                <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
+                  <span className="fb-suggest-chip-icon" aria-hidden="true">{s.icon}</span>{s.text}
+                </button>
+              ))}
+            </div>
+          )}
 
           {uploadState !== "idle" && (
             <section className="fb-upload-preview" aria-live="polite">
