@@ -155,7 +155,7 @@ Keep `OUTBOUND_EMAIL_ENABLED=false` during the first acceptance test. This prove
 delivery are separate controls: an approved action must remain queued and no SMTP connection should
 be attempted.
 
-The database must include migrations `202608200001` through `202608200006`. Before pushing
+The database must include migrations `202608200001` through `202608200007`. Before pushing
 `202608200006`, ensure no protected endpoint token is owned by multiple customers. The migration
 also performs this preflight and aborts without partial application if duplicates exist. Verify
 from `backend`:

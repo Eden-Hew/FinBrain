@@ -154,7 +154,7 @@ def test_unknown_sender_creates_one_provisional_profile_and_reuses_it(monkeypatc
         assert customer is not None
         assert customer.profile_status == "provisional"
         assert customer.profile_origin == "email"
-        assert customer.canonical_name.startswith("Email contact · ")
+        assert customer.canonical_name.startswith("Email contact - ")
         assert endpoint is not None
         assert endpoint.origin == "inbound_email"
         assert endpoint.verification_status == "observed"
@@ -176,6 +176,55 @@ def test_unknown_sender_creates_one_provisional_profile_and_reuses_it(monkeypatc
         ) == customer_id
         assert db.query(Customer).filter(Customer.tenant_id == TENANT).count() == 1
         assert db.query(CustomerEndpoint).filter(CustomerEndpoint.tenant_id == TENANT).count() == 1
+    finally:
+        db.close()
+
+
+def test_protected_from_header_recovers_sender_metadata(monkeypatch):
+    db = _session()
+    try:
+        monkeypatch.setattr(
+            "app.integrations.email_connector.identity.get_settings",
+            lambda: type("Settings", (), {"customer_attention_enabled": False})(),
+        )
+        receipt, content = _email_rows(db)
+        content.safe_metadata = {"channel": "email"}
+        content.content_text = "From: PERSON_aaaaaaaaaa <EMAIL_0123456789>\nProtected body"
+        db.commit()
+
+        customer_id = link_verified_sender(db, receipt=receipt, protected_row=content)
+
+        assert customer_id is not None
+        assert content.safe_metadata["sender_email"] == TOKEN
+        assert receipt.customer_id == customer_id
+        assert db.scalar(select(CustomerEndpoint)).endpoint_token == TOKEN
+    finally:
+        db.close()
+
+
+def test_attention_failure_does_not_undo_email_customer_link(monkeypatch):
+    db = _session()
+    try:
+        monkeypatch.setattr(
+            "app.integrations.email_connector.identity.get_settings",
+            lambda: type("Settings", (), {"customer_attention_enabled": True})(),
+        )
+
+        def fail_attention(*_args, **_kwargs):
+            raise RuntimeError("attention unavailable")
+
+        monkeypatch.setattr(
+            "app.services.customer_attention.recalculate_customer_attention",
+            fail_attention,
+        )
+        receipt, content = _email_rows(db)
+
+        customer_id = link_verified_sender(db, receipt=receipt, protected_row=content)
+
+        assert customer_id is not None
+        assert receipt.customer_id == customer_id
+        assert db.get(Customer, customer_id) is not None
+        assert db.scalar(select(CustomerRecordLink)) is not None
     finally:
         db.close()
 

@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import UTC, datetime
 
@@ -18,6 +19,7 @@ from app.security.detokenize import TOKEN_PATTERN
 from app.services.workflow_audit import write_workflow_event
 
 IDENTITY_TOKEN_PATTERN = re.compile(r"(?:PERSON|ORG)_[0-9a-f]{10}")
+logger = logging.getLogger(__name__)
 SELF_IDENTIFICATION_PATTERN = re.compile(
     r"\b(?:i\s+am|i['’]m|my\s+name\s+is|this\s+is)\s+"
     r"(?P<token>(?:PERSON|ORG)_[0-9a-f]{10})\b",
@@ -32,6 +34,17 @@ def _sender_token(row: TokenizedContent) -> str | None:
         and value.startswith("EMAIL_")
         and TOKEN_PATTERN.fullmatch(value) is not None
     ):
+        return value
+    from_line = next(
+        (line for line in row.content_text.splitlines() if line.casefold().startswith("from:")),
+        "",
+    )
+    protected_addresses = {
+        token for token in TOKEN_PATTERN.findall(from_line) if token.startswith("EMAIL_")
+    }
+    if len(protected_addresses) == 1:
+        value = protected_addresses.pop()
+        row.safe_metadata = {**row.safe_metadata, "sender_email": value}
         return value
     return None
 
@@ -73,7 +86,7 @@ def _create_provisional_customer(
     suffix = sender_token.rsplit("_", 1)[-1].upper()
     customer = Customer(
         tenant_id=tenant_id,
-        canonical_name=f"Email contact · {suffix[:6]}",
+        canonical_name=f"Email contact - {suffix[:6]}",
         normalized_name=f"EMAILCONTACT{suffix}",
         profile_status="provisional",
         identity_review_status="clear",
@@ -217,6 +230,11 @@ def route_email_sender(
         customer = db.get(Customer, endpoint.customer_id)
     if customer is None:
         return None
+    if customer.profile_origin == "email" and customer.canonical_name.startswith(
+        "Email contact"
+    ):
+        suffix = sender_token.rsplit("_", 1)[-1].upper()
+        customer.canonical_name = f"Email contact - {suffix[:6]}"
     if receipt.customer_id not in {None, customer.id}:
         return None
     receipt.customer_id = customer.id
@@ -262,9 +280,17 @@ def route_email_sender(
     )
     db.commit()
     if get_settings().customer_attention_enabled:
-        from app.services.customer_attention import recalculate_customer_attention
+        try:
+            from app.services.customer_attention import recalculate_customer_attention
 
-        recalculate_customer_attention(db, protected_row.tenant_id, customer.id)
+            recalculate_customer_attention(db, protected_row.tenant_id, customer.id)
+        except Exception as error:
+            db.rollback()
+            logger.warning(
+                "email_customer_attention_refresh_failed customer_id=%s error_type=%s",
+                customer.id,
+                type(error).__name__,
+            )
     return customer.id
 
 

@@ -610,6 +610,19 @@ accepted and the model cannot mutate a customer row. A different later name crea
 review task and never silently renames the customer. Shared mailboxes and Telegram-created
 profiles are intentionally outside this email-first scope.
 
+After deploying changes to the email connector, restart the email worker; a running Python worker
+does not reload connector code automatically. If an older worker already ingested a message before
+protected sender metadata was introduced, recover only that intended record using its opaque ID:
+
+```powershell
+Set-Location backend
+uv run --active --no-sync python -m scripts.backfill_email_customer_profile `
+  email:your-opaque-source-record-id
+```
+
+The command accepts exactly one protected email record. It derives a sender only when the protected
+`From:` header contains one unique `EMAIL_...` token, then uses the normal audited profile router.
+
 ## Tokenization and role views
 
 Names, identifiers, contact details, accounts, addresses, organizations, and monetary values use

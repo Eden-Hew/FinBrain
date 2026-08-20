@@ -200,6 +200,13 @@ def main() -> None:
                 "and tablename = 'token_vault' and policyname = 'finbrain_app_vault'"
             )
         )
+        worker_einvoice_policy = connection.scalar(
+            text(
+                "select qual from pg_policies where schemaname = 'public' "
+                "and tablename = 'einvoice_records' "
+                "and policyname = 'finbrain_worker_einvoice_attention_read'"
+            )
+        )
         current_columns = {
             table: {
                 row.column_name
@@ -285,6 +292,8 @@ def main() -> None:
         raise SystemExit("Append-only audit triggers are missing.")
     if vault_role_policy is None or "allowed_roles" not in vault_role_policy:
         raise SystemExit("The token vault policy does not enforce allowed_roles.")
+    if worker_einvoice_policy is None or "tenant_id" not in worker_einvoice_policy:
+        raise SystemExit("The email worker lacks tenant-scoped invoice attention access.")
     for table, expected in REQUIRED_CURRENT_COLUMNS.items():
         if missing_columns := expected - current_columns[table]:
             raise SystemExit(
