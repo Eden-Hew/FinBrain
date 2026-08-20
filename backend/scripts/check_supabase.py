@@ -23,6 +23,9 @@ REQUIRED_TABLES = (
     "conversation_turns",
     "conversation_turn_citations",
     "user_roles",
+    "customers",
+    "einvoice_records",
+    "einvoice_outreach_drafts",
 )
 REQUIRED_INGESTION_COLUMNS = {
     "source_system",
@@ -39,6 +42,15 @@ REQUIRED_VAULT_COLUMNS = {
     "key_version",
     "masked_value",
     "encryption_algorithm",
+}
+REQUIRED_CURRENT_COLUMNS = {
+    "customers": {"tenant_id", "canonical_name", "normalized_name"},
+    "einvoice_records": {
+        "tenant_id", "buyer_customer_id", "due_date", "paid_at", "source_record_id"
+    },
+    "einvoice_outreach_drafts": {
+        "tenant_id", "einvoice_record_id", "channel", "draft_text", "status"
+    },
 }
 
 
@@ -159,6 +171,28 @@ def main() -> None:
                 "and tablename = 'token_vault' and policyname = 'finbrain_app_vault'"
             )
         )
+        current_columns = {
+            table: {
+                row.column_name
+                for row in connection.execute(
+                    text(
+                        "select column_name from information_schema.columns "
+                        "where table_schema = 'public' and table_name = :table"
+                    ),
+                    {"table": table},
+                )
+            }
+            for table in REQUIRED_CURRENT_COLUMNS
+        }
+        current_indexes = {
+            name: connection.scalar(text("select to_regclass(:name)"), {"name": f"public.{name}"})
+            for name in (
+                "customers_tenant_idx",
+                "einvoice_records_buyer_customer_idx",
+                "einvoice_records_tenant_idx",
+                "einvoice_outreach_drafts_tenant_idx",
+            )
+        }
 
     missing = [name for name, relation in tables.items() if relation is None]
     if vector_version is None:
@@ -214,6 +248,14 @@ def main() -> None:
         raise SystemExit("Append-only audit triggers are missing.")
     if vault_role_policy is None or "allowed_roles" not in vault_role_policy:
         raise SystemExit("The token vault policy does not enforce allowed_roles.")
+    for table, expected in REQUIRED_CURRENT_COLUMNS.items():
+        if missing_columns := expected - current_columns[table]:
+            raise SystemExit(
+                f"Current product schema is missing {table} columns: "
+                + ", ".join(sorted(missing_columns))
+            )
+    if missing_indexes := [name for name, value in current_indexes.items() if value is None]:
+        raise SystemExit("Current product schema is missing indexes: " + ", ".join(missing_indexes))
 
     print(f"Database: {database}")
     print(f"Database user: {user}")
@@ -230,6 +272,7 @@ def main() -> None:
     print("Supabase Auth role and ownership schema: present")
     print("Versioned vault schema and role-enforced ciphertext RLS: present")
     print("Append-only audit triggers: present")
+    print("Customer, e-invoice, and outreach baseline schema: present")
     print("RLS: enabled and forced")
     print("Supabase database check passed.")
 

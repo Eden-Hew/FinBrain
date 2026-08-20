@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     recommendations_auto_analysis_enabled: bool = False
     recommendations_analysis_interval_seconds: int = 3_600
     default_payment_terms_days: int = 30
+    customer_intelligence_enabled: bool = False
+    customer_attention_enabled: bool = False
+    outbound_email_enabled: bool = False
+    email_reply_correlation_enabled: bool = False
 
     @field_validator(
         "telegram_draft_ttl_seconds",
