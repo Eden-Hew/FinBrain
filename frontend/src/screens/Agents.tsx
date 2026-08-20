@@ -102,6 +102,7 @@ export default function Agents() {
   const [protectedTurnCount, setProtectedTurnCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceTranscriptRef = useRef("");
   const voiceSupported = typeof window !== "undefined"
@@ -111,6 +112,16 @@ export default function Agents() {
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    });
+  };
+
+  // A finished answer can be much taller than the panel (headline, claims,
+  // timeline, recommended action…) — scrolling to the container's absolute
+  // bottom would crop its own heading off the top of the view, so scroll to
+  // the top of the message itself instead of the bottom of the list.
+  const scrollToLastMessage = () => {
+    requestAnimationFrame(() => {
+      lastMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -182,7 +193,7 @@ export default function Agents() {
             }
           : message
       )));
-      scrollToBottom();
+      scrollToLastMessage();
     }, 650);
   };
 
@@ -311,8 +322,12 @@ export default function Agents() {
         <div className={"fb-chat-transcript-wrap" + (hasConversation ? " is-active" : "")}>
           <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
-            {messages.map((msg) => (
-              <div key={msg.id} className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}>
+            {messages.map((msg, idx) => (
+              <div
+                key={msg.id}
+                ref={idx === messages.length - 1 ? lastMessageRef : undefined}
+                className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}
+              >
                 {msg.thinking ? (
                   <div className="fb-intel-building" role="status">
                     <span className="fb-thinking"><span></span><span></span><span></span></span>
