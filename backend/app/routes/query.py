@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.models import (
     Customer,
+    CustomerEndpoint,
     CustomerRecordLink,
     ProtectedTokenRegistry,
     VaultKeyVersion,
@@ -44,7 +45,9 @@ from app.services.query_planning import QueryIntent, QueryPlan, plan_query, sour
 from app.services.reasoning import (
     answer_all_query_with_citations,
     is_contact_enumeration,
+    is_customer_profile_lookup,
     structured_contact_lookup,
+    structured_customer_profile_lookup,
     structured_record_listing,
     unknown_tokens,
 )
@@ -228,6 +231,38 @@ def query(
         else sanitized_question
     )
 
+    scoped_profile_hits: list[RetrievalHit] = []
+    scoped_profile_answer: CitedAnswer | None = None
+    if (
+        conversation.context_customer_id is not None
+        and is_customer_profile_lookup(payload.question)
+    ):
+        scoped_profile_hits = list_eligible_hits(db, plan.filters)
+        scoped_customer = db.get(Customer, conversation.context_customer_id)
+        verified_endpoint = db.scalar(
+            select(CustomerEndpoint)
+            .where(
+                CustomerEndpoint.tenant_id == str(principal.tenant_id),
+                CustomerEndpoint.customer_id == conversation.context_customer_id,
+                CustomerEndpoint.channel == "email",
+                CustomerEndpoint.verification_status == "verified",
+            )
+            .order_by(CustomerEndpoint.verified_at.desc(), CustomerEndpoint.id.desc())
+        )
+        endpoint_registry = (
+            db.get(ProtectedTokenRegistry, verified_endpoint.endpoint_token)
+            if verified_endpoint is not None
+            else None
+        )
+        scoped_profile_answer = structured_customer_profile_lookup(
+            payload.question,
+            scoped_profile_hits,
+            name_token=scoped_customer.primary_name_token if scoped_customer else None,
+            email_token=verified_endpoint.endpoint_token if verified_endpoint else None,
+            email_mask=endpoint_registry.masked_value if endpoint_registry else None,
+            reveal_email=principal.role.value == "owner_director",
+        )
+
     hits: list[RetrievalHit]
     conversation_context_hits: list[RetrievalHit] | None = None
     if ambiguous_person_reference:
@@ -238,6 +273,10 @@ def query(
             insufficient_evidence=True,
         )
         reasoning_mode = "conversation-clarification"
+    elif scoped_profile_answer is not None:
+        hits = scoped_profile_hits
+        cited_answer = scoped_profile_answer
+        reasoning_mode = "structured-customer-profile"
     elif plan.intent is QueryIntent.LIST_SOURCES:
         hits = []
         cited_answer = CitedAnswer(
@@ -335,7 +374,8 @@ def query(
             reasoning_mode=reasoning_mode,
         )
         if plan.intent in {QueryIntent.SEMANTIC, QueryIntent.ANALYZE_ALL}
-        and reasoning_mode not in {"conversation-clarification", "no-evidence"}
+        and reasoning_mode
+        not in {"conversation-clarification", "no-evidence", "structured-customer-profile"}
         else None
     )
     if protected_brief is not None:

@@ -1,10 +1,16 @@
+import re
 import uuid
 from datetime import UTC, datetime
 
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import (
+    Conversation,
+    ConversationTurn,
+    ConversationTurnCitation,
     Customer,
     CustomerAlias,
     CustomerEndpoint,
@@ -16,10 +22,32 @@ from app.models import (
     TokenizedContent,
 )
 from app.schemas import OutreachActionResponse, UserRole
+from app.security.detect import contains_known_pii
 from app.security.detokenize import TOKEN_PATTERN
 from app.security.protection import protect_text
 from app.security.tokenize import persist_vault_entries
+from app.services.morpheus import morpheus_chat
+from app.services.reasoning import unknown_tokens
 from app.services.workflow_audit import write_workflow_event
+
+
+class GeneratedOutreachDraft(BaseModel):
+    subject: str = Field(min_length=1, max_length=998)
+    body: str = Field(min_length=1, max_length=20_000)
+
+
+_CUSTOMER_CONTACT_MISUSE = re.compile(
+    r"\bcontact\s+(?:us|our\s+(?:company|team))\b.*"
+    r"(?:PHONE_[0-9a-f]{10}|EMAIL_[0-9a-f]{10}|"
+    r"phone number you provided|email address you provided)",
+    re.IGNORECASE,
+)
+
+
+def _remove_customer_contact_misuse(body: str) -> str:
+    """Drop model-authored lines that present customer contacts as company contacts."""
+    kept = [line for line in body.splitlines() if not _CUSTOMER_CONTACT_MISUSE.search(line)]
+    return "\n".join(kept).strip()
 
 
 def _response(db: Session, row: OutreachAction) -> OutreachActionResponse:
@@ -41,6 +69,13 @@ def _response(db: Session, row: OutreachAction) -> OutreachActionResponse:
             "replied_at": row.replied_at,
         }
     )
+
+
+def get_action(db: Session, action_id: str, *, tenant_id: str) -> OutreachActionResponse:
+    row = db.get(OutreachAction, action_id)
+    if row is None or row.tenant_id != tenant_id:
+        raise LookupError("outreach_action_not_found")
+    return _response(db, row)
 
 
 def register_email_endpoint(
@@ -277,6 +312,221 @@ def create_action(
             "channel": "email",
             "evidence_count": len(evidence_ids),
         },
+    )
+    db.commit()
+    return _response(db, row)
+
+
+def _turn_evidence_ids(
+    db: Session, *, tenant_id: str, customer_id: int, turn_id: int | None
+) -> list[int]:
+    linked = select(CustomerRecordLink.tokenized_content_id).where(
+        CustomerRecordLink.tenant_id == tenant_id,
+        CustomerRecordLink.customer_id == customer_id,
+        CustomerRecordLink.match_status == "verified",
+    )
+    if turn_id is not None:
+        turn = db.get(ConversationTurn, turn_id)
+        conversation = db.get(Conversation, turn.conversation_id) if turn is not None else None
+        if (
+            turn is None
+            or turn.tenant_id != tenant_id
+            or conversation is None
+            or conversation.tenant_id != tenant_id
+            or conversation.context_customer_id != customer_id
+        ):
+            raise ValueError("outreach_turn_not_in_customer_context")
+        cited = select(ConversationTurnCitation.tokenized_content_id).where(
+            ConversationTurnCitation.tenant_id == tenant_id,
+            ConversationTurnCitation.turn_id == turn_id,
+            ConversationTurnCitation.tokenized_content_id.in_(linked),
+        ).order_by(ConversationTurnCitation.ordinal)
+        ids = list(db.scalars(cited).all())
+        if ids:
+            return ids[:20]
+    return list(db.scalars(linked.order_by(CustomerRecordLink.created_at.desc()).limit(20)).all())
+
+
+def _generate_protected_draft(
+    *,
+    customer: Customer,
+    rows: list[TokenizedContent],
+    instruction: str,
+    signature: str,
+) -> tuple[GeneratedOutreachDraft, str]:
+    if not rows:
+        raise ValueError("outreach_evidence_required")
+    evidence = "\n\n".join(
+        f"[SOURCE-{index}]\n{row.summary or row.content_text}"
+        for index, row in enumerate(rows, 1)
+    )
+    name = customer.primary_name_token or "Customer"
+    context = f"Customer: {name}\n\n{evidence}\n\nUser instruction: {instruction}"
+    if contains_known_pii(context):
+        raise ValueError("outreach_generation_context_not_protected")
+    system = (
+        "Draft a professional customer email using only the supplied protected evidence. "
+        "Do not infer hidden token values, invent facts, promise an unconfirmed outcome, or "
+        "include citation markers in the email. Contact details in the evidence belong to the "
+        "customer unless the evidence explicitly says otherwise. Never tell the customer to "
+        "contact our company using their own phone number or email address. Do not repeat a "
+        "customer contact detail unless the user explicitly asks to confirm it. Do not add a "
+        "signature or placeholder fields; the backend adds the configured sender signature. "
+        "Return only JSON matching this schema: "
+        f"{GeneratedOutreachDraft.model_json_schema()}"
+    )
+    settings = get_settings()
+    mode = "offline-demo"
+    if settings.morpheus_api_key:
+        response = morpheus_chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": context}],
+            temperature=0.2,
+        )
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
+        draft = GeneratedOutreachDraft.model_validate_json(cleaned)
+        mode = "morpheus"
+    elif settings.allow_offline_demo:
+        draft = GeneratedOutreachDraft(
+            subject="Follow-up on your request",
+            body=(
+                f"Hello {name},\n\nThank you for contacting us. We have reviewed your request "
+                "and our team will follow up using the information provided.\n\n"
+                "Kind regards,\nFinBrain"
+            ),
+        )
+    else:
+        raise RuntimeError("Morpheus is required for outreach draft generation")
+    unsigned_body = re.split(
+        r"\n\s*(?:best|kind|warm) regards,?\s*(?:\n|$)",
+        draft.body,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].rstrip()
+    unsigned_body = _remove_customer_contact_misuse(unsigned_body)
+    if not unsigned_body:
+        raise ValueError("generated_outreach_body_empty_after_safety_review")
+    draft = draft.model_copy(
+        update={"body": f"{unsigned_body}\n\nBest regards,\n{signature}"}
+    )
+    serialized = draft.model_dump_json()
+    if contains_known_pii(serialized):
+        raise ValueError("generated_outreach_contains_sensitive_data")
+    allowed_tokens = set(TOKEN_PATTERN.findall(f"{context}\n{signature}"))
+    if unknown_tokens(serialized, allowed_tokens):
+        raise ValueError("generated_outreach_contains_unknown_token")
+    return draft, mode
+
+
+def generate_action(
+    db: Session,
+    *,
+    tenant_id: str,
+    customer_id: int,
+    endpoint_id: int,
+    turn_id: int | None,
+    instruction: str,
+    idempotency_key: str,
+    created_by_user_id: str,
+    actor_role: str,
+    actor_ref: str,
+) -> tuple[OutreachActionResponse, str]:
+    customer = db.get(Customer, customer_id)
+    if customer is None or customer.tenant_id != tenant_id:
+        raise LookupError("customer_not_found")
+    endpoint = db.get(CustomerEndpoint, endpoint_id)
+    if endpoint is None or endpoint.tenant_id != tenant_id or endpoint.customer_id != customer_id:
+        raise LookupError("customer_endpoint_not_found")
+    if endpoint.verification_status != "verified":
+        raise ValueError("verified_email_endpoint_required")
+    protected_instruction, instruction_entries = protect_text(
+        instruction,
+        f"outreach-instruction:{idempotency_key}",
+        tenant_id,
+        db,
+    )
+    settings = get_settings()
+    signature_lines = [
+        settings.email_outreach_signature_name.strip() or "FinBrain Team",
+        settings.email_outreach_signature_title.strip(),
+        settings.email_outreach_signature_organization.strip(),
+    ]
+    raw_signature = "\n".join(dict.fromkeys(line for line in signature_lines if line))
+    protected_signature, signature_entries = protect_text(
+        raw_signature,
+        f"outreach-signature:{idempotency_key}",
+        tenant_id,
+        db,
+    )
+    persist_vault_entries(db, [*instruction_entries, *signature_entries])
+    evidence_ids = _turn_evidence_ids(
+        db, tenant_id=tenant_id, customer_id=customer_id, turn_id=turn_id
+    )
+    rows_by_id = {
+        row.id: row
+        for row in db.scalars(
+            select(TokenizedContent).where(
+                TokenizedContent.tenant_id == tenant_id,
+                TokenizedContent.id.in_(evidence_ids),
+                TokenizedContent.processing_status == "ready",
+            )
+        ).all()
+    }
+    rows = [rows_by_id[row_id] for row_id in evidence_ids if row_id in rows_by_id]
+    draft, mode = _generate_protected_draft(
+        customer=customer,
+        rows=rows,
+        instruction=protected_instruction,
+        signature=protected_signature,
+    )
+    action = create_action(
+        db,
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        endpoint_id=endpoint_id,
+        subject=draft.subject,
+        body=draft.body,
+        idempotency_key=idempotency_key,
+        evidence_ids=evidence_ids,
+        created_by_user_id=created_by_user_id,
+        actor_role=actor_role,
+        actor_ref=actor_ref,
+    )
+    return action, mode
+
+
+def update_draft(
+    db: Session,
+    action_id: str,
+    *,
+    tenant_id: str,
+    subject: str,
+    body: str,
+    actor_role: str,
+    actor_ref: str,
+) -> OutreachActionResponse:
+    row = db.get(OutreachAction, action_id)
+    if row is None or row.tenant_id != tenant_id:
+        raise LookupError("outreach_action_not_found")
+    if row.status != "draft":
+        raise ValueError("only_draft_outreach_can_be_edited")
+    subject_protected, subject_entries = protect_text(
+        subject, f"outreach-subject:{action_id}:edit", tenant_id, db
+    )
+    body_protected, body_entries = protect_text(
+        body, f"outreach-body:{action_id}:edit", tenant_id, db
+    )
+    persist_vault_entries(db, [*subject_entries, *body_entries])
+    row.protected_subject = subject_protected
+    row.protected_body = body_protected
+    write_workflow_event(
+        db,
+        event_type="outreach_draft_edited",
+        actor_role=actor_role,
+        actor_ref=actor_ref,
+        resource_type="outreach_action",
+        resource_id=row.id,
+        tenant_id=tenant_id,
+        event_payload={"customer_id": row.customer_id, "status": row.status},
     )
     db.commit()
     return _response(db, row)

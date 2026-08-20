@@ -10,6 +10,7 @@ from app.models import (
     CustomerEndpoint,
     CustomerIdentityClaim,
     OutreachAction,
+    OutreachEvidence,
     ProtectedTokenRegistry,
 )
 from app.schemas import (
@@ -19,16 +20,22 @@ from app.schemas import (
     CustomerIdentityClaimResponse,
     OutreachActionResponse,
     OutreachCreateRequest,
+    OutreachGenerateRequest,
+    OutreachStatusResponse,
+    OutreachUpdateRequest,
     UserRole,
 )
 from app.security.detokenize import detokenize_response_with_trace, hash_query
 from app.services.outreach import (
     create_action,
     endpoint_mask,
+    generate_action,
+    get_action,
     register_email_endpoint,
     resolve_identity_claim,
     revoke_endpoint,
     transition_action,
+    update_draft,
     verify_endpoint,
 )
 
@@ -93,6 +100,54 @@ def _identity_claim_response(
         occurrence_count=row.occurrence_count,
         evidence_content_id=row.evidence_content_id,
         last_seen_at=row.last_seen_at,
+    )
+
+
+def _action_response(
+    db: Session,
+    response: OutreachActionResponse,
+    principal: AuthPrincipal,
+    *,
+    generation_mode: str | None = None,
+) -> OutreachActionResponse:
+    endpoint = db.get(CustomerEndpoint, response.customer_endpoint_id)
+    recipient = endpoint_mask(db, endpoint) if endpoint is not None else None
+    if endpoint is not None and principal.role is UserRole.OWNER_DIRECTOR:
+        endpoint_trace = detokenize_response_with_trace(
+            db,
+            endpoint.endpoint_token,
+            principal.role.value,
+            hash_query(f"outreach-recipient:{response.id}"),
+            actor_ref=principal.actor_ref,
+            turn_ref=f"outreach:{response.id}",
+        )
+        if endpoint_trace.restored_tokens == 1 and endpoint_trace.withheld_tokens == 0:
+            recipient = endpoint_trace.text
+    content_trace = detokenize_response_with_trace(
+        db,
+        f"{response.protected_subject}\n\u0000\n{response.protected_body}",
+        principal.role.value,
+        hash_query(f"outreach-preview:{response.id}"),
+        actor_ref=principal.actor_ref,
+        turn_ref=f"outreach:{response.id}",
+    )
+    subject, body = content_trace.text.split("\n\u0000\n", 1)
+    evidence_ids = list(
+        db.scalars(
+            select(OutreachEvidence.tokenized_content_id).where(
+                OutreachEvidence.tenant_id == str(principal.tenant_id),
+                OutreachEvidence.outreach_action_id == response.id,
+            )
+        ).all()
+    )
+    return response.model_copy(
+        update={
+            "recipient": recipient,
+            "subject": subject,
+            "body": body,
+            "evidence_content_ids": evidence_ids,
+            "generation_mode": generation_mode,
+        }
     )
 
 
@@ -223,7 +278,7 @@ def draft_outreach(
 ):
     _enabled()
     try:
-        return create_action(
+        response = create_action(
             db, tenant_id=str(principal.tenant_id), customer_id=customer_id,
             endpoint_id=payload.customer_endpoint_id, subject=payload.subject,
             body=payload.body, idempotency_key=payload.idempotency_key,
@@ -231,6 +286,7 @@ def draft_outreach(
             created_by_user_id=str(principal.user_id), actor_role=principal.role.value,
             actor_ref=principal.actor_ref,
         )
+        return _action_response(db, response, principal)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ValueError as error:
@@ -244,7 +300,7 @@ def list_outreach(
     )), db: Session = Depends(get_db),
 ):
     _enabled()
-    return [OutreachActionResponse.model_validate({
+    return [_action_response(db, OutreachActionResponse.model_validate({
         "id": row.id, "customer_id": row.customer_id,
         "customer_endpoint_id": row.customer_endpoint_id, "channel": row.channel,
         "protected_subject": row.protected_subject, "protected_body": row.protected_body,
@@ -252,9 +308,101 @@ def list_outreach(
         "attempt_count": row.attempt_count, "failure_code": row.failure_code,
         "created_at": row.created_at, "approved_at": row.approved_at,
         "sent_at": row.sent_at, "replied_at": row.replied_at,
-    }) for row in db.scalars(select(OutreachAction).where(
+    }), principal) for row in db.scalars(select(OutreachAction).where(
         OutreachAction.tenant_id == str(principal.tenant_id)
     ).order_by(OutreachAction.created_at.desc())).all()]
+
+
+@router.post(
+    "/customers/{customer_id}/outreach/generate",
+    response_model=OutreachActionResponse,
+)
+def generate_outreach(
+    customer_id: int,
+    payload: OutreachGenerateRequest,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    try:
+        response, mode = generate_action(
+            db,
+            tenant_id=str(principal.tenant_id),
+            customer_id=customer_id,
+            endpoint_id=payload.customer_endpoint_id,
+            turn_id=payload.turn_id,
+            instruction=payload.instruction,
+            idempotency_key=payload.idempotency_key,
+            created_by_user_id=str(principal.user_id),
+            actor_role=principal.role.value,
+            actor_ref=principal.actor_ref,
+        )
+        return _action_response(db, response, principal, generation_mode=mode)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/outreach/{action_id}", response_model=OutreachActionResponse)
+def get_outreach(
+    action_id: str,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    try:
+        response = get_action(db, action_id, tenant_id=str(principal.tenant_id))
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail="outreach_action_not_found") from error
+    return _action_response(db, response, principal)
+
+
+@router.get("/outreach/{action_id}/status", response_model=OutreachStatusResponse)
+def get_outreach_status(
+    action_id: str,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    row = db.get(OutreachAction, action_id)
+    if row is None or row.tenant_id != str(principal.tenant_id):
+        raise HTTPException(status_code=404, detail="outreach_action_not_found")
+    return OutreachStatusResponse(
+        id=row.id,
+        status=row.status,
+        attempt_count=row.attempt_count,
+        failure_code=row.failure_code,
+        sent_at=row.sent_at,
+        replied_at=row.replied_at,
+    )
+
+
+@router.patch("/outreach/{action_id}", response_model=OutreachActionResponse)
+def edit_outreach(
+    action_id: str,
+    payload: OutreachUpdateRequest,
+    principal: AuthPrincipal = Depends(require_roles(*_MANAGE)),
+    db: Session = Depends(get_db),
+):
+    _enabled()
+    try:
+        response = update_draft(
+            db,
+            action_id,
+            tenant_id=str(principal.tenant_id),
+            subject=payload.subject,
+            body=payload.body,
+            actor_role=principal.role.value,
+            actor_ref=principal.actor_ref,
+        )
+        return _action_response(db, response, principal)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @router.post("/outreach/{action_id}/{operation}", response_model=OutreachActionResponse)
@@ -265,11 +413,12 @@ def decide_outreach(
 ):
     _enabled()
     try:
-        return transition_action(
+        response = transition_action(
             db, action_id, operation, tenant_id=str(principal.tenant_id),
             role=principal.role, user_id=str(principal.user_id),
             actor_ref=principal.actor_ref,
         )
+        return _action_response(db, response, principal)
     except PermissionError as error:
         raise HTTPException(status_code=403, detail=str(error)) from error
     except LookupError as error:

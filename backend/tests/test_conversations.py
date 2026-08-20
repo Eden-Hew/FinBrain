@@ -11,11 +11,15 @@ from app.models import (
     ConversationTurn,
     ConversationTurnCitation,
     Customer,
+    CustomerEndpoint,
     CustomerRecordLink,
     TokenizedContent,
 )
 from app.routes.query import query
-from app.schemas import CitedAnswer, QueryRequest
+from app.schemas import CitedAnswer, QueryRequest, UserRole
+from app.security.detect import Span
+from app.security.protection import protect_text
+from app.security.tokenize import persist_vault_entries
 from app.services.conversation_planning import ConversationalPlan
 from app.services.conversations import (
     create_conversation,
@@ -557,11 +561,100 @@ def test_explicit_customer_context_overrides_generic_person_clarification(monkey
             db,
         )
 
-        assert response.mode == "test"
+        assert response.mode == "structured-customer-profile"
         assert response.context_customer_id == customer.id
-        assert len(response.citations) == 2
-        assert len(captured["hits"]) == 2
-        assert "explicitly selected customer" in str(captured["question"])
+        assert response.insufficient_evidence
+        assert "does not have a phone number" in response.answer
+        assert captured == {}
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_selected_customer_uses_verified_sender_endpoint_for_email_and_name(monkeypatch):
+    engine, db = _database()
+    try:
+        raw_name = "Demo Sender"
+        raw_email = "sender@example.com"
+        protected_name, name_entries = protect_text(
+            raw_name,
+            "query-customer-name",
+            DEFAULT_TENANT_ID,
+            db,
+            spans=[Span(0, len(raw_name), raw_name, "person", "test")],
+        )
+        protected_email, email_entries = protect_text(
+            raw_email,
+            "query-customer-email",
+            DEFAULT_TENANT_ID,
+            db,
+            spans=[Span(0, len(raw_email), raw_email, "email", "test")],
+        )
+        persist_vault_entries(db, [*name_entries, *email_entries])
+        customer = Customer(
+            tenant_id=DEFAULT_TENANT_ID,
+            canonical_name="[person — restricted]",
+            normalized_name="EMAILPROFILE:TEST",
+            primary_name_token=protected_name,
+            profile_status="confirmed",
+            identity_review_status="clear",
+        )
+        db.add(customer)
+        db.flush()
+        endpoint = CustomerEndpoint(
+            tenant_id=DEFAULT_TENANT_ID,
+            customer_id=customer.id,
+            channel="email",
+            endpoint_token=protected_email,
+            verification_status="verified",
+            origin="inbound_email",
+        )
+        content = TokenizedContent(
+            tenant_id=DEFAULT_TENANT_ID,
+            source_record_id="email:sender-profile",
+            source_system="email",
+            record_type="email",
+            content_text=f"From: {protected_name} <{protected_email}>\nPlease send a quotation.",
+            processing_status="ready",
+        )
+        db.add_all([endpoint, content])
+        db.flush()
+        db.add(CustomerRecordLink(
+            tenant_id=DEFAULT_TENANT_ID,
+            customer_id=customer.id,
+            tokenized_content_id=content.id,
+            match_status="verified",
+            confidence=1.0,
+            match_basis="email_sender_endpoint",
+        ))
+        db.commit()
+        settings = get_settings().model_copy(update={"customer_intelligence_enabled": True})
+        monkeypatch.setattr("app.routes.query.get_settings", lambda: settings)
+        owner = principal(UserRole.OWNER_DIRECTOR)
+
+        email_response = query(
+            QueryRequest(
+                question="What is the sender's email address?",
+                customer_id=customer.id,
+            ),
+            owner,
+            db,
+        )
+        name_response = query(
+            QueryRequest(
+                question="Show all name",
+                conversation_id=email_response.conversation_id,
+            ),
+            owner,
+            db,
+        )
+
+        assert email_response.mode == "structured-customer-profile"
+        assert raw_email in email_response.answer
+        assert len(email_response.citations) == 1
+        assert name_response.mode == "structured-customer-profile"
+        assert raw_name in name_response.answer
+        assert len(name_response.citations) == 1
     finally:
         db.close()
         engine.dispose()

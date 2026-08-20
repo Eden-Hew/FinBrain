@@ -21,7 +21,7 @@ export interface QueryResponse {
   model_question: string;
   query_intent: QueryIntent;
   sources_used: number;
-  mode: "morpheus" | "gemini" | "offline-demo" | "no-evidence" | "conversation-clarification" | "structured-filter" | "structured-lookup";
+  mode: "morpheus" | "gemini" | "offline-demo" | "no-evidence" | "conversation-clarification" | "structured-filter" | "structured-lookup" | "structured-customer-profile";
   insufficient_evidence: boolean;
   citations: QueryCitation[];
   conversation_id: string | null;
@@ -456,6 +456,11 @@ export interface OutreachAction {
   channel: "email";
   protected_subject: string;
   protected_body: string;
+  recipient: string | null;
+  subject: string | null;
+  body: string | null;
+  evidence_content_ids: number[];
+  generation_mode: string | null;
   status: "draft" | "pending_approval" | "approved" | "sending" | "sent" | "failed" | "delivery_unknown" | "replied" | "rejected" | "cancelled";
   idempotency_key: string;
   attempt_count: number;
@@ -465,6 +470,11 @@ export interface OutreachAction {
   sent_at: string | null;
   replied_at: string | null;
 }
+
+export type OutreachStatus = Pick<
+  OutreachAction,
+  "id" | "status" | "attempt_count" | "failure_code" | "sent_at" | "replied_at"
+>;
 
 export async function fetchCustomers(): Promise<CustomerSummary[]> {
   return parse<CustomerSummary[]>(await authenticatedFetch("/customers"));
@@ -532,6 +542,42 @@ export async function createOutreachAction(
       idempotency_key: idempotencyKey,
       evidence_content_ids: input.evidenceContentIds,
     }),
+  }));
+}
+
+export async function generateOutreachAction(
+  customerId: number,
+  input: { customerEndpointId: number; turnId: number; instruction: string },
+): Promise<OutreachAction> {
+  const idempotencyKey = `chat-${customerId}-${input.turnId}-${crypto.randomUUID()}`;
+  return parse<OutreachAction>(await authenticatedFetch(`/customers/${customerId}/outreach/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_endpoint_id: input.customerEndpointId,
+      turn_id: input.turnId,
+      instruction: input.instruction,
+      idempotency_key: idempotencyKey,
+    }),
+  }));
+}
+
+export async function fetchOutreachAction(id: string): Promise<OutreachAction> {
+  return parse<OutreachAction>(await authenticatedFetch(`/outreach/${id}`));
+}
+
+export async function fetchOutreachStatus(id: string): Promise<OutreachStatus> {
+  return parse<OutreachStatus>(await authenticatedFetch(`/outreach/${id}/status`));
+}
+
+export async function updateOutreachAction(
+  id: string,
+  input: { subject: string; body: string },
+): Promise<OutreachAction> {
+  return parse<OutreachAction>(await authenticatedFetch(`/outreach/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   }));
 }
 

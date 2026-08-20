@@ -716,6 +716,22 @@ class OutreachCreateRequest(BaseModel):
     evidence_content_ids: list[int] = Field(default_factory=list, max_length=20)
 
 
+class OutreachGenerateRequest(BaseModel):
+    customer_endpoint_id: int
+    turn_id: int | None = None
+    instruction: str = Field(
+        default="Draft a concise, professional reply that addresses the customer's request.",
+        min_length=1,
+        max_length=2_000,
+    )
+    idempotency_key: str = Field(min_length=8, max_length=100)
+
+
+class OutreachUpdateRequest(BaseModel):
+    subject: str = Field(min_length=1, max_length=998)
+    body: str = Field(min_length=1, max_length=20_000)
+
+
 class OutreachActionResponse(BaseModel):
     id: str
     customer_id: int
@@ -723,11 +739,25 @@ class OutreachActionResponse(BaseModel):
     channel: str
     protected_subject: str
     protected_body: str
+    recipient: str | None = None
+    subject: str | None = None
+    body: str | None = None
+    evidence_content_ids: list[int] = Field(default_factory=list)
+    generation_mode: str | None = None
     status: str
     idempotency_key: str
     attempt_count: int
     failure_code: str | None
     created_at: datetime
     approved_at: datetime | None
+    sent_at: datetime | None
+    replied_at: datetime | None
+
+
+class OutreachStatusResponse(BaseModel):
+    id: str
+    status: str
+    attempt_count: int
+    failure_code: str | None
     sent_at: datetime | None
     replied_at: datetime | None

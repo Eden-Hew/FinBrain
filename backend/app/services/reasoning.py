@@ -91,13 +91,20 @@ _ORG_PATTERN = re.compile(r"ORG_[0-9a-f]{10}")
 _PHONE_PATTERN = re.compile(r"PHONE_[0-9a-f]{10}")
 _EMAIL_PATTERN = re.compile(r"EMAIL_[0-9a-f]{10}")
 _CONTACT_QUESTION_PATTERN = re.compile(
-    r"\b(?:contact|phone numbers?|email addresses?|who (?:is|are) (?:it|they|these|those) for|"
+    r"\b(?:contact|phone numbers?|email addresses?|sender(?:'s)? email(?: address)?|"
+    r"(?:his|her|their|customer(?:'s)?) email(?: address)?|"
+    r"who (?:is|are) (?:it|they|these|those) for|"
     r"who do (?:it|they|these|those) belong to)\b",
     re.IGNORECASE,
 )
 _CONTACT_ENUMERATION_PATTERN = re.compile(
     r"\b(?:show|list|give|return)\b.*\b(?:all|every|each)\b.*"
     r"\b(?:contacts?|phone numbers?|email addresses?)\b",
+    re.IGNORECASE,
+)
+_CUSTOMER_NAME_QUESTION_PATTERN = re.compile(
+    r"\b(?:show|list|give|tell|what|who)\b.*\b(?:customer(?:'s)? )?names?\b|"
+    r"\bwho (?:is|was) (?:the )?(?:customer|sender)\b",
     re.IGNORECASE,
 )
 
@@ -117,6 +124,93 @@ def is_contact_lookup(question: str) -> bool:
 
 def is_contact_enumeration(question: str) -> bool:
     return bool(_CONTACT_ENUMERATION_PATTERN.search(question))
+
+
+def is_customer_profile_lookup(question: str) -> bool:
+    """Return true only for direct identity/contact fields in selected-customer scope."""
+    return bool(
+        _CUSTOMER_NAME_QUESTION_PATTERN.search(question)
+        or _CONTACT_QUESTION_PATTERN.search(question)
+    )
+
+
+def structured_customer_profile_lookup(
+    question: str,
+    hits: list[RetrievalHit],
+    *,
+    name_token: str | None,
+    email_token: str | None,
+    email_mask: str | None,
+    reveal_email: bool,
+) -> CitedAnswer | None:
+    """Resolve selected-customer identity fields from authoritative protected state.
+
+    The verified customer endpoint is authoritative for email. Evidence rows are
+    used only to attach citations and to resolve phone tokens; this prevents an
+    inbound message's recipient header from being mistaken for the customer.
+    """
+    if not is_customer_profile_lookup(question):
+        return None
+    lowered = question.casefold()
+    generic_contact = "contact" in lowered and "email" not in lowered and "phone" not in lowered
+    wants_email = "email" in lowered or generic_contact
+    wants_phone = "phone" in lowered or generic_contact
+    wants_name = bool(_CUSTOMER_NAME_QUESTION_PATTERN.search(question))
+    answers: list[str] = []
+    citation_indexes: set[int] = set()
+
+    if wants_name:
+        answers.append(
+            f"The selected customer is {name_token}."
+            if name_token
+            else "The selected customer's name has not been verified yet."
+        )
+        if name_token:
+            citation_indexes.update(
+                index for index, hit in enumerate(hits, 1) if name_token in hit.retrieval_text
+            )
+
+    if wants_email:
+        email_value = email_token if reveal_email and email_token else email_mask
+        answers.append(
+            f"The selected customer's verified email address is {email_value}."
+            if email_value
+            else "The selected customer does not have a verified email address."
+        )
+        if email_token:
+            citation_indexes.update(
+                index for index, hit in enumerate(hits, 1) if email_token in hit.retrieval_text
+            )
+
+    if wants_phone:
+        phone_rows: list[tuple[str, int]] = []
+        seen_phones: set[str] = set()
+        for index, hit in enumerate(hits, 1):
+            text = hit.protected_summary or hit.protected_excerpt
+            for phone in _PHONE_PATTERN.findall(text):
+                if phone not in seen_phones:
+                    seen_phones.add(phone)
+                    phone_rows.append((phone, index))
+        if phone_rows:
+            label = name_token or "The selected customer"
+            answers.append(f"{label} can be contacted at {', '.join(p for p, _ in phone_rows)}.")
+            citation_indexes.update(index for _phone, index in phone_rows)
+        else:
+            answers.append("The selected customer does not have a phone number in linked evidence.")
+
+    if not answers:
+        return None
+    return CitedAnswer(
+        answer="\n".join(answers),
+        citations=[f"SOURCE-{index}" for index in sorted(citation_indexes)],
+        insufficient_evidence=not any(
+            (
+                name_token if wants_name else None,
+                email_token if wants_email else None,
+                citation_indexes,
+            )
+        ),
+    )
 
 
 def structured_contact_lookup(question: str, hits: list[RetrievalHit]) -> CitedAnswer | None:

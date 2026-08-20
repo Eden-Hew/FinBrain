@@ -264,9 +264,14 @@ def plan_query(
     )
     if exhaustive_scope and analytical_request:
         return QueryPlan(QueryIntent.ANALYZE_ALL, filters)
+    # Explicit record-type listings such as `show all customer_email` are
+    # source enumeration, not a request for the selected customer's address.
+    if enumeration_verb and enumeration_scope and filters.record_types:
+        return QueryPlan(QueryIntent.LIST_RECORDS, filters)
     contact_lookup_request = bool(
         re.search(
-            r"\b(?:contacts?|phone numbers?|email addresses?|"
+            r"\b(?:contacts?|phone numbers?|email addresses?|sender(?:'s)? email(?: address)?|"
+            r"(?:his|her|their|customer(?:'s)?) email(?: address)?|"
             r"how (?:can|do) i contact)\b",
             lowered,
         )
@@ -277,8 +282,6 @@ def plan_query(
         return QueryPlan(QueryIntent.LOOKUP, filters)
     if sources and (explicit_column_filter or (enumeration_verb and enumeration_scope)):
         return QueryPlan(QueryIntent.LIST_RECORDS, filters)
-    if enumeration_verb and enumeration_scope and filters.record_types:
-        return QueryPlan(QueryIntent.LIST_RECORDS, filters)
     if not sources and (
         re.search(r"\b(list|show|display)\s+(?:me\s+)?(?:all\s+)?source systems?\b", lowered)
         or re.fullmatch(r"(?:list|show|display)(?: me)? all sources", lowered)
@@ -287,7 +290,8 @@ def plan_query(
     lookup_request = bool(
         re.search(
             r"\b(?:find|look for|who (?:is|are)|contact(?: details?| information)?|"
-            r"phone numbers?|email addresses?|how (?:can|do) i contact|"
+            r"phone numbers?|email addresses?|sender(?:'s)? email(?: address)?|"
+            r"(?:his|her|their|customer(?:'s)?) email(?: address)?|"
             r"tell me about|describe|inspect|suggest(?: an?| the)? (?:response|reply|action)|"
             r"draft(?: a)? (?:response|reply)|write(?: a)? (?:response|reply)|"
             r"how should (?:i|we) (?:respond|reply))\b",

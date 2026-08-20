@@ -10,6 +10,7 @@ import {
 } from "../components/intelligence/IntelligenceExperience";
 import { matchEinvoiceReadinessEmbed, resolveChatReply, type ChatReply } from "../components/embeds/ChatEmbeds";
 import { listRecentConversations, recordConversationTurn, type RecentConversation } from "../lib/recentConversations";
+import { OutreachComposerCard } from "../components/outreach/OutreachComposerCard";
 import {
   askQuestion,
   ApiError,
@@ -454,6 +455,9 @@ export default function Agents() {
                       </details>
                     )}
                     {msg.embed && <div className="fb-chat-embed">{msg.embed}</div>}
+                    {msg.from === "agent" && scopedCustomerId !== null && msg.turnId && !msg.isFallback && (askRole === "finance_ops" || askRole === "owner_director") && (
+                      <OutreachComposerCard customerId={scopedCustomerId} turnId={msg.turnId} role={askRole} />
+                    )}
                   </>
                 )}
               </div>

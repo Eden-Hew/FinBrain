@@ -5,34 +5,53 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.auth.principal import AuthPrincipal
+from app.config import get_settings
 from app.models import (
     Base,
     Customer,
     CustomerEndpoint,
     CustomerIdentityClaim,
+    CustomerRecordLink,
     OutreachAction,
     Tenant,
     TokenizedContent,
     WorkflowAuditEntry,
 )
 from app.routes.customers import _authorized_customer_summary
-from app.routes.outreach import _endpoint_response
+from app.routes.outreach import _action_response, _endpoint_response
 from app.schemas import UserRole
 from app.security.detect import Span
+from app.security.detokenize import detokenize_response_with_trace, hash_query
 from app.security.protection import protect_text
 from app.security.tokenize import persist_vault_entries
 from app.services.customer_intelligence import customer_summary
 from app.services.outreach import (
+    _remove_customer_contact_misuse,
     create_action,
+    generate_action,
     register_email_endpoint,
     resolve_identity_claim,
     revoke_endpoint,
     transition_action,
+    update_draft,
     verify_endpoint,
 )
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 USER = "30000000-0000-0000-0000-000000000003"
+
+
+def test_customer_phone_is_never_presented_as_company_contact():
+    body = (
+        "We are preparing your quotation.\n"
+        "Please contact us at PHONE_0123456789 if you need help.\n"
+        "We will contact you using the phone number you provided."
+    )
+
+    cleaned = _remove_customer_contact_misuse(body)
+
+    assert "contact us at PHONE_" not in cleaned
+    assert "We will contact you using the phone number you provided." in cleaned
 
 
 def _session() -> tuple[Session, Customer]:
@@ -194,6 +213,112 @@ def test_outreach_creation_is_idempotent_and_owner_controls_approval():
         )
         assert approved.status == "approved"
         assert db.query(OutreachAction).count() == 1
+    finally:
+        db.close()
+
+
+def test_protected_chat_generation_creates_editable_draft_without_sending(monkeypatch):
+    db, customer = _session()
+    try:
+        endpoint = CustomerEndpoint(
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            channel="email",
+            endpoint_token="EMAIL_0123456789",
+            verification_status="verified",
+        )
+        content = TokenizedContent(
+            tenant_id=TENANT,
+            source_record_id="email:quotation",
+            source_system="email",
+            record_type="email",
+            content_text="Customer requested a quotation and asked for a prompt reply.",
+            summary="Customer requested a quotation and asked for a prompt reply.",
+            processing_status="ready",
+        )
+        db.add_all([endpoint, content])
+        db.flush()
+        db.add(CustomerRecordLink(
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            tokenized_content_id=content.id,
+            match_status="verified",
+            confidence=1.0,
+            match_basis="test",
+        ))
+        db.commit()
+        settings = get_settings().model_copy(
+            update={"morpheus_api_key": "test-key", "allow_offline_demo": False}
+        )
+        monkeypatch.setattr("app.services.outreach.get_settings", lambda: settings)
+        model_request: dict[str, str] = {}
+
+        def generate(messages, **_kwargs):
+            model_request["system"] = messages[0]["content"]
+            model_request["context"] = messages[1]["content"]
+            amount_token = next(
+                token for token in model_request["context"].split() if token.startswith("AMOUNT_")
+            ).rstrip(".,")
+            return (
+                '{"subject":"Your quotation request",'
+                '"body":"Thank you for your request. We are preparing the quotation '
+                f'for {amount_token} and will reply promptly."}}'
+            )
+
+        monkeypatch.setattr("app.services.outreach.morpheus_chat", generate)
+
+        generated, mode = generate_action(
+            db,
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            endpoint_id=endpoint.id,
+            turn_id=None,
+            instruction="Reply to the quotation request for RM3333.",
+            idempotency_key="chat-generation-test",
+            created_by_user_id=USER,
+            actor_role=UserRole.FINANCE_OPS.value,
+            actor_ref="finance",
+        )
+        edited = update_draft(
+            db,
+            generated.id,
+            tenant_id=TENANT,
+            subject="Updated quotation subject",
+            body="Updated professional reply.",
+            actor_role=UserRole.FINANCE_OPS.value,
+            actor_ref="finance",
+        )
+
+        assert mode == "morpheus"
+        assert generated.status == "draft"
+        assert "RM3333" not in model_request["context"]
+        assert "AMOUNT_BAND_" in model_request["context"]
+        assert "AMOUNT_BAND_" in generated.protected_body
+        assert "their own phone number" in model_request["system"]
+        assert "[Your Name]" not in generated.protected_body
+        preview = detokenize_response_with_trace(
+            db,
+            generated.protected_body,
+            UserRole.OWNER_DIRECTOR.value,
+            hash_query("outreach-generation-preview"),
+            actor_ref="owner",
+            turn_ref=f"outreach:{generated.id}",
+        )
+        assert "RM 3,333" in preview.text
+        owner = AuthPrincipal(
+            user_id=UUID(USER),
+            email="owner@example.com",
+            role=UserRole.OWNER_DIRECTOR,
+            tenant_id=UUID(TENANT),
+        )
+        api_preview = _action_response(db, generated, owner)
+        assert "RM 3,333" in (api_preview.body or "")
+        assert (api_preview.body or "").endswith(
+            "Best regards,\nFinBrain Team\nCustomer Operations\nFinBrain"
+        )
+        assert edited.status == "draft"
+        assert edited.protected_subject == "Updated quotation subject"
+        assert db.get(OutreachAction, generated.id).sent_at is None
     finally:
         db.close()
 

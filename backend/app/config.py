@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     email_smtp_password: str = ""
     email_smtp_use_starttls: bool = True
     email_smtp_from_address: str = ""
+    email_outreach_signature_name: str = "FinBrain Team"
+    email_outreach_signature_title: str = "Customer Operations"
+    email_outreach_signature_organization: str = "FinBrain"
     email_outbound_batch_size: int = 5
     email_send_timeout_seconds: int = 15
     email_sending_stale_seconds: int = 120
