@@ -42,9 +42,10 @@ def test_exact_reply_reference_links_customer_and_marks_action_replied(monkeypat
         provider_message_ref_hash="reference-hash",
     )
     content = TokenizedContent(
-        tenant_id=TENANT, source_record_id="email:reply", content_text="Protected reply",
+        tenant_id=TENANT, source_record_id="email:reply",
+        content_text="From: PERSON_aaaaaaaaaa <EMAIL_0123456789>\nProtected reply",
         source_system="email", processing_status="ready",
-        safe_metadata={"sender_email": "EMAIL_0123456789"},
+        safe_metadata={},
     )
     receipt = EmailIngestionReceipt(message_ref_hash="receipt-hash", status="ready")
     db.add_all([action, content, receipt])
@@ -61,6 +62,7 @@ def test_exact_reply_reference_links_customer_and_marks_action_replied(monkeypat
     )
     assert result is not None and result.status == "replied"
     assert receipt.customer_id == customer.id
+    assert content.safe_metadata["sender_email"] == "EMAIL_0123456789"
     assert db.query(EmailReplyCorrelation).count() == 1
     link = db.query(CustomerRecordLink).one()
     assert link.match_status == "verified"

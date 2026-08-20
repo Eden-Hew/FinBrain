@@ -1,4 +1,5 @@
 import imaplib
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -16,6 +17,8 @@ from app.integrations.email_connector.identity import route_email_sender
 from app.integrations.email_connector.sender import message_reference_hash
 from app.models import EmailIngestionReceipt, EmailSyncState, TokenizedContent, utcnow
 from app.services.ingestion import ingest_canonical_record
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +74,75 @@ def _new_uid_values(raw: bytes, *, last_uid: int, limit: int) -> list[int]:
     return [uid for value in raw.split() if (uid := int(value)) > last_uid][:limit]
 
 
+def _protected_row_for_receipt(
+    db: Session, receipt: EmailIngestionReceipt
+) -> TokenizedContent | None:
+    if receipt.source_record_id is None:
+        return None
+    return db.scalar(
+        select(TokenizedContent).where(
+            TokenizedContent.source_record_id == receipt.source_record_id
+        )
+    )
+
+
+def reconcile_receipt(
+    db: Session,
+    *,
+    receipt: EmailIngestionReceipt,
+    reference_hashes: tuple[str, ...] = (),
+) -> int | None:
+    """Idempotently finish customer routing and optional outbound correlation."""
+    protected_row = _protected_row_for_receipt(db, receipt)
+    if protected_row is None:
+        return None
+    # Sender routing also restores sender_email from the protected From header
+    # for records ingested before sender metadata was persisted reliably.
+    customer_id = route_email_sender(
+        db,
+        receipt=receipt,
+        protected_row=protected_row,
+    )
+    stored_reference = receipt.in_reply_to_ref_hash
+    effective_references = reference_hashes or (
+        (stored_reference,) if stored_reference else ()
+    )
+    correlate_reply(
+        db,
+        receipt=receipt,
+        protected_row=protected_row,
+        reference_hashes=effective_references,
+    )
+    return customer_id
+
+
+def reconcile_unassigned_receipts(db: Session, *, limit: int) -> int:
+    """Retry the bounded post-ingestion backlog without re-ingesting messages."""
+    receipts = db.scalars(
+        select(EmailIngestionReceipt)
+        .where(
+            EmailIngestionReceipt.customer_id.is_(None),
+            EmailIngestionReceipt.source_record_id.is_not(None),
+            EmailIngestionReceipt.status.in_(("protected", "ready")),
+        )
+        .order_by(EmailIngestionReceipt.received_at.desc())
+        .limit(limit)
+    ).all()
+    reconciled = 0
+    for receipt in receipts:
+        try:
+            if reconcile_receipt(db, receipt=receipt) is not None:
+                reconciled += 1
+        except Exception as error:
+            db.rollback()
+            logger.warning(
+                "email_receipt_reconciliation_failed receipt=%s error_type=%s",
+                receipt.message_ref_hash[:12],
+                type(error).__name__,
+            )
+    return reconciled
+
+
 def sync_mailbox(db: Session) -> SyncResult:
     settings = get_settings()
     if not settings.email_configured:
@@ -79,6 +151,10 @@ def sync_mailbox(db: Session) -> SyncResult:
     state.status = "syncing"
     state.failure_code = None
     db.commit()
+    reconcile_unassigned_receipts(
+        db,
+        limit=settings.email_max_messages_per_sync,
+    )
     examined = protected = ready = failed = 0
     last_uid = state.last_uid
     connection = None
@@ -123,6 +199,11 @@ def sync_mailbox(db: Session) -> SyncResult:
                 )
                 receipt = db.get(EmailIngestionReceipt, receipt_key)
                 if receipt is not None:
+                    reconcile_receipt(
+                        db,
+                        receipt=receipt,
+                        reference_hashes=reply_hashes,
+                    )
                     last_uid = uid
                     continue
                 receipt = EmailIngestionReceipt(
@@ -146,30 +227,23 @@ def sync_mailbox(db: Session) -> SyncResult:
                 )
                 receipt.processed_at = utcnow()
                 db.commit()
-                protected_row = db.scalar(
-                    select(TokenizedContent).where(
-                        TokenizedContent.source_record_id == result.source_record_id
-                    )
+                reconcile_receipt(
+                    db,
+                    receipt=receipt,
+                    reference_hashes=reply_hashes,
                 )
-                if protected_row is not None:
-                    correlate_reply(
-                        db,
-                        receipt=receipt,
-                        protected_row=protected_row,
-                        reference_hashes=reply_hashes,
-                    )
-                    route_email_sender(
-                        db,
-                        receipt=receipt,
-                        protected_row=protected_row,
-                    )
                 protected += 1
                 if result.processing_status == "ready":
                     ready += 1
                 last_uid = uid
-            except Exception:
+            except Exception as error:
                 db.rollback()
                 failed += 1
+                logger.warning(
+                    "email_message_processing_failed uid=%s error_type=%s",
+                    uid,
+                    type(error).__name__,
+                )
                 # The cursor must never pass a failed delivery. Stop here so the
                 # same UID is retried on the next bounded synchronization run.
                 break

@@ -27,7 +27,8 @@ SELF_IDENTIFICATION_PATTERN = re.compile(
 )
 
 
-def _sender_token(row: TokenizedContent) -> str | None:
+def sender_token_for(row: TokenizedContent) -> str | None:
+    """Return the protected sender endpoint, recovering it from the header if needed."""
     value = row.safe_metadata.get("sender_email")
     if (
         isinstance(value, str)
@@ -189,7 +190,7 @@ def route_email_sender(
     protected_row: TokenizedContent,
 ) -> int | None:
     """Resolve an inbound sender endpoint and create a provisional profile when unknown."""
-    sender_token = _sender_token(protected_row)
+    sender_token = sender_token_for(protected_row)
     if sender_token is None:
         return None
     endpoint = db.scalar(

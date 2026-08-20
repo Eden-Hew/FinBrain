@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.integrations.email_connector.identity import sender_token_for
 from app.models import (
     CustomerEndpoint,
     CustomerRecordLink,
@@ -41,7 +42,7 @@ def correlate_reply(
         value for value in reference_hashes if value == action.provider_message_ref_hash
     )
     endpoint = db.get(CustomerEndpoint, action.customer_endpoint_id)
-    sender_token = protected_row.safe_metadata.get("sender_email")
+    sender_token = sender_token_for(protected_row)
     if (
         endpoint is None
         or not isinstance(sender_token, str)
