@@ -802,6 +802,7 @@ returned a validated five-claim protected brief.
 
 For implementation history and team handoff, see:
 
+- [Customer intelligence and governed outreach guide](./CUSTOMER_OUTREACH_GUIDE.md)
 - [Current project progress](./PROGRESS.md)
 - [Five-feature completion report](./FIVE_FEATURE_COMPLETION_REPORT.md)
 - [Five-feature implementation plan](./FIVE_FEATURE_IMPLEMENTATION_PLAN.md)
