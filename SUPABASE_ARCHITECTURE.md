@@ -4,6 +4,9 @@ This document is the contributor-facing contract for FinBrain's Supabase databas
 the schema verified against the live project on **20 August 2026**, the boundaries that application
 code depends on, and the procedure required for every database change.
 
+For the live column-by-column disaster-recovery snapshot, see
+[`SUPABASE_SCHEMA_REFERENCE.md`](SUPABASE_SCHEMA_REFERENCE.md).
+
 The live verification command reported PostgreSQL 17.6, pgvector 0.8.2, `vector(768)`, the HNSW
 index, all expected tables and columns, forced RLS, versioned vault security, append-only audit
 triggers, and the email-first customer/outreach schema as present.
