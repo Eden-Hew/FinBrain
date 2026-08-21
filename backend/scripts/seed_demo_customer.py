@@ -6,11 +6,12 @@ from sqlalchemy import select
 from app.db import SessionLocal, initialize_local_schema, set_rls_context
 from app.models import (
     DEFAULT_TENANT_ID,
+    AuthUserRole,
     CustomerRecordLink,
     EInvoiceRecord,
     TokenizedContent,
 )
-from app.schemas import CanonicalIngestionRecord
+from app.schemas import CanonicalIngestionRecord, UserRole
 from app.services.customer_attention import recalculate_customer_attention
 from app.services.einvoice_readiness import sync_einvoice_tokenized_content
 from app.services.entity_resolution import (
@@ -24,7 +25,6 @@ CUSTOMER_NAME = "Luma Retail Sdn Bhd"
 CUSTOMER_EMAIL = "aisha.karim@luma-retail.example"
 INVOICE_NUMBER = "LUMA-INV-3001"
 SOURCE_RECORD_ID = "demo:customer:luma:email:001"
-DEMO_OWNER_ID = "30000000-0000-0000-0000-000000000004"
 
 
 def _ensure_verified_link(
@@ -57,9 +57,20 @@ def main() -> None:
     """Add one idempotent, non-destructive customer-outreach demonstration fixture."""
     initialize_local_schema()
     with SessionLocal() as db:
+        owner_id = db.scalar(
+            select(AuthUserRole.user_id)
+            .where(
+                AuthUserRole.tenant_id == DEFAULT_TENANT_ID,
+                AuthUserRole.user_role == UserRole.OWNER_DIRECTOR.value,
+                AuthUserRole.active.is_(True),
+            )
+            .limit(1)
+        )
+        if owner_id is None:
+            raise RuntimeError("active_owner_role_required")
         set_rls_context(
             db,
-            user_id=DEMO_OWNER_ID,
+            user_id=owner_id,
             user_role="owner_director",
             actor_ref="demo-customer-seed",
             tenant_id=DEFAULT_TENANT_ID,

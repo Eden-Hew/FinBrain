@@ -5,7 +5,7 @@ from app.models import DEFAULT_TENANT_ID, AuditLogEntry, Base, TokenVaultEntry
 from app.security.detect import Span, detect_spans
 from app.security.detokenize import detokenize_response
 from app.security.protection import protect_text
-from app.security.tokenize import protect_scalar, tokenize_record
+from app.security.tokenize import persist_vault_entries, protect_scalar, tokenize_record
 from app.services.audit import verify_audit_chain
 
 
@@ -91,6 +91,23 @@ def test_deterministic_tokens_link_same_value():
     first, _ = tokenize_record(raw, detect_spans(raw), "one", DEFAULT_TENANT_ID)
     second, _ = tokenize_record(raw, detect_spans(raw), "two", DEFAULT_TENANT_ID)
     assert first == second
+
+
+def test_repeated_token_before_flush_is_persisted_once():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    raw = "Contact duplicate@example.com"
+    with Session(engine) as db:
+        _, content_entries = tokenize_record(
+            raw, detect_spans(raw), "duplicate-record", DEFAULT_TENANT_ID, db=db
+        )
+        _, metadata_entries = tokenize_record(
+            raw, detect_spans(raw), "duplicate-record", DEFAULT_TENANT_ID, db=db
+        )
+        persist_vault_entries(db, [*content_entries, *metadata_entries])
+        db.commit()
+
+        assert len(db.scalars(select(TokenVaultEntry)).all()) == 1
 
 
 def test_protection_does_not_tokenize_an_existing_protected_token(monkeypatch):

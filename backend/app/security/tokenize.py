@@ -38,6 +38,15 @@ ACL_POLICY = {
 AMOUNT_BANDS = [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
 
 
+def _pending_token(db: Session, model: type, token: str) -> bool:
+    """Return whether this session already stages the token before a flush."""
+    return any(isinstance(row, model) and getattr(row, "token", None) == token for row in db.new)
+
+
+def _has_token(db: Session, model: type, token: str) -> bool:
+    return _pending_token(db, model, token) or db.get(model, token) is not None
+
+
 def _parse_amount(text: str) -> Decimal:
     match = re.search(r"\d[\d,]*(?:\.\d+)?", text)
     try:
@@ -145,7 +154,7 @@ def tokenize_record(
             sensitivity="high" if label in {"NRIC", "CARD"} else "medium",
             source_record_id=source_record_id,
         )
-        if db.get(ProtectedTokenRegistry, token) is None:
+        if not _has_token(db, ProtectedTokenRegistry, token):
             db.add(
                 ProtectedTokenRegistry(
                     token=token,
@@ -160,7 +169,7 @@ def tokenize_record(
 def persist_vault_entries(db: Session, entries: list[TokenVaultEntry]) -> None:
     """Persist ciphertext and safe public token metadata idempotently."""
     for entry in entries:
-        if db.get(TokenVaultEntry, entry.token) is None:
+        if not _has_token(db, TokenVaultEntry, entry.token):
             db.add(entry)
 
 
@@ -175,7 +184,14 @@ def protect_scalar(
     """Protect one explicitly classified value that detectors cannot safely infer."""
     label = entity_type.upper()
     token = derive_token(label, value, tenant_id)
-    if db.get(TokenVaultEntry, token) is None:
+    masked = {
+        "TGUSER": "telegram-user-********",
+        "TGCHAT": "telegram-chat-********",
+        "PERSON": "[person — restricted]",
+        "EMAIL": "*****@*******.***",
+        "PHONE": "01*-***-****",
+    }.get(label, f"[{label.lower()} — restricted]")
+    if not _has_token(db, TokenVaultEntry, token):
         ciphertext, nonce, key_version = encrypt_vault_value(
             db,
             token=token,
@@ -183,31 +199,28 @@ def protect_scalar(
             source_record_id=source_record_id,
             value=value,
         )
-        masked = {
-            "TGUSER": "telegram-user-********",
-            "TGCHAT": "telegram-chat-********",
-            "PERSON": "[person — restricted]",
-            "EMAIL": "*****@*******.***",
-            "PHONE": "01*-***-****",
-        }.get(label, f"[{label.lower()} — restricted]")
-        db.add(TokenVaultEntry(
-            token=token,
-            tenant_id=tenant_id,
-            entity_type=label,
-            encrypted_value=ciphertext,
-            nonce=nonce,
-            key_version=key_version,
-            masked_value=masked,
-            encryption_algorithm="AES-256-GCM",
-            allowed_roles=ACL_POLICY.get(label, ["compliance"]),
-            sensitivity="medium",
-            source_record_id=source_record_id,
-        ))
-        if db.get(ProtectedTokenRegistry, token) is None:
-            db.add(ProtectedTokenRegistry(
+        db.add(
+            TokenVaultEntry(
+                token=token,
+                tenant_id=tenant_id,
+                entity_type=label,
+                encrypted_value=ciphertext,
+                nonce=nonce,
+                key_version=key_version,
+                masked_value=masked,
+                encryption_algorithm="AES-256-GCM",
+                allowed_roles=ACL_POLICY.get(label, ["compliance"]),
+                sensitivity="medium",
+                source_record_id=source_record_id,
+            )
+        )
+    if not _has_token(db, ProtectedTokenRegistry, token):
+        db.add(
+            ProtectedTokenRegistry(
                 token=token,
                 tenant_id=tenant_id,
                 entity_type=label,
                 masked_value=masked,
-            ))
+            )
+        )
     return token

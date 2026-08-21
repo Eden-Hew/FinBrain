@@ -13,5 +13,6 @@ FinBrain/
 node_modules/
 dist/
 .runtime/
+backups/
 .DS_Store
 

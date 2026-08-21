@@ -4,15 +4,17 @@ from seed.seed_data import RESET_TABLES
 def test_reset_includes_new_foreign_key_dependents_before_their_parents():
     positions = {name: index for index, name in enumerate(RESET_TABLES)}
     dependencies = {
-        "customer_identity_claims": (
-            "customer_endpoints", "customers", "tokenized_content"
-        ),
+        "customer_identity_claims": ("customer_endpoints", "customers", "tokenized_content"),
+        "telegram_update_receipts": ("telegram_onboarding_sessions", "customers"),
+        "telegram_onboarding_sessions": ("customers", "tokenized_content"),
         "email_reply_correlations": ("email_ingestion_receipts", "outreach_actions"),
         "outreach_evidence": ("outreach_actions", "tokenized_content"),
         "outreach_actions": ("customer_endpoints", "customers"),
         "customer_endpoints": ("customers",),
         "customer_attention_signals": (
-            "customer_attention_snapshots", "einvoice_records", "tokenized_content"
+            "customer_attention_snapshots",
+            "einvoice_records",
+            "tokenized_content",
         ),
         "customer_attention_snapshots": ("customers",),
         "customer_record_links": ("customer_aliases", "customers", "tokenized_content"),
