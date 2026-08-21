@@ -27,6 +27,7 @@ const Finance = lazy(() => import("./screens/Finance"));
 const Audit = lazy(() => import("./screens/Audit"));
 const Approvals = lazy(() => import("./screens/Approvals"));
 const Ingestion = lazy(() => import("./screens/Ingestion"));
+const Settings = lazy(() => import("./screens/Settings"));
 
 function Screens() {
   const { screen, show, setAskRole } = useAppState();
@@ -62,6 +63,7 @@ function Screens() {
     case "audit": return <Audit />;
     case "approvals": return <Approvals />;
     case "ingestion": return <Ingestion />;
+    case "settings": return <Settings />;
     default: return <Landing />;
   }
 }

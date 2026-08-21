@@ -183,7 +183,11 @@ function FaqAccordion() {
               {item.q}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
             </button>
-            {open && <p className="fb-mkt-faq-answer">{item.a}</p>}
+            <div className="fb-mkt-faq-answer-wrap" aria-hidden={!open}>
+              <div className="fb-mkt-faq-answer-inner">
+                <p className="fb-mkt-faq-answer">{item.a}</p>
+              </div>
+            </div>
           </div>
         );
       })}
@@ -413,11 +417,14 @@ export default function Landing() {
         </div>
       </section>
 
-      <div className="fb-mkt-stats" ref={statsRef}>
-        <AnimatedStat value="RM 1.84M" label="Revenue tracked on the live dashboard" active={statsIn} />
-        <AnimatedStat value="128" label="Hash-chained audit entries, 0 gaps" active={statsIn} />
-        <AnimatedStat value="~2 min" label="Average invoice review time" active={statsIn} />
-        <AnimatedStat value="3 languages" label="English, Bahasa Malaysia & Chinese" active={statsIn} />
+      <div ref={statsRef}>
+        <div className="fb-mkt-stats">
+          <AnimatedStat value="RM 1.84M" label="Revenue tracked on the live dashboard" active={statsIn} />
+          <AnimatedStat value="128" label="Hash-chained audit entries, 0 gaps" active={statsIn} />
+          <AnimatedStat value="~2 min" label="Average invoice review time" active={statsIn} />
+          <AnimatedStat value="3 languages" label="English, Bahasa Malaysia & Chinese" active={statsIn} />
+        </div>
+        <p className="fb-mkt-fineprint">Figures from an example workspace, illustrative for this prototype — not live or measured usage.</p>
       </div>
 
       <Reveal className="fb-mkt-section fb-mkt-section-alt" id="landing-flow">

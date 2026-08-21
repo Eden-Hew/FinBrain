@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useI18n } from "../lib/i18n";
+import { useI18n, type Lang } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { useAuth } from "../auth/AuthProvider";
 import { Sidebar, AppTopBar } from "../components/Nav";
@@ -26,6 +26,27 @@ import {
 type LoadState = "loading" | "loaded" | "error";
 
 const TIER_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", monitoring: "Monitoring", healthy: "Healthy" };
+
+// Backend fallback for a customer whose display name never resolved (e.g. "[person — restricted]") —
+// distinct from the PERSON_xxxxx mask tokens MaskedText handles, so it needs its own check.
+function isPlaceholderName(name: string): boolean {
+  return /^\[.*\]$/.test(name.trim());
+}
+
+// Presentational-only casing fix so "GOHSHENGKAI" / "xiao ming" / "Meranti Trading" don't
+// look like three different conventions side by side — never touches the underlying data.
+function displayCase(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return trimmed;
+  const isAllUpper = trimmed === trimmed.toUpperCase() && trimmed !== trimmed.toLowerCase();
+  const isAllLower = trimmed === trimmed.toLowerCase() && trimmed !== trimmed.toUpperCase();
+  if (!isAllUpper && !isAllLower) return trimmed;
+  return trimmed
+    .toLowerCase()
+    .split(" ")
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -79,11 +100,12 @@ function ErrorWithRetry({ message, onRetry }: { message: string; onRetry: () => 
 }
 
 function CardShell({
-  tone, icon, label, onClick, children,
+  tone, icon, label, desc, onClick, children,
 }: {
   tone: string;
   icon: React.ReactNode;
   label: string;
+  desc: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -99,7 +121,10 @@ function CardShell({
         </span>
         <span className="fb-home-card-arrow" aria-hidden="true">→</span>
       </div>
-      <div className="fb-home-card-label">{label}</div>
+      <div>
+        <div className="fb-home-card-label">{label}</div>
+        <div className="fb-home-card-desc">{desc}</div>
+      </div>
       {children}
     </button>
   );
@@ -136,6 +161,7 @@ function EinvoiceCard() {
     <CardShell
       tone="einvoice"
       label="e-Invoicing"
+      desc="MyInvois readiness score"
       onClick={() => show("einvoice")}
       icon={<path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />}
     >
@@ -201,6 +227,7 @@ function AuditCard() {
     <CardShell
       tone="audit"
       label="Audit"
+      desc="Hash-chained log of every disclosure"
       onClick={() => show("audit")}
       icon={<path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />}
     >
@@ -265,6 +292,7 @@ function ApprovalsCard() {
     <CardShell
       tone="approvals"
       label="Approvals"
+      desc="Recommendations and drafts waiting on you"
       onClick={() => show("approvals")}
       icon={<path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />}
     >
@@ -320,6 +348,7 @@ function CaptureCard() {
     <CardShell
       tone="capture"
       label="Message Capture"
+      desc="Emails and Telegram messages captured"
       onClick={() => show("ingestion")}
       icon={<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />}
     >
@@ -342,6 +371,24 @@ function CaptureCard() {
         </>
       )}
     </CardShell>
+  );
+}
+
+function MiniSparkline({ points }: { points: { total_amount: string }[] }) {
+  const values = points.map((p) => Number(p.total_amount) || 0);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const w = 100, h = 26;
+  const stepX = values.length > 1 ? w / (values.length - 1) : 0;
+  const coords = values.map((v, i) => `${i * stepX},${h - ((v - min) / range) * (h - 4) - 2}`).join(" ");
+  const lastX = (values.length - 1) * stepX;
+  const lastY = h - ((values[values.length - 1] - min) / range) * (h - 4) - 2;
+  return (
+    <svg className="fb-home-sparkline" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label="Revenue trend over recent periods">
+      <polyline points={coords} fill="none" stroke="var(--chart-good)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lastX} cy={lastY} r="2.4" fill="var(--chart-good)" />
+    </svg>
   );
 }
 
@@ -371,6 +418,7 @@ function FinanceCard() {
     <CardShell
       tone="finance"
       label="Financial Intelligence"
+      desc="Revenue and receivables this period"
       onClick={() => show("finance")}
       icon={<path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />}
     >
@@ -380,6 +428,12 @@ function FinanceCard() {
         <>
           <div className="fb-home-card-headline"><span className="num">{formatRm(Number(data.outstanding_ar) || 0)}</span></div>
           <div className="fb-home-card-sub">Outstanding receivables</div>
+          {data.revenue_trend.length > 1 && (
+            <div className="fb-home-sparkline-row">
+              <span className="fb-home-sparkline-label">Revenue trend</span>
+              <MiniSparkline points={data.revenue_trend} />
+            </div>
+          )}
           <div className="fb-home-card-foot">
             {data.revenue_change_pct != null && (
               <span className={"fb-home-delta-badge" + (data.revenue_change_pct >= 0 ? " is-active" : "")}>
@@ -393,32 +447,14 @@ function FinanceCard() {
   );
 }
 
-function AttentionSection() {
+function AttentionSection({
+  needsAttention, state, onRetry,
+}: {
+  needsAttention: CustomerSummary[];
+  state: LoadState;
+  onRetry: () => void;
+}) {
   const { showCustomerDetail } = useAppState();
-  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
-  const [state, setState] = useState<LoadState>("loading");
-  const [reloadToken, setReloadToken] = useState(0);
-  const retry = () => setReloadToken((t) => t + 1);
-
-  useEffect(() => {
-    let active = true;
-    const run = async () => {
-      setState("loading");
-      try {
-        const res = await fetchCustomers();
-        if (active) { setCustomers(res); setState("loaded"); }
-      } catch {
-        if (active) setState("error");
-      }
-    };
-    void run();
-    return () => { active = false; };
-  }, [reloadToken]);
-
-  const needsAttention = [...customers]
-    .filter((c) => c.priority !== "healthy")
-    .sort((a, b) => b.attention_score - a.attention_score)
-    .slice(0, 5);
 
   return (
     <section style={{ marginBottom: "1.6rem" }}>
@@ -436,7 +472,7 @@ function AttentionSection() {
       )}
       {state === "error" && (
         <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>
-          <ErrorWithRetry message="Couldn't load customer data." onRetry={retry} />
+          <ErrorWithRetry message="Couldn't load customer data." onRetry={onRetry} />
         </div>
       )}
       {state === "loaded" && needsAttention.length === 0 && (
@@ -448,32 +484,144 @@ function AttentionSection() {
       )}
       {state === "loaded" && needsAttention.length > 0 && (
         <div className="fb-briefing-list">
-          {needsAttention.map((c) => (
-            <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
-              <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
-              <span className="fb-briefing-name">{c.name}</span>
-              <span className="fb-briefing-detail">{formatRm(Number(c.overdue_total))} overdue · {c.attention_score}/100</span>
-              <span className="fb-home-card-arrow" aria-hidden="true">→</span>
-            </button>
-          ))}
+          {needsAttention.map((c) => {
+            const overdueAmt = Number(c.overdue_total) || 0;
+            const outstandingAmt = Number(c.outstanding_total) || 0;
+            const reason = overdueAmt > 0
+              ? `${formatRm(overdueAmt)} overdue`
+              : outstandingAmt > 0
+                ? `${formatRm(outstandingAmt)} outstanding`
+                : "flagged by cross-source signals";
+            const unresolved = c.profile_status !== "confirmed" || c.identity_review_status !== "clear";
+            return (
+              <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
+                <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
+                {isPlaceholderName(c.name) ? (
+                  <span className="fb-briefing-name">
+                    <span className="fb-mask-badge">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                      Protected customer
+                    </span>
+                  </span>
+                ) : (
+                  <span className="fb-briefing-name">
+                    <span className="fb-briefing-name-text">{displayCase(c.name)}</span>
+                    {unresolved && <span className="fb-mask-badge" title="Identity not yet confirmed by an owner">Unconfirmed</span>}
+                  </span>
+                )}
+                <span className="fb-briefing-detail">{reason} · {c.attention_score}/100</span>
+                <span className="fb-home-card-arrow" aria-hidden="true">→</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </section>
   );
 }
 
-function greetingKey(): "home.greeting.morning" | "home.greeting.afternoon" | "home.greeting.evening" {
-  const hour = new Date().getHours();
-  if (hour < 12) return "home.greeting.morning";
-  if (hour < 18) return "home.greeting.afternoon";
-  return "home.greeting.evening";
+type GreetingPeriod = "morning" | "afternoon" | "evening";
+
+function greetingPeriod(hour: number): GreetingPeriod {
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
+}
+
+const GREETING_KEY: Record<GreetingPeriod, "home.greeting.morning" | "home.greeting.afternoon" | "home.greeting.evening"> = {
+  morning: "home.greeting.morning",
+  afternoon: "home.greeting.afternoon",
+  evening: "home.greeting.evening",
+};
+
+const GREETING_LOCALE: Record<Lang, string> = { en: "en-US", ms: "ms-MY", zh: "zh-CN" };
+
+function GreetingIcon({ period }: { period: GreetingPeriod }) {
+  if (period === "evening") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20.5 14.7A8.5 8.5 0 1 1 9.3 3.5a7 7 0 0 0 11.2 11.2z" />
+        <path d="M17.5 3.8v2.2M16.4 4.9h2.2" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 3v2.5M12 18.5V21M4.5 12H2M22 12h-2.5M6.3 6.3 4.6 4.6M19.4 19.4l-1.7-1.7M6.3 17.7l-1.7 1.7M19.4 4.6l-1.7 1.7" />
+    </svg>
+  );
+}
+
+function GreetingHeader({ firstName, lang }: { firstName: string | null; lang: Lang }) {
+  const { t } = useI18n();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const period = greetingPeriod(now.getHours());
+  const locale = GREETING_LOCALE[lang] ?? "en-US";
+  const timeStr = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(now);
+  const dateStr = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now);
+
+  return (
+    <div className={"fb-greeting is-" + period}>
+      <span className="fb-greeting-icon"><GreetingIcon period={period} /></span>
+      <div>
+        <h1 className="fb-greeting-line">
+          {t(GREETING_KEY[period])}
+          {firstName && <span className="fb-greeting-name">, {firstName}</span>}
+        </h1>
+        <div className="fb-greeting-clock">{timeStr} · {dateStr}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function Home() {
-  const { t } = useI18n();
-  const { show, sampleBanner, dismissSampleBanner } = useAppState();
+  const { t, lang } = useI18n();
+  const { show, sampleBanner, dismissSampleBanner, displayName, askAbout, approvalsCount } = useAppState();
   const { identity } = useAuth();
-  const firstName = identity?.email ? identity.email.split("@")[0] : null;
+  const emailFirstName = identity?.email ? identity.email.split("@")[0] : null;
+  const derivedName = emailFirstName ? emailFirstName.charAt(0).toUpperCase() + emailFirstName.slice(1) : null;
+  const greetingName = displayName || derivedName;
+
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [customersState, setCustomersState] = useState<LoadState>("loading");
+  const [customersReloadToken, setCustomersReloadToken] = useState(0);
+  const retryCustomers = () => setCustomersReloadToken((n) => n + 1);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      setCustomersState("loading");
+      try {
+        const res = await fetchCustomers();
+        if (active) { setCustomers(res); setCustomersState("loaded"); }
+      } catch {
+        if (active) setCustomersState("error");
+      }
+    };
+    void run();
+    return () => { active = false; };
+  }, [customersReloadToken]);
+
+  const needsAttention = [...customers]
+    .filter((c) => c.priority !== "healthy")
+    .sort((a, b) => b.attention_score - a.attention_score)
+    .slice(0, 5);
+  const topAttention = needsAttention[0] ?? null;
+
+  const askSuggestions: string[] = [];
+  if (topAttention) {
+    const topAttentionLabel = isPlaceholderName(topAttention.name) ? "my most urgent customer" : displayCase(topAttention.name);
+    askSuggestions.push(`What's overdue for ${topAttentionLabel}?`);
+  }
+  if (approvalsCount > 0) askSuggestions.push("What's waiting for my approval?");
+  askSuggestions.push("What should I prioritize this week?");
 
   return (
     <div className="fb-root fb-shell">
@@ -488,15 +636,15 @@ export default function Home() {
       )}
 
       <header className="fb-app-header">
-        <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>{t(greetingKey())}{firstName ? `, ${firstName}` : ""}</div>
-        <h1>{t("home.title")}</h1>
-        <p>{t("home.desc")}</p>
+        <div className="fb-eyebrow" style={{ marginBottom: ".5rem" }}>{t("home.title")}</div>
+        <GreetingHeader firstName={greetingName} lang={lang} />
+        <p className="fb-fine" style={{ marginTop: ".6rem" }}>{t("home.desc")}</p>
       </header>
 
       <div className="fb-page-body">
-        <AttentionSection />
+        <AttentionSection needsAttention={needsAttention} state={customersState} onRetry={retryCustomers} />
 
-        <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Workspace signals</div>
+        <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>At a glance</div>
         <div className="fb-home-grid">
           <EinvoiceCard />
           <AuditCard />
@@ -509,6 +657,11 @@ export default function Home() {
           <div className="fb-home-ask-cta-copy">
             <h2>Have a question about any of this?</h2>
             <p>Ask FinBrain in plain language — it cites every source and never shows a persona more than their role allows.</p>
+            <div className="fb-home-ask-chips">
+              {askSuggestions.map((q) => (
+                <button key={q} className="fb-home-ask-chip" type="button" onClick={() => askAbout(q)}>{q}</button>
+              ))}
+            </div>
           </div>
           <button className="fb-btn fb-btn-solid" type="button" onClick={() => show("agents")}>
             Start a conversation
