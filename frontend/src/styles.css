@@ -448,6 +448,8 @@ img{max-width:100%}
 .fb-status-pill.is-review .fb-status-dot{background:var(--chart-attn);}
 .fb-status-pill.is-submitted{border-color:color-mix(in srgb, var(--purple) 35%, var(--line));color:var(--purple);background:color-mix(in srgb, var(--purple) 8%, transparent);}
 .fb-status-pill.is-submitted .fb-status-dot{background:var(--purple);}
+.fb-status-pill.is-urgent{background:var(--chart-attn);border-color:var(--chart-attn);color:#fff;}
+.fb-status-pill.is-urgent .fb-status-dot{background:#fff;}
 
 .fb-detail-header{max-width:var(--content-width);margin:0 auto;padding:2.4rem 1.5rem 1.6rem;font-family:Arial,Helvetica,sans-serif;}
 .fb-detail-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
@@ -501,6 +503,11 @@ img{max-width:100%}
 .fb-table td.fb-num{font-variant-numeric:tabular-nums;text-align:right;}
 .fb-table td.fb-num-left{font-variant-numeric:tabular-nums;text-align:left;}
 .fb-table.fb-align-top td{vertical-align:top;}
+.fb-table td.is-attn{color:var(--chart-attn);font-weight:700;}
+@media (max-width:760px){
+  .fb-table-wrap{position:relative;}
+  .fb-table-wrap::after{content:"";position:absolute;top:0;right:0;bottom:0;width:28px;background:linear-gradient(to right, transparent, var(--bg) 85%);pointer-events:none;}
+}
 
 .fb-link-toggle{display:inline-flex;align-items:center;gap:.4rem;border:none;background:none;color:var(--ink-soft);font-size:.76rem;font-weight:600;cursor:pointer;padding:0;font-family:'Inter',-apple-system,sans-serif;}
 .fb-link-toggle:hover{color:var(--ink);}
@@ -725,6 +732,28 @@ img{max-width:100%}
 }
 .fb-customer-detail-head{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem;}
 .fb-customer-detail-head h2{font-family:'Inter Tight','Inter',sans-serif;font-size:1.3rem;font-weight:700;margin:0;}
+
+/* Actionable sections (protected endpoints, identity evidence, draft reply, outreach
+   history) get a real card background instead of .fb-callout's --bg-alt tint — that
+   tint is the same color as .fb-input's own background, which made every text field
+   inside a callout look uneditable. */
+.fb-panel{max-width:var(--content-width);margin:0 auto 1.6rem;padding:1rem 1.2rem;border:1px solid var(--line);border-radius:14px;background:var(--card);font-family:Arial,Helvetica,sans-serif;font-size:.78rem;color:var(--ink-soft);line-height:1.6;}
+.fb-panel strong{color:var(--ink);}
+
+.fb-signal-list{max-width:var(--content-width);margin:0 auto;display:flex;flex-direction:column;gap:.7rem;}
+.fb-signal-card{display:flex;gap:.9rem;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--chart-attn);border-radius:12px;padding:.85rem 1.05rem;font-family:Arial,Helvetica,sans-serif;font-size:.78rem;color:var(--ink);}
+.fb-signal-points{flex:0 0 auto;min-width:2.2rem;font-family:'Inter Tight','Inter',sans-serif;font-weight:800;font-size:1rem;color:var(--chart-attn);}
+
+.fb-timeline{max-width:var(--content-width);margin:0 auto;display:flex;flex-direction:column;}
+.fb-timeline-item{position:relative;padding:0 0 1.1rem 2.2rem;}
+.fb-timeline-item:last-child{padding-bottom:0;}
+.fb-timeline-item::before{content:"";position:absolute;left:.62rem;top:1.7rem;bottom:0;width:1px;background:var(--line);}
+.fb-timeline-item:last-child::before{display:none;}
+.fb-timeline-icon{position:absolute;left:0;top:.1rem;width:1.4rem;height:1.4rem;border-radius:50%;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink-soft);flex:0 0 auto;}
+.fb-timeline-icon svg{width:.8rem;height:.8rem;}
+.fb-timeline-content{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.75rem .95rem;font-family:Arial,Helvetica,sans-serif;font-size:.78rem;color:var(--ink-soft);line-height:1.6;}
+.fb-timeline-content strong{color:var(--ink);text-transform:capitalize;}
+.fb-timeline-content p{margin:.35rem 0 0;color:var(--ink);}
 .fb-customer-unavailable-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1rem;}
 .fb-customer-unavailable{border:1px dashed var(--line);border-radius:14px;padding:1rem 1.1rem;background:var(--card);display:flex;flex-direction:column;gap:.5rem;font-family:'Inter',-apple-system,sans-serif;}
 .fb-customer-unavailable p{margin:0;color:var(--ink-soft);}

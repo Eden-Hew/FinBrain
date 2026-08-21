@@ -5,7 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import { EmptyState } from "../components/EmptyState";
 import { PERSONAS } from "../lib/personas";
-import { formatRm } from "../lib/customerAggregation";
+import { displayCase, formatRm, isPlaceholderName } from "../lib/customerAggregation";
 import {
   fetchAuditLog,
   fetchCustomers,
@@ -26,27 +26,6 @@ import {
 type LoadState = "loading" | "loaded" | "error";
 
 const TIER_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", monitoring: "Monitoring", healthy: "Healthy" };
-
-// Backend fallback for a customer whose display name never resolved (e.g. "[person — restricted]") —
-// distinct from the PERSON_xxxxx mask tokens MaskedText handles, so it needs its own check.
-function isPlaceholderName(name: string): boolean {
-  return /^\[.*\]$/.test(name.trim());
-}
-
-// Presentational-only casing fix so "GOHSHENGKAI" / "xiao ming" / "Meranti Trading" don't
-// look like three different conventions side by side — never touches the underlying data.
-function displayCase(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return trimmed;
-  const isAllUpper = trimmed === trimmed.toUpperCase() && trimmed !== trimmed.toLowerCase();
-  const isAllLower = trimmed === trimmed.toLowerCase() && trimmed !== trimmed.toUpperCase();
-  if (!isAllUpper && !isAllLower) return trimmed;
-  return trimmed
-    .toLowerCase()
-    .split(" ")
-    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
-    .join(" ");
-}
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
