@@ -18,7 +18,7 @@ import { fetchEinvoiceOutreachDrafts, fetchRecommendations } from "../api/client
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
-  | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
+  | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion" | "settings";
 
 interface AppStateValue {
   screen: Screen;
@@ -79,10 +79,29 @@ interface AppStateValue {
   focusedRecommendationId: number | null;
   openApprovalRecommendation: (id: number) => void;
   clearFocusedRecommendation: () => void;
+
+  displayName: string;
+  setDisplayName: (name: string) => void;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
 let askHandoffId = 0;
+
+function readLocalPref(key: string, fallback: string): string {
+  try {
+    return window.localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalPref(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Private browsing / storage disabled: preference just won't persist.
+  }
+}
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<Screen>("landing");
@@ -102,6 +121,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [auditRows, setAuditRows] = useState<AuditRow[]>(() => initialAuditRows());
   const [pendingActions, setPendingActions] = useState<PendingAction[]>(() => initialPendingActions());
   const [focusedRecommendationId, setFocusedRecommendationId] = useState<number | null>(null);
+  const [displayName, setDisplayNameState] = useState<string>(() => readLocalPref("fb-display-name", ""));
+
+  const setDisplayName = useCallback((name: string) => {
+    setDisplayNameState(name);
+    writeLocalPref("fb-display-name", name);
+  }, []);
 
   const show = useCallback((s: Screen) => {
     setScreen(s);
@@ -119,7 +144,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const pathname = window.location.pathname.replace(/^\//, "");
         const matchedScreen: Screen = pathname && [
           "landing", "login", "signup", "onboarding", "security", "legal",
-          "home", "agents", "customers", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
+          "home", "agents", "customers", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion", "settings"
         ].includes(pathname) ? (pathname as Screen) : "landing";
         setScreen(matchedScreen);
       }
@@ -360,6 +385,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     pendingActions, approveAction, rejectAction,
     approvalsCount,
     focusedRecommendationId, openApprovalRecommendation, clearFocusedRecommendation,
+    displayName, setDisplayName,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

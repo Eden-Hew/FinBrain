@@ -870,12 +870,25 @@ export async function createEinvoiceRecord(payload: EInvoiceCreatePayload): Prom
 export interface InvoiceExtraction {
   supplier_name: string | null;
   supplier_tin: string | null;
+  supplier_email?: string | null;
+  supplier_reg_no?: string | null;
+  supplier_phone?: string | null;
+  supplier_address?: string | null;
   buyer_name: string | null;
+  buyer_email?: string | null;
+  buyer_tin?: string | null;
+  buyer_reg_no?: string | null;
+  buyer_phone?: string | null;
+  buyer_address?: string | null;
   invoice_no: string | null;
+  item_description?: string | null;
   issue_date: string | null;
+  due_date?: string | null;
   currency: string | null;
   tax_type: string | null;
   tax_rate: string | null;
+  payment_terms?: string | null;
+  bank_account_no?: string | null;
   total_amount: string | null;
 }
 
@@ -920,13 +933,23 @@ export async function updateEinvoiceRecord(
   recordId: number,
   payload: EInvoiceUpdatePayload,
 ): Promise<EInvoiceApiRecord> {
-  return parse<EInvoiceApiRecord>(
-    await authenticatedFetch(`/einvoice-records/${recordId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }),
-  );
+  try {
+    return parse<EInvoiceApiRecord>(
+      await authenticatedFetch(`/einvoice-records/${recordId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+  } catch {
+    return parse<EInvoiceApiRecord>(
+      await authenticatedFetch(`/einvoice-records/${recordId}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+  }
 }
 
 export async function approveEinvoiceRecord(recordId: number): Promise<EInvoiceApiRecord> {

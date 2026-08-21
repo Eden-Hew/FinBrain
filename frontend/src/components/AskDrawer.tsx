@@ -94,7 +94,7 @@ export function AskDrawer() {
         </div>
         <div className="fb-drawer-footer">
           <button className="fb-btn fb-btn-outline" style={{ width: "100%", marginBottom: ".6rem" }} type="button" onClick={() => { closeAsk(); show("agents"); }}>
-            Open full Customer Intelligence
+            Open in Ask
           </button>
           <div className="fb-drawer-input-row">
             <input

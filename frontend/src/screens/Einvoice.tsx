@@ -53,6 +53,9 @@ export function splitReadinessIssues(reason: string): string[] {
     .map((s) => (s.endsWith(".") ? s : s + "."));
 }
 
+const RING_RADIUS = 25;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
 type ReadinessCategoryKey = "critical" | "warning" | "passing";
 type FixState = "idle" | "sending" | "sent" | "failed";
 type DocumentState = "idle" | "loading" | "failed";
@@ -140,7 +143,18 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
   return (
     <div>
       <div className="fb-readiness-score">
-        <div className="fb-readiness-score-value">{Math.round(data.score * 100)}%</div>
+        <div className="fb-home-ring-wrap" style={{ width: "72px", height: "72px" }}>
+          <svg width="72" height="72" viewBox="0 0 60 60" aria-hidden="true">
+            <circle cx="30" cy="30" r={RING_RADIUS} fill="none" stroke="var(--bg-alt)" strokeWidth="6" />
+            <circle
+              cx="30" cy="30" r={RING_RADIUS} fill="none" stroke="var(--accent)" strokeWidth="6" strokeLinecap="round"
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={RING_CIRCUMFERENCE * (1 - data.score)}
+              transform="rotate(-90 30 30)"
+            />
+          </svg>
+          <span className="fb-home-ring-value" style={{ fontSize: "1.1rem" }}>{Math.round(data.score * 100)}<small>%</small></span>
+        </div>
         <div>
           <div className="fb-readiness-score-label">Ready for MyInvois submission</div>
           <div className="fb-fine">{data.passing_count} of {data.total_records} invoices pass all checks</div>
@@ -279,18 +293,44 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         ...f,
         supplier_name: extracted.supplier_name ?? f.supplier_name,
         supplier_tin: extracted.supplier_tin ?? f.supplier_tin,
+        supplier_email: extracted.supplier_email ?? f.supplier_email,
+        supplier_reg_no: extracted.supplier_reg_no ?? f.supplier_reg_no,
+        supplier_phone: extracted.supplier_phone ?? f.supplier_phone,
+        supplier_address: extracted.supplier_address ?? f.supplier_address,
         buyer_name: extracted.buyer_name ?? f.buyer_name,
+        buyer_email: extracted.buyer_email ?? f.buyer_email,
+        buyer_tin: extracted.buyer_tin ?? f.buyer_tin,
+        buyer_reg_no: extracted.buyer_reg_no ?? f.buyer_reg_no,
+        buyer_phone: extracted.buyer_phone ?? f.buyer_phone,
+        buyer_address: extracted.buyer_address ?? f.buyer_address,
         invoice_no: extracted.invoice_no ?? f.invoice_no,
+        item_description: extracted.item_description ?? f.item_description,
         issue_date: extracted.issue_date ?? f.issue_date,
+        due_date: extracted.due_date ?? f.due_date,
         currency: extracted.currency ?? f.currency,
         tax_type: extracted.tax_type ?? f.tax_type,
         tax_rate: extracted.tax_rate ?? f.tax_rate,
+        payment_terms: extracted.payment_terms ?? f.payment_terms,
+        bank_account_no: extracted.bank_account_no ?? f.bank_account_no,
         total_amount: extracted.total_amount ?? f.total_amount,
       }));
-      setExtractNotice("Fields auto-filled from the PDF — please review before saving.");
+      if (
+        extracted.supplier_address ||
+        extracted.supplier_phone ||
+        extracted.supplier_reg_no ||
+        extracted.supplier_tin ||
+        extracted.buyer_address ||
+        extracted.buyer_phone ||
+        extracted.buyer_reg_no ||
+        extracted.buyer_tin ||
+        extracted.bank_account_no
+      ) {
+        setShowCompanyDetails(true);
+      }
+      setExtractNotice("All fields auto-filled from the scanned document — please review before saving.");
     } catch (err) {
       setExtractNotice(
-        "Couldn't auto-fill from this PDF (" +
+        "Couldn't auto-fill from this file (" +
         (err instanceof Error ? err.message : "extraction failed") +
         "). You can still fill in the fields manually — the file will still be attached.",
       );
@@ -337,7 +377,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         onCreated(await uploadEinvoiceDocument(created.id, file));
       } catch (uploadErr) {
         onWarning(
-          `${created.supplier_name} was saved, but the PDF failed to attach (` +
+          `${created.supplier_name} was saved, but the document failed to attach (` +
           (uploadErr instanceof Error ? uploadErr.message : "unknown error") +
           "). Open the invoice's detail page to retry.",
         );
@@ -352,16 +392,16 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
 
   return (
     <form onSubmit={submit} className="fb-answer-card" style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px", margin: "0 0 1.4rem", padding: "1.2rem 1.4rem" }}>
-      <label className="fb-field-label">Invoice PDF (optional — auto-fills the fields below)
+      <label className="fb-field-label">Invoice PDF or Image (optional — auto-fills the fields below)
         <input
           className="fb-field-mock"
           type="file"
-          accept="application/pdf"
+          accept="application/pdf,image/png,image/jpeg,image/webp"
           disabled={extracting}
           onChange={(e) => void selectFile(e.target.files?.[0])}
         />
       </label>
-      {extracting && <div className="fb-fine">Reading the PDF and extracting fields…</div>}
+      {extracting && <div className="fb-fine">Scanning document and extracting all invoice fields…</div>}
       {extractNotice && !extracting && <div className="fb-fine">{extractNotice}</div>}
       
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
@@ -406,16 +446,18 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
       <div style={{ marginTop: ".4rem" }}>
         <button
           type="button"
-          className="fb-btn fb-btn-outline"
+          className="fb-btn fb-btn-outline fb-answer-action"
           style={{ fontSize: ".72rem", padding: ".3rem .6rem" }}
           onClick={() => setShowCompanyDetails((v) => !v)}
+          aria-expanded={showCompanyDetails}
         >
-          {showCompanyDetails ? "Hide additional company & payment details ▲" : "Add company addresses, TINs & remittance bank details ▼"}
+          <span className={"fb-link-toggle-caret" + (showCompanyDetails ? " is-open" : "")}>▸</span>
+          {showCompanyDetails ? "Hide additional company & payment details" : "Add company addresses, TINs & remittance bank details"}
         </button>
       </div>
 
       {showCompanyDetails && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem", background: "var(--card-subtle, #f9fafb)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--line)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem", background: "var(--bg-alt)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--line)" }}>
           <label className="fb-field-label">Supplier TIN
             <input className="fb-field-mock" {...field("supplier_tin")} placeholder="e.g. C1234567890" />
           </label>
@@ -560,7 +602,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("overdue")}
           aria-pressed={categoryFilter === "overdue"}
         >
-          <div className="fb-kpi-label">🔴 Overdue</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 2 10 18H2z" /><path d="M12 9v4M12 16h.01" /></svg>
+            Overdue
+          </div>
           <div className="fb-kpi-value" style={{ color: stats.overdueCount > 0 ? "var(--chart-attn)" : undefined }}>
             {stats.overdueCount} ({stats.overdueAmount})
           </div>
@@ -571,7 +616,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("unpaid")}
           aria-pressed={categoryFilter === "unpaid"}
         >
-          <div className="fb-kpi-label">🟡 Unpaid / Current</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>
+            Unpaid / Current
+          </div>
           <div className="fb-kpi-value">
             {stats.unpaidCount} ({stats.unpaidAmount})
           </div>
@@ -582,7 +630,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("paid")}
           aria-pressed={categoryFilter === "paid"}
         >
-          <div className="fb-kpi-label">🟢 Paid / Settled</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>
+            Paid / Settled
+          </div>
           <div className="fb-kpi-value" style={{ color: "var(--chart-good)" }}>
             {stats.paidCount} ({stats.paidAmount})
           </div>
@@ -593,7 +644,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("review")}
           aria-pressed={categoryFilter === "review"}
         >
-          <div className="fb-kpi-label">⚠️ Needs Review</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
+            Needs Review
+          </div>
           <div className="fb-kpi-value">{stats.reviewCount}</div>
         </button>
         <button
@@ -602,7 +656,10 @@ function AllInvoicesPanel() {
           onClick={() => setCategoryFilter("all")}
           aria-pressed={categoryFilter === "all"}
         >
-          <div className="fb-kpi-label">📋 Total ({stats.allCount})</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" /></svg>
+            Total ({stats.allCount})
+          </div>
           <div className="fb-kpi-value">{stats.allAmount}</div>
         </button>
       </div>

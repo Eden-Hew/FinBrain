@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppState } from "../lib/appState";
+import { Modal } from "../components/Modal";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import { PERSONAS } from "../lib/personas";
 import { FB_EINVOICE_STATUS_LABEL } from "../data/sampleData";
@@ -160,7 +161,8 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
 
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const canManage = PERSONAS[askRole].capabilities.manageEinvoiceReadiness;
-  const showApproveBtn = record.status === "pending";
+  const needsAction = record.status === "review" || (!record.supplier_tin || !record.supplier_tin.trim());
+  const showApproveBtn = record.status === "pending" && !needsAction;
   const isPaid = Boolean(record.paid_at);
   const showRecordPaymentBtn = record.status === "validated" && !isPaid && (canManage || canApprove);
   const showUinPanel = record.status === "validated";
@@ -195,19 +197,24 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
             <p>{record.readiness_reason}</p>
           </div>
           <div style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
-            {(record.status === "review" || record.status === "pending") && canManage && (
-              <button className="fb-btn fb-btn-outline" type="button" onClick={openEdit}>
-                ✏️ Fix &amp; Edit Details
+            {needsAction && (
+              <button className="fb-btn fb-btn-outline fb-answer-action" type="button" onClick={openEdit}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                Fix &amp; Edit Details
               </button>
             )}
-            {record.status === "review" && canManage && (
+            {needsAction && (
               <button
-                className="fb-btn fb-btn-outline"
+                className="fb-btn fb-btn-outline fb-answer-action"
                 type="button"
                 disabled={requestingFix || fixSuccessNotice !== ""}
                 onClick={handleRequestFix}
               >
-                {requestingFix ? "Sending request…" : fixSuccessNotice ? "✓ Fix Requested" : "📩 Request Fix from Supplier"}
+                {requestingFix ? "Sending request…" : fixSuccessNotice ? (
+                  <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Fix Requested</>
+                ) : (
+                  <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>Request Fix from Supplier</>
+                )}
               </button>
             )}
             {showApproveBtn && canApprove && (
@@ -230,7 +237,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
           </div>
         </div>
 
-        {record.status === "review" && (
+        {needsAction && (
           <div
             className="fb-callout"
             style={{
@@ -333,8 +340,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
       )}
 
       {showEditModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: "14px", padding: "1.5rem", maxWidth: "600px", width: "90%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.4)" }}>
+        <Modal onClose={() => setShowEditModal(false)} maxWidth="600px">
             <h2 style={{ fontSize: "1.2rem", marginBottom: ".3rem" }}>Fix &amp; Edit Invoice Details</h2>
             <p className="fb-fine" style={{ marginBottom: "1rem" }}>
               Update invoice fields to resolve compliance issues and enable MyInvois validation.
@@ -473,13 +479,11 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {showPaymentModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: "14px", padding: "1.5rem", maxWidth: "420px", width: "90%", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.4)" }}>
+        <Modal onClose={() => setShowPaymentModal(false)} maxWidth="420px">
             <h2 style={{ fontSize: "1.1rem", marginBottom: ".4rem" }}>Record Payment Settlement</h2>
             <p className="fb-fine" style={{ marginBottom: "1rem" }}>Record payment for invoice <strong>{record.invoice_no || record.id}</strong> (RM {record.total_amount}).</p>
             
@@ -510,8 +514,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
                 {recordingPayment ? "Recording…" : "Confirm Payment"}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -552,15 +555,20 @@ export default function EinvoiceDetail() {
   const isPaid = Boolean(inv.paid_at);
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const canManage = PERSONAS[askRole].capabilities.manageEinvoiceReadiness;
-  const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
-  const showRecordPaymentBtn = inv.status === "validated" && !isPaid && (canManage || canApprove);
-  const showUinPanel = inv.status === "validated";
-  const displayUin = inv.uin || ("MY29A" + inv.id.replace("-", "").toUpperCase());
 
   const getFieldVal = (name: string) => {
     const found = inv.fields.find(([k]) => k.toLowerCase().includes(name.toLowerCase()));
     return found ? found[1] : "";
   };
+
+  const rawTin = getFieldVal("tin");
+  const isTinMissing = !rawTin || rawTin.toLowerCase().includes("missing") || rawTin === "—";
+  const needsAction = inv.status === "review" || isTinMissing;
+
+  const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
+  const showRecordPaymentBtn = inv.status === "validated" && !isPaid && (canManage || canApprove);
+  const showUinPanel = inv.status === "validated";
+  const displayUin = inv.uin || ("MY29A" + inv.id.replace("-", "").toUpperCase());
 
   const openEdit = () => {
     const rawTin = getFieldVal("tin");
@@ -636,26 +644,30 @@ export default function EinvoiceDetail() {
             <p>{inv.description}</p>
           </div>
           <div style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
-            {(inv.status === "review" || inv.status === "pending") && canManage && (
-              <button className="fb-btn fb-btn-outline" type="button" onClick={openEdit}>
-                ✏️ Fix &amp; Edit Details
+            {needsAction && (
+              <button className="fb-btn fb-btn-outline fb-answer-action" type="button" onClick={openEdit}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                Fix &amp; Edit Details
               </button>
             )}
-            {inv.status === "review" && canManage && (
+            {needsAction && (
               <button
-                className="fb-btn fb-btn-outline"
+                className="fb-btn fb-btn-outline fb-answer-action"
                 type="button"
                 disabled={requestingFix || fixSuccessNotice !== ""}
                 onClick={handleMockRequestFix}
               >
-                {requestingFix ? "Sending request…" : fixSuccessNotice ? "✓ Fix Requested" : "📩 Request Fix from Supplier"}
+                {requestingFix ? "Sending request…" : fixSuccessNotice ? (
+                  <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Fix Requested</>
+                ) : (
+                  <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>Request Fix from Supplier</>
+                )}
               </button>
             )}
-            {showApproveBtn && (
+            {showApproveBtn && !needsAction && (
               <button
                 className="fb-btn fb-btn-solid"
                 type="button"
-                disabled={inv.status === "review"}
                 onClick={() => approveEinvoiceById(inv.id)}
               >
                 Approve &amp; Submit to MyInvois
@@ -676,7 +688,7 @@ export default function EinvoiceDetail() {
           </div>
         </div>
 
-        {inv.status === "review" && (
+        {needsAction && (
           <div
             className="fb-callout"
             style={{
@@ -755,8 +767,7 @@ export default function EinvoiceDetail() {
       )}
 
       {showEditModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: "14px", padding: "1.5rem", maxWidth: "600px", width: "90%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.4)" }}>
+        <Modal onClose={() => setShowEditModal(false)} maxWidth="600px">
             <h2 style={{ fontSize: "1.2rem", marginBottom: ".3rem" }}>Fix &amp; Edit Invoice Details</h2>
             <p className="fb-fine" style={{ marginBottom: "1rem" }}>
               Update invoice fields to resolve compliance issues and enable MyInvois validation.
@@ -893,13 +904,11 @@ export default function EinvoiceDetail() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {showPaymentModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: "14px", padding: "1.5rem", maxWidth: "420px", width: "90%", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.4)" }}>
+        <Modal onClose={() => setShowPaymentModal(false)} maxWidth="420px">
             <h2 style={{ fontSize: "1.1rem", marginBottom: ".4rem" }}>Record Payment Settlement</h2>
             <p className="fb-fine" style={{ marginBottom: "1rem" }}>Record payment for invoice <strong>{inv.id}</strong> ({inv.amount}).</p>
             
@@ -937,8 +946,7 @@ export default function EinvoiceDetail() {
                 Confirm Payment
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

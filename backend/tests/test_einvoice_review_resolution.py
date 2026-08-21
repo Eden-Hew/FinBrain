@@ -350,3 +350,59 @@ def test_api_patch_and_put_einvoice_record():
         json={"supplier_tin": "C9999999999"},
     )
     assert not_found_resp.status_code == 404
+
+
+def test_offline_extraction_anomaly_invoice():
+    from app.services.einvoice_extraction import _offline_extraction
+
+    raw_invoice_text = """
+Invoice
+
+Invoice number NV54FJDH-0001
+Date of issue 17 August 2026
+Date due 17 August 2026
+
+Anomaly
+2443 Fillmore Street
+#380-6343
+San Francisco, California 94115
+United States
++1 415-712-4747
+help@anoma.ly
+
+Bill to
+GOH SHENG KAI
+No 30, Jalan Bukit Cendana 4, Taman Bukit Cendana
+71250 Port Dickson
+Negeri Sembilan
+Malaysia
+xiao69227@gmail.com
+
+US$5.00 due 17 August 2026
+
+Pay online
+
+Description Qty Unit price Amount
+OpenCode Go 1 US$10.00 US$10.00
+17 Aug-17 Sept 2026
+
+Subtotal US$10.00
+First month 50% off (50% off) -US$5.00
+Total US$5.00
+Amount due US$5.00
+"""
+    result = _offline_extraction(raw_invoice_text)
+    assert result.supplier_name == "Anomaly"
+    assert "2443 Fillmore Street" in (result.supplier_address or "")
+    assert "San Francisco" in (result.supplier_address or "")
+    assert result.supplier_email == "help@anoma.ly"
+    assert result.supplier_phone == "+1 415-712-4747"
+    assert result.buyer_name == "GOH SHENG KAI"
+    assert "Port Dickson" in (result.buyer_address or "")
+    assert result.buyer_email == "xiao69227@gmail.com"
+    assert result.invoice_no == "NV54FJDH-0001"
+    assert result.issue_date == "2026-08-17"
+    assert result.due_date == "2026-08-17"
+    assert result.currency == "USD"
+    assert result.total_amount == "5.00"
+    assert "OpenCode Go" in (result.item_description or "")

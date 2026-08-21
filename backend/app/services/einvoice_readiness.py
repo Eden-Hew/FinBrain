@@ -167,6 +167,7 @@ def create_record(
     if due_date is None and payload.issue_date is not None:
         terms = get_settings().default_payment_terms_days
         due_date = payload.issue_date + timedelta(days=terms)
+    initial_status = "review" if not payload.supplier_tin or not str(payload.supplier_tin).strip() else "pending"
     record = EInvoiceRecord(
         tenant_id=tenant_id,
         supplier_name=payload.supplier_name,
@@ -182,7 +183,7 @@ def create_record(
         tax_type=payload.tax_type,
         tax_rate=payload.tax_rate,
         total_amount=payload.total_amount,
-        status="pending",
+        status=initial_status,
     )
     db.add(record)
     db.flush()
@@ -238,7 +239,14 @@ def create_record(
     db.commit()
     sync_einvoice_tokenized_content(db, record)
     _recalculate_attention_if_enabled(db, record)
-    return record_response(record)
+    rows = db.scalars(
+        select(EInvoiceRecord).where(EInvoiceRecord.tenant_id == tenant_id)
+    ).all()
+    name_groups: dict[str, set[str]] = defaultdict(set)
+    for r in rows:
+        name_groups[normalize_business_name(r.supplier_name)].add(r.supplier_name)
+    _, reason = _classify(record, name_groups)
+    return record_response(record, reason=reason)
 
 
 def get_record(db: Session, record_id: int, tenant_id: str) -> EInvoiceRecordResponse:

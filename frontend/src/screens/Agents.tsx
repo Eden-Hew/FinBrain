@@ -71,12 +71,19 @@ const VOICE_LANG: Record<string, string> = { en: "en-US", ms: "ms-MY", zh: "zh-C
 
 type UploadState = "idle" | "previewing" | "protected" | "committing" | "complete" | "failed";
 
+// Reuses the same stroke paths as the Approvals/Search/e-Invoicing icons
+// elsewhere in the app (Home cards, command palette) instead of emoji, so
+// the suggestion chips match the rest of the product's icon language.
+const ICON_APPROVALS = <path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />;
+const ICON_SEARCH = <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>;
+const ICON_INVOICE = <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />;
+
 const SUGGESTIONS = [
-  { text: "Why are payment approvals being delayed, and what should we do next?", icon: "📋" },
-  { text: "Summarize all approval-delay records and cite every source.", icon: "📋" },
-  { text: "Which records have no assigned owner?", icon: "🔍" },
-  { text: "How many high-priority approval delays came from email this week?", icon: "📋" },
-  { text: "Which invoices need fixes before MyInvois submission?", icon: "🧾" },
+  { text: "Why are payment approvals being delayed, and what should we do next?", icon: ICON_APPROVALS },
+  { text: "Summarize all approval-delay records and cite every source.", icon: ICON_APPROVALS },
+  { text: "Which records have no assigned owner?", icon: ICON_SEARCH },
+  { text: "How many high-priority approval delays came from email this week?", icon: ICON_APPROVALS },
+  { text: "Which invoices need fixes before MyInvois submission?", icon: ICON_INVOICE },
 ];
 
 let msgId = 1;
@@ -370,7 +377,7 @@ export default function Agents() {
           </div>
         )}
 
-        <div className={"fb-chat-transcript-wrap" + (hasConversation ? " is-active" : "")}>
+        <div className={"fb-chat-transcript-wrap" + (hasConversation ? " is-active" : " is-empty")}>
           <div className="fb-unified-chat-panel">
           <div className="fb-chat-messages fb-unified-messages" ref={messagesRef}>
             {messages.map((msg, idx) => (
@@ -420,39 +427,41 @@ export default function Agents() {
                       />
                     )}
                     {msg.from === "agent" && msg.protectedText && !msg.brief && msg.queryIntent !== "list_records" && (
-                      <div style={{ display: "flex", gap: ".5rem", marginTop: ".7rem", flexWrap: "wrap" }}>
-                        {msg.exposure && msg.rawQuestion && msg.modelQuestion && (
-                          <StandaloneExposureReceipt exposure={msg.exposure} rawQuestion={msg.rawQuestion} modelQuestion={msg.modelQuestion} protectedAnswer={msg.protectedText} authorizedAnswer={msg.text} />
-                        )}
-                        <span className="fb-fine" style={{ marginTop: ".45rem" }}>
-                          {msg.mode} · {msg.citations?.length ?? 0} cited sources
-                        </span>
-                        {msg.rawQuestion && (
-                          <button
-                            type="button"
-                            className="fb-btn fb-btn-outline"
-                            onClick={() => send(msg.rawQuestion ?? "")}
-                          >
-                            Re-run as selected persona
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {!!msg.citations?.length && !msg.brief && msg.queryIntent !== "list_records" && (
-                      <details style={{ marginTop: ".8rem" }}>
-                        <summary className="fb-btn fb-btn-outline" style={{ cursor: "pointer", width: "fit-content" }}>
-                          Inspect {msg.citations.length} cited source{msg.citations.length === 1 ? "" : "s"}
-                        </summary>
-                        <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
-                          {msg.citations.map((citation) => (
-                            <div className="fb-rec-evidence" key={citation.citation_id}>
-                              <strong>{citation.citation_id}</strong> · {citation.source_system} · {citation.record_type ?? "record"}
-                              {citation.occurred_at ? ` · ${new Date(citation.occurred_at).toLocaleDateString()}` : ""}
-                              <div style={{ marginTop: ".35rem" }}>{citation.protected_excerpt}</div>
-                            </div>
-                          ))}
+                      <div className="fb-answer-actions">
+                        <div className="fb-answer-actions-row">
+                          {msg.exposure && msg.rawQuestion && msg.modelQuestion && (
+                            <StandaloneExposureReceipt exposure={msg.exposure} rawQuestion={msg.rawQuestion} modelQuestion={msg.modelQuestion} protectedAnswer={msg.protectedText} authorizedAnswer={msg.text} />
+                          )}
+                          {msg.rawQuestion && (
+                            <button
+                              type="button"
+                              className="fb-btn fb-btn-outline fb-answer-action"
+                              onClick={() => send(msg.rawQuestion ?? "")}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.7-6.4" /><path d="M21 4v5h-5" /></svg>
+                              Re-run as selected persona
+                            </button>
+                          )}
+                          {!!msg.citations?.length && (
+                            <details className="fb-answer-action-details">
+                              <summary className="fb-btn fb-btn-outline fb-answer-action">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+                                Inspect {msg.citations.length} cited source{msg.citations.length === 1 ? "" : "s"}
+                              </summary>
+                              <div style={{ display: "grid", gap: ".5rem", marginTop: ".8rem" }}>
+                                {msg.citations.map((citation) => (
+                                  <div className="fb-rec-evidence" key={citation.citation_id}>
+                                    <strong>{citation.citation_id}</strong> · {citation.source_system} · {citation.record_type ?? "record"}
+                                    {citation.occurred_at ? ` · ${new Date(citation.occurred_at).toLocaleDateString()}` : ""}
+                                    <div style={{ marginTop: ".35rem" }}>{citation.protected_excerpt}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
                         </div>
-                      </details>
+                        <span className="fb-fine">{msg.mode} · {msg.citations?.length ?? 0} cited sources</span>
+                      </div>
                     )}
                     {msg.embed && <div className="fb-chat-embed">{msg.embed}</div>}
                     {msg.from === "agent" && scopedCustomerId !== null && msg.turnId && !msg.isFallback && (askRole === "finance_ops" || askRole === "owner_director") && (
@@ -469,7 +478,10 @@ export default function Agents() {
               <span className="fb-eyebrow fb-suggest-label">Try asking</span>
               {SUGGESTIONS.map((s) => (
                 <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
-                  <span className="fb-suggest-chip-icon" aria-hidden="true">{s.icon}</span>{s.text}
+                  <span className="fb-suggest-chip-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{s.icon}</svg>
+                  </span>
+                  {s.text}
                 </button>
               ))}
             </div>
@@ -613,63 +625,64 @@ export default function Agents() {
 
             <div className="fb-composer2-toolbar-row">
               <div className="fb-composer2-tools">
-                <div
-                  className="fb-recent-menu"
-                  onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setRecentOpen(false);
-                  }}
-                >
-                  <button
-                    className="fb-btn fb-btn-outline"
-                    type="button"
-                    onClick={() => setRecentOpen((v) => !v)}
-                    aria-expanded={recentOpen}
-                    title="Recent conversations (stored on this device only)"
+                <div className="fb-composer2-tool-group">
+                  <div
+                    className="fb-recent-menu"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node)) setRecentOpen(false);
+                    }}
                   >
-                    Recent
-                  </button>
-                  {recentOpen && (
-                    <div className="fb-recent-menu-panel" role="menu">
-                      {recentConversations.length === 0 ? (
-                        <div className="fb-fine" style={{ padding: ".8rem" }}>No recent conversations yet.</div>
-                      ) : (
-                        recentConversations.map((entry) => (
-                          <button
-                            key={entry.id}
-                            className="fb-recent-menu-item"
-                            type="button"
-                            role="menuitem"
-                            onClick={() => resumeConversation(entry)}
-                          >
-                            <span className="fb-recent-menu-title">{entry.title}</span>
-                            <span className="fb-fine">
-                              {entry.turnCount} turn{entry.turnCount === 1 ? "" : "s"} · {new Date(entry.lastActivityAt).toLocaleDateString()}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                      <div className="fb-recent-menu-footnote">Stored on this device only</div>
-                    </div>
+                    <button
+                      className="fb-btn fb-btn-outline"
+                      type="button"
+                      onClick={() => setRecentOpen((v) => !v)}
+                      aria-expanded={recentOpen}
+                      title="Recent conversations (stored on this device only)"
+                    >
+                      Recent
+                    </button>
+                    {recentOpen && (
+                      <div className="fb-recent-menu-panel" role="menu">
+                        {recentConversations.length === 0 ? (
+                          <div className="fb-fine" style={{ padding: ".8rem" }}>No recent conversations yet.</div>
+                        ) : (
+                          recentConversations.map((entry) => (
+                            <button
+                              key={entry.id}
+                              className="fb-recent-menu-item"
+                              type="button"
+                              role="menuitem"
+                              onClick={() => resumeConversation(entry)}
+                            >
+                              <span className="fb-recent-menu-title">{entry.title}</span>
+                              <span className="fb-fine">
+                                {entry.turnCount} turn{entry.turnCount === 1 ? "" : "s"} · {new Date(entry.lastActivityAt).toLocaleDateString()}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                        <div className="fb-recent-menu-footnote">Stored on this device only</div>
+                      </div>
+                    )}
+                  </div>
+                  {hasConversation && (
+                    <button
+                      className="fb-btn fb-btn-outline"
+                      type="button"
+                      onClick={startNewConversation}
+                      title="Clear this conversation and start a new one"
+                    >
+                      New chat
+                    </button>
                   )}
                 </div>
-                {hasConversation && (
-                  <button
-                    className="fb-btn fb-btn-outline"
-                    type="button"
-                    onClick={startNewConversation}
-                    title="Clear this conversation and start a new one"
-                  >
-                    New chat
-                  </button>
-                )}
+                <span className="fb-composer2-divider" aria-hidden="true" />
                 <button className="fb-icon-btn" type="button" title="Upload a file" onClick={() => fileInputRef.current?.click()} aria-label="Upload from computer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
-                <button className="fb-icon-btn" type="button" disabled title="Web search isn't connected in this prototype" aria-label="Web search isn't connected in this prototype" aria-disabled="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" strokeLinecap="round" /><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" strokeLinecap="round" /></svg>
-                </button>
-                <span className="fb-fine" title="FinBrain masks personal details before any question reaches the AI model.">
-                  🔒 Privacy protected{protectedTurnCount > 0 ? ` · ${protectedTurnCount} ${protectedTurnCount === 1 ? "reply" : "replies"}` : ""}
+                <span className="fb-composer-privacy-note" title="FinBrain masks personal details before any question reaches the AI model.">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                  Privacy protected{protectedTurnCount > 0 ? ` · ${protectedTurnCount} ${protectedTurnCount === 1 ? "reply" : "replies"}` : ""}
                 </span>
               </div>
               <button className="fb-send-btn2" type="button" onClick={() => send(input)} aria-label={FB_UI_STRINGS[lang].send}>

@@ -82,12 +82,13 @@ async def einvoice_record_extract(
     request: Request,
     _principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),
 ) -> InvoiceExtraction:
-    content_type = request.headers.get("content-type", "")
-    if content_type != "application/pdf":
-        raise HTTPException(status_code=422, detail="only_pdf_supported")
+    content_type = request.headers.get("content-type", "application/pdf").split(";")[0].strip()
+    if not (content_type == "application/pdf" or content_type.startswith("image/")):
+        content_type = "application/pdf"
+    filename = "invoice.png" if content_type.startswith("image/") else "invoice.pdf"
     data = await _bounded_pdf_body(request)
     try:
-        return extract_invoice_fields(data, filename="invoice.pdf", mime_type="application/pdf")
+        return extract_invoice_fields(data, filename=filename, mime_type=content_type)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except RuntimeError as error:
@@ -131,27 +132,9 @@ def einvoice_record(
 
 
 @router.patch("/einvoice-records/{record_id}", response_model=EInvoiceRecordResponse)
-def einvoice_record_patch(
-    record_id: int,
-    payload: EInvoiceUpdatePayload,
-    principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),
-    db: Session = Depends(get_db),
-) -> EInvoiceRecordResponse:
-    try:
-        return update_record(
-            db,
-            record_id,
-            payload,
-            role=principal.role,
-            actor_ref=principal.actor_ref,
-            tenant_id=str(principal.tenant_id),
-        )
-    except LookupError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-
 @router.put("/einvoice-records/{record_id}", response_model=EInvoiceRecordResponse)
-def einvoice_record_put(
+@router.post("/einvoice-records/{record_id}/update", response_model=EInvoiceRecordResponse)
+def einvoice_record_patch(
     record_id: int,
     payload: EInvoiceUpdatePayload,
     principal: AuthPrincipal = Depends(require_roles(*_MANAGE_ROLES)),

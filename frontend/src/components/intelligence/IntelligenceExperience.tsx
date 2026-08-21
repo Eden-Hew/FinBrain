@@ -162,7 +162,10 @@ export function StandaloneExposureReceipt({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className="fb-btn fb-btn-outline" type="button" onClick={() => setOpen(true)}>AI Exposure Receipt</button>
+      <button className="fb-btn fb-btn-outline fb-answer-action" type="button" onClick={() => setOpen(true)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" /></svg>
+        AI Exposure Receipt
+      </button>
       {open && (
         <Overlay title="AI Exposure Receipt" onClose={() => setOpen(false)}>
           <ExposureContent exposure={exposure} rawQuestion={rawQuestion} modelQuestion={modelQuestion} protectedAnswer={protectedAnswer} authorizedAnswer={authorizedAnswer} />

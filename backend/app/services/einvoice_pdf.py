@@ -275,6 +275,15 @@ def _format_curr(val: Decimal | float | int | str, curr: str = "MYR") -> str:
     return f"{curr} {dec:,.2f}"
 
 
+def _clean_or_fallback(value: Any, fallback: str) -> str:
+    if value is None:
+        return fallback
+    s = str(value).strip()
+    if not s or s in ("—", "-", "None", "null", "undefined"):
+        return fallback
+    return s
+
+
 def normalize_einvoice_data(
     data_or_record: Any = None,
     **kwargs: Any,
@@ -470,67 +479,62 @@ def normalize_einvoice_data(
                 sup_profile = p
                 break
 
-    supplier_email_val = str(
-        raw.get("supplier_email")
-        or raw.get("email")
-        or (sup_profile.get("email") if sup_profile else "billing@supplier.my")
+    supplier_email_val = _clean_or_fallback(
+        raw.get("supplier_email") or raw.get("email"),
+        sup_profile.get("email") if sup_profile else "billing@supplier.my",
     )
-    supplier_reg_no = str(
-        raw.get("supplier_reg_no")
-        or raw.get("registration_no")
-        or (sup_profile.get("reg_no") if sup_profile else "199001008888")
+    supplier_reg_no = _clean_or_fallback(
+        raw.get("supplier_reg_no") or raw.get("registration_no"),
+        sup_profile.get("reg_no") if sup_profile else "199001008888",
     )
-    supplier_address = str(
-        raw.get("supplier_address")
-        or raw.get("address")
-        or (sup_profile.get("address") if sup_profile else "Bangsar Corporate Tower, No. 129 Jalan Bangsar, 59200 Kuala Lumpur")
+    supplier_address = _clean_or_fallback(
+        raw.get("supplier_address") or raw.get("address"),
+        sup_profile.get("address") if sup_profile else "Bangsar Corporate Tower, No. 129 Jalan Bangsar, 59200 Kuala Lumpur",
     )
-    supplier_phone = str(
-        raw.get("supplier_phone")
-        or raw.get("contact")
-        or (sup_profile.get("phone") if sup_profile else "+603-2296 5566")
+    supplier_phone = _clean_or_fallback(
+        raw.get("supplier_phone") or raw.get("contact"),
+        sup_profile.get("phone") if sup_profile else "+603-2296 5566",
     )
 
     buyer_key = buyer_name.strip().lower()
     is_default_buyer = "finbrain" in buyer_key or not buyer_name or buyer_name == "—"
 
-    buyer_email_val = str(
-        raw.get("buyer_email")
-        or (DEFAULT_BUYER_PROFILE["email"] if is_default_buyer else "finance@buyer.my")
+    buyer_email_val = _clean_or_fallback(
+        raw.get("buyer_email"),
+        DEFAULT_BUYER_PROFILE["email"] if is_default_buyer else "finance@buyer.my",
     )
-    buyer_tin = str(
+    buyer_tin = _clean_or_fallback(
         raw.get("buyer_tin")
-        or (raw.get("tin") if raw.get("buyer_name") and raw.get("tin") != supplier_tin else None)
-        or (DEFAULT_BUYER_PROFILE["tin"] if is_default_buyer else "C9876543210")
+        or (raw.get("tin") if raw.get("buyer_name") and raw.get("tin") != supplier_tin else None),
+        DEFAULT_BUYER_PROFILE["tin"] if is_default_buyer else "C9876543210",
     )
-    buyer_reg_no = str(
-        raw.get("buyer_reg_no")
-        or (DEFAULT_BUYER_PROFILE["reg_no"] if is_default_buyer else "202401012345")
+    buyer_reg_no = _clean_or_fallback(
+        raw.get("buyer_reg_no"),
+        DEFAULT_BUYER_PROFILE["reg_no"] if is_default_buyer else "202401012345",
     )
-    buyer_address = str(
-        raw.get("buyer_address")
-        or (DEFAULT_BUYER_PROFILE["address"] if is_default_buyer else "Level 20, Menara FinTech, 50450 Kuala Lumpur")
+    buyer_address = _clean_or_fallback(
+        raw.get("buyer_address"),
+        DEFAULT_BUYER_PROFILE["address"] if is_default_buyer else "Level 20, Menara FinTech, 50450 Kuala Lumpur",
     )
-    buyer_phone = str(
-        raw.get("buyer_phone")
-        or (DEFAULT_BUYER_PROFILE["phone"] if is_default_buyer else "+603-2111 2222")
+    buyer_phone = _clean_or_fallback(
+        raw.get("buyer_phone"),
+        DEFAULT_BUYER_PROFILE["phone"] if is_default_buyer else "+603-2111 2222",
     )
 
-    item_desc = str(
-        raw.get("item_description")
-        or raw.get("description")
-        or (f"Commercial electricity billing cycle as per invoice {invoice_no}" if "tenaga" in sup_key else None)
+    item_desc = _clean_or_fallback(
+        raw.get("item_description") or raw.get("description"),
+        (f"Commercial electricity billing cycle as per invoice {invoice_no}" if "tenaga" in sup_key else None)
         or (f"Fleet fuel refuel & maintenance as per invoice {invoice_no}" if "petronas" in sup_key else None)
         or (f"Broadband and digital telecommunication services {invoice_no}" if "telekom" in sup_key else None)
         or (f"Cloud infrastructure compute & storage as per invoice {invoice_no}" if "aws" in sup_key else None)
         or (f"Hardware workstation upgrades as per invoice {invoice_no}" if "dell" in sup_key else None)
-        or f"Commercial supply / services as per invoice {invoice_no}"
+        or f"Commercial supply / services as per invoice {invoice_no}",
     )
-    bank_acc = str(
-        raw.get("bank_account_no")
-        or (sup_profile.get("bank_account_no") if sup_profile else "Maybank 514011223344")
+    bank_acc = _clean_or_fallback(
+        raw.get("bank_account_no"),
+        sup_profile.get("bank_account_no") if sup_profile else "Maybank 514011223344",
     )
-    pay_terms = str(raw.get("payment_terms") or raw.get("terms") or "Net 30 Days")
+    pay_terms = _clean_or_fallback(raw.get("payment_terms") or raw.get("terms"), "Net 30 Days")
 
     supplier = SupplierInfo(
         name=supplier_name,
