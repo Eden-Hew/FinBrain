@@ -941,7 +941,7 @@ export async function updateEinvoiceRecord(
         body: JSON.stringify(payload),
       }),
     );
-  } catch (_patchErr) {
+  } catch {
     return parse<EInvoiceApiRecord>(
       await authenticatedFetch(`/einvoice-records/${recordId}/update`, {
         method: "POST",
