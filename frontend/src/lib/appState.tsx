@@ -14,7 +14,7 @@ import {
   type Sop,
 } from "../data/sampleData";
 import { PERSONAS } from "./personas";
-import { fetchEinvoiceOutreachDrafts, fetchRecommendations } from "../api/client";
+import { fetchEinvoiceOutreachDrafts, fetchOutreachActions, fetchRecommendations } from "../api/client";
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
@@ -360,6 +360,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           const drafts = await fetchEinvoiceOutreachDrafts();
           count += drafts.length;
         }
+        if (askRole === "finance_ops" || askRole === "owner_director" || askRole === "compliance") {
+          const outreach = await fetchOutreachActions();
+          count += outreach.filter((row) => row.status === "pending_approval").length;
+        }
         if (active) setApprovalsCount(count);
       } catch {
         if (active) setApprovalsCount(0);
@@ -367,7 +371,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
     void load();
     return () => { active = false; };
-  }, [askRole]);
+  }, [askRole, screen]);
 
   const value: AppStateValue = {
     screen, show,

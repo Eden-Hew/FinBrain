@@ -14,6 +14,7 @@ from app.models import (
     Tenant,
     TokenizedContent,
 )
+from app.services.outreach import resolve_identity_claim
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 OTHER_TENANT = "00000000-0000-0000-0000-000000000002"
@@ -261,5 +262,42 @@ def test_self_identification_is_protected_claim_and_name_change_requires_review(
         assert customer.primary_name_token == "PERSON_aaaaaaaaaa"
         assert customer.identity_review_status == "review_required"
         assert db.query(CustomerIdentityClaim).filter_by(status="conflicting").count() >= 1
+
+        accepted = db.scalar(
+            select(CustomerIdentityClaim).where(
+                CustomerIdentityClaim.customer_id == customer.id,
+                CustomerIdentityClaim.identity_token == "PERSON_bbbbbbbbbb",
+            )
+        )
+        resolve_identity_claim(
+            db,
+            accepted.id,
+            tenant_id=TENANT,
+            decision="accept_primary",
+            reviewer_id="30000000-0000-0000-0000-000000000004",
+            actor_ref="owner",
+        )
+        repeated = TokenizedContent(
+            tenant_id=TENANT,
+            source_record_id="email:name-conflict-resolved-repeat",
+            source_system="email",
+            record_type="email",
+            content_text=(
+                "From: PERSON_aaaaaaaaaa <EMAIL_0123456789>\n"
+                "I am PERSON_bbbbbbbbbb."
+            ),
+            safe_metadata={"sender_email": TOKEN},
+            processing_status="ready",
+        )
+        repeated_receipt = EmailIngestionReceipt(
+            message_ref_hash="receipt-name-conflict-resolved-repeat"
+        )
+        db.add_all([repeated, repeated_receipt])
+        db.commit()
+        link_verified_sender(db, receipt=repeated_receipt, protected_row=repeated)
+        db.refresh(customer)
+
+        assert customer.profile_status == "confirmed"
+        assert customer.identity_review_status == "clear"
     finally:
         db.close()

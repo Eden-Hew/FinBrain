@@ -26,6 +26,7 @@ from app.security.detect import contains_known_pii
 from app.security.detokenize import TOKEN_PATTERN
 from app.security.protection import protect_text
 from app.security.tokenize import persist_vault_entries, protect_scalar
+from app.services.customer_identity_state import reconcile_customer_identity_state
 from app.services.morpheus import morpheus_chat
 from app.services.reasoning import unknown_tokens
 from app.services.workflow_audit import write_workflow_event
@@ -220,10 +221,13 @@ def resolve_identity_claim(
                 CustomerIdentityClaim.customer_id == customer.id,
                 CustomerIdentityClaim.id != claim.id,
                 CustomerIdentityClaim.status.in_(("observed", "conflicting")),
-                CustomerIdentityClaim.identity_token != claim.identity_token,
             )
         ).all():
-            other.status = "rejected"
+            other.status = (
+                "accepted"
+                if other.identity_token == claim.identity_token
+                else "rejected"
+            )
             other.reviewed_by_user_id = reviewer_id
             other.reviewed_at = now
     elif decision == "accept_alias":
@@ -254,17 +258,8 @@ def resolve_identity_claim(
         claim.status = "rejected"
     claim.reviewed_by_user_id = reviewer_id
     claim.reviewed_at = now
-    unresolved = db.scalars(
-        select(CustomerIdentityClaim).where(
-            CustomerIdentityClaim.tenant_id == tenant_id,
-            CustomerIdentityClaim.customer_id == customer.id,
-            CustomerIdentityClaim.id != claim.id,
-            CustomerIdentityClaim.status == "conflicting",
-        )
-    ).all()
-    customer.identity_review_status = "review_required" if unresolved else "clear"
-    if customer.identity_review_status == "clear":
-        customer.profile_status = "confirmed"
+    db.flush()
+    reconcile_customer_identity_state(db, customer)
     write_workflow_event(
         db,
         event_type="customer_identity_claim_resolved",
@@ -633,6 +628,8 @@ def transition_action(
             require_verified=True,
         )
         customer = db.get(Customer, row.customer_id)
+        if customer is not None:
+            reconcile_customer_identity_state(db, customer)
         if customer is None or customer.profile_status != "confirmed":
             raise ValueError("confirmed_customer_required")
         if customer.identity_review_status != "clear":

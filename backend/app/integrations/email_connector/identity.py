@@ -16,6 +16,7 @@ from app.models import (
     TokenizedContent,
 )
 from app.security.detokenize import TOKEN_PATTERN
+from app.services.customer_identity_state import reconcile_customer_identity_state
 from app.services.workflow_audit import write_workflow_event
 
 IDENTITY_TOKEN_PATTERN = re.compile(r"(?:PERSON|ORG)_[0-9a-f]{10}")
@@ -136,9 +137,7 @@ def _record_claims(
             reverse=True,
         )[0]
         customer.primary_name_token = preferred[0]
-    conflict = any(token != customer.primary_name_token for token, _basis, _c in candidates)
-    if conflict:
-        customer.identity_review_status = "review_required"
+    unresolved_conflict = False
     for token, basis, confidence in candidates:
         existing = db.scalar(
             select(CustomerIdentityClaim).where(
@@ -151,6 +150,8 @@ def _record_claims(
         )
         claim_status = "conflicting" if token != customer.primary_name_token else "observed"
         if existing is None:
+            if claim_status == "conflicting":
+                unresolved_conflict = True
             db.add(
                 CustomerIdentityClaim(
                     tenant_id=customer.tenant_id,
@@ -170,7 +171,10 @@ def _record_claims(
             existing.occurrence_count += 1
             if existing.status not in {"accepted", "rejected"}:
                 existing.status = claim_status
-    if conflict:
+                if claim_status == "conflicting":
+                    unresolved_conflict = True
+    if unresolved_conflict:
+        customer.identity_review_status = "review_required"
         write_workflow_event(
             db,
             event_type="customer_identity_review_required",
@@ -181,6 +185,8 @@ def _record_claims(
             tenant_id=customer.tenant_id,
             event_payload={"endpoint_id": endpoint.id, "evidence_content_id": protected_row.id},
         )
+    db.flush()
+    reconcile_customer_identity_state(db, customer)
 
 
 def route_email_sender(

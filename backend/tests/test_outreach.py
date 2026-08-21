@@ -543,6 +543,84 @@ def test_provisional_or_conflicted_customer_cannot_enter_outreach_queue():
         db.close()
 
 
+def test_submit_repairs_stale_customer_flags_after_identity_was_resolved():
+    db, customer = _session()
+    try:
+        customer.profile_status = "provisional"
+        customer.identity_review_status = "review_required"
+        customer.primary_name_token = "PERSON_aaaaaaaaaa"
+        endpoint = CustomerEndpoint(
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            channel="email",
+            endpoint_token="EMAIL_0123456789",
+            verification_status="verified",
+            origin="inbound_email",
+        )
+        evidence = TokenizedContent(
+            tenant_id=TENANT,
+            source_record_id="email:resolved-stale-flags",
+            source_system="email",
+            content_text="From: PERSON_aaaaaaaaaa <EMAIL_0123456789>",
+            processing_status="ready",
+        )
+        db.add_all([endpoint, evidence])
+        db.flush()
+        db.add_all([
+            CustomerIdentityClaim(
+                tenant_id=TENANT,
+                customer_id=customer.id,
+                endpoint_id=endpoint.id,
+                identity_token="PERSON_aaaaaaaaaa",
+                claim_basis="self_identification",
+                confidence=1.0,
+                evidence_content_id=evidence.id,
+                status="accepted",
+            ),
+            CustomerIdentityClaim(
+                tenant_id=TENANT,
+                customer_id=customer.id,
+                endpoint_id=endpoint.id,
+                identity_token="PERSON_bbbbbbbbbb",
+                claim_basis="display_name",
+                confidence=0.8,
+                evidence_content_id=evidence.id,
+                status="rejected",
+            ),
+        ])
+        db.commit()
+        action = create_action(
+            db,
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            endpoint_id=endpoint.id,
+            subject="Subject",
+            body="Body",
+            idempotency_key="resolved-stale-flags",
+            evidence_ids=[],
+            created_by_user_id=USER,
+            actor_role=UserRole.FINANCE_OPS.value,
+            actor_ref="actor",
+        )
+
+        submitted = transition_action(
+            db,
+            action.id,
+            "submit",
+            tenant_id=TENANT,
+            role=UserRole.FINANCE_OPS,
+            user_id=USER,
+            actor_ref="actor",
+        )
+
+        db.refresh(customer)
+        assert submitted.status == "pending_approval"
+        assert customer.profile_status == "confirmed"
+        assert customer.identity_review_status == "clear"
+    finally:
+        db.close()
+
+
 def test_owner_resolves_identity_claim_without_storing_plaintext_name():
     db, customer = _session()
     try:
