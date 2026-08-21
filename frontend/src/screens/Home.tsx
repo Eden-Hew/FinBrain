@@ -525,10 +525,11 @@ function GreetingHeader({ firstName, lang }: { firstName: string | null; lang: L
 
 export default function Home() {
   const { t, lang } = useI18n();
-  const { show, sampleBanner, dismissSampleBanner } = useAppState();
+  const { show, sampleBanner, dismissSampleBanner, displayName } = useAppState();
   const { identity } = useAuth();
-  const firstName = identity?.email ? identity.email.split("@")[0] : null;
-  const displayName = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1) : null;
+  const emailFirstName = identity?.email ? identity.email.split("@")[0] : null;
+  const derivedName = emailFirstName ? emailFirstName.charAt(0).toUpperCase() + emailFirstName.slice(1) : null;
+  const greetingName = displayName || derivedName;
 
   return (
     <div className="fb-root fb-shell">
@@ -543,7 +544,7 @@ export default function Home() {
       )}
 
       <header className="fb-app-header">
-        <GreetingHeader firstName={displayName} lang={lang} />
+        <GreetingHeader firstName={greetingName} lang={lang} />
         <h1>{t("home.title")}</h1>
         <p>{t("home.desc")}</p>
       </header>

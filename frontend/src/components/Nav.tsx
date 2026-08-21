@@ -5,7 +5,6 @@ import { useI18n } from "../lib/i18n";
 import { PERSONAS } from "../lib/personas";
 import { useActiveSection, useScrollY } from "../lib/interactivity";
 import { useUiChrome } from "../lib/uiChrome";
-import { useTheme } from "../lib/theme";
 import { LogoMark, Wordmark } from "./Logo";
 
 const MARKETING_SECTIONS = ["landing-flow", "landing-agents", "landing-proof", "landing-why", "landing-pricing", "landing-faq"];
@@ -194,6 +193,24 @@ export function Sidebar({ current, backTo, backLabel }: { current?: Screen; back
             ))}
           </nav>
         )}
+
+        {!backTo && (
+          <div className="fb-sidebar-footer">
+            <button
+              className={"fb-sidebar-link" + (current === "settings" ? " is-current" : "")}
+              type="button"
+              onClick={() => navigate("settings")}
+            >
+              <span className="fb-sidebar-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </span>
+              <span className="fb-sidebar-label">{t("nav.settings")}</span>
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );
@@ -209,17 +226,18 @@ const SCREEN_TITLES: Partial<Record<Screen, string>> = {
   audit: "Audit & Access",
   approvals: "Workflows",
   ingestion: "Sources",
+  settings: "Settings",
 };
 
 export function AppTopBar({ current }: { current: Screen }) {
-  const { show, askRole, approvalsCount } = useAppState();
+  const { show, askRole, approvalsCount, avatarColor, displayName } = useAppState();
   const { openAsk, openPalette } = useUiChrome();
   const { identity, signOut } = useAuth();
-  const { lang, setLang, t } = useI18n();
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { t } = useI18n();
   const [profileOpen, setProfileOpen] = useState(false);
   const activeRole = identity?.role ?? askRole;
   const email = identity?.email ?? "Authenticated user";
+  const profileLabel = displayName || email;
 
   return (
     <div className="fb-topbar">
@@ -258,24 +276,16 @@ export function AppTopBar({ current }: { current: Screen }) {
           }}
         >
           <button className="fb-topbar-profile-trigger" type="button" onClick={() => setProfileOpen((v) => !v)} aria-haspopup="true" aria-expanded={profileOpen}>
-            <span className="fb-topbar-avatar" aria-hidden="true">{email[0]?.toUpperCase() ?? "?"}</span>
+            <span className="fb-topbar-avatar" style={{ background: avatarColor }} aria-hidden="true">{profileLabel[0]?.toUpperCase() ?? "?"}</span>
             <span className="fb-topbar-profile-text">
-              <span className="fb-topbar-profile-email">{email}</span>
+              <span className="fb-topbar-profile-email">{profileLabel}</span>
               <span className="fb-topbar-profile-role">{PERSONAS[activeRole].label}</span>
             </span>
             <svg className="fb-topbar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
           </button>
           {profileOpen && (
             <div className="fb-topbar-profile-menu" role="menu">
-              <div className="fb-sidebar-lang-row" role="tablist" aria-label="Language">
-                <button className={lang === "en" ? "is-current" : undefined} type="button" onClick={() => setLang("en")}>EN</button>
-                <button className={lang === "ms" ? "is-current" : undefined} type="button" onClick={() => setLang("ms")}>BM</button>
-                <button className={lang === "zh" ? "is-current" : undefined} type="button" onClick={() => setLang("zh")}>中文</button>
-              </div>
-              <div className="fb-sidebar-lang-row" role="tablist" aria-label="Appearance">
-                <button className={theme === "light" ? "is-current" : undefined} type="button" onClick={() => theme === "dark" && toggleTheme()}>☾ Light</button>
-                <button className={theme === "dark" ? "is-current" : undefined} type="button" onClick={() => theme === "light" && toggleTheme()}>☀ Dark</button>
-              </div>
+              <button className="fb-sidebar-link" type="button" onClick={() => { setProfileOpen(false); show("settings"); }}>{t("nav.settings")}</button>
               <button className="fb-sidebar-logout" type="button" onClick={() => void signOut().then(() => show("landing"))}>{t("nav.logout")}</button>
             </div>
           )}

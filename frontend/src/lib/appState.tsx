@@ -18,7 +18,9 @@ import { fetchEinvoiceOutreachDrafts, fetchRecommendations } from "../api/client
 
 export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
-  | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion";
+  | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion" | "settings";
+
+export const AVATAR_COLORS = ["#266DF0", "#7C4DFF", "#F43F7C", "#0E9F8E", "#F5A524", "#17B892"];
 
 interface AppStateValue {
   screen: Screen;
@@ -79,10 +81,31 @@ interface AppStateValue {
   focusedRecommendationId: number | null;
   openApprovalRecommendation: (id: number) => void;
   clearFocusedRecommendation: () => void;
+
+  avatarColor: string;
+  setAvatarColor: (color: string) => void;
+  displayName: string;
+  setDisplayName: (name: string) => void;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
 let askHandoffId = 0;
+
+function readLocalPref(key: string, fallback: string): string {
+  try {
+    return window.localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalPref(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Private browsing / storage disabled: preference just won't persist.
+  }
+}
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<Screen>("landing");
@@ -102,6 +125,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [auditRows, setAuditRows] = useState<AuditRow[]>(() => initialAuditRows());
   const [pendingActions, setPendingActions] = useState<PendingAction[]>(() => initialPendingActions());
   const [focusedRecommendationId, setFocusedRecommendationId] = useState<number | null>(null);
+  const [avatarColor, setAvatarColorState] = useState<string>(() => readLocalPref("fb-avatar-color", AVATAR_COLORS[0]));
+  const [displayName, setDisplayNameState] = useState<string>(() => readLocalPref("fb-display-name", ""));
+
+  const setAvatarColor = useCallback((color: string) => {
+    setAvatarColorState(color);
+    writeLocalPref("fb-avatar-color", color);
+  }, []);
+
+  const setDisplayName = useCallback((name: string) => {
+    setDisplayNameState(name);
+    writeLocalPref("fb-display-name", name);
+  }, []);
 
   const show = useCallback((s: Screen) => {
     setScreen(s);
@@ -119,7 +154,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const pathname = window.location.pathname.replace(/^\//, "");
         const matchedScreen: Screen = pathname && [
           "landing", "login", "signup", "onboarding", "security", "legal",
-          "home", "agents", "customers", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion"
+          "home", "agents", "customers", "einvoice", "einvoice-detail", "finance", "audit", "approvals", "ingestion", "settings"
         ].includes(pathname) ? (pathname as Screen) : "landing";
         setScreen(matchedScreen);
       }
@@ -360,6 +395,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     pendingActions, approveAction, rejectAction,
     approvalsCount,
     focusedRecommendationId, openApprovalRecommendation, clearFocusedRecommendation,
+    avatarColor, setAvatarColor, displayName, setDisplayName,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

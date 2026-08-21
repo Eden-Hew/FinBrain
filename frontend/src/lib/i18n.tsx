@@ -19,7 +19,14 @@ const FB_I18N: Record<string, Record<Lang, string>> = {
   "nav.financeDashboard": { en: "Financial Intelligence", ms: "Risikan Kewangan", zh: "财务情报" },
   "nav.audit": { en: "Audit & Access", ms: "Audit & Akses", zh: "审计与权限" },
   "nav.approvals": { en: "Workflows", ms: "Aliran Kerja", zh: "工作流程" },
+  "nav.settings": { en: "Settings", ms: "Tetapan", zh: "设置" },
   "nav.logout": { en: "Log out", ms: "Log keluar", zh: "退出登录" },
+  "settings.title": { en: "Settings", ms: "Tetapan", zh: "设置" },
+  "settings.desc": {
+    en: "Your personal preferences for this workspace — stored on this device.",
+    ms: "Keutamaan peribadi anda untuk ruang kerja ini — disimpan pada peranti ini.",
+    zh: "此工作区的个人偏好设置——保存在本设备上。",
+  },
   "einvoice.title": { en: "e-Invoicing", ms: "e-Invois", zh: "电子发票" },
   "einvoice.desc": {
     en: "Receipts and invoices, mapped to MyInvois and submitted to LHDN — PDPA-aligned end to end.",
@@ -76,9 +83,28 @@ interface I18nContextValue {
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
+const LANG_STORAGE_KEY = "fb-lang";
+
+function readStoredLang(): Lang {
+  try {
+    const raw = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (raw === "en" || raw === "ms" || raw === "zh") return raw;
+  } catch {
+    // Private browsing / storage disabled: fall through to the default.
+  }
+  return "en";
+}
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Lang>("en");
+  const [lang, setLangState] = useState<Lang>(() => readStoredLang());
+  const setLang = (next: Lang) => {
+    setLangState(next);
+    try {
+      window.localStorage.setItem(LANG_STORAGE_KEY, next);
+    } catch {
+      // Private browsing / storage disabled: choice just won't persist.
+    }
+  };
   const value = useMemo<I18nContextValue>(
     () => ({
       lang,
