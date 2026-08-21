@@ -279,15 +279,31 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         ...f,
         supplier_name: extracted.supplier_name ?? f.supplier_name,
         supplier_tin: extracted.supplier_tin ?? f.supplier_tin,
+        supplier_email: extracted.supplier_email ?? f.supplier_email,
+        supplier_reg_no: extracted.supplier_reg_no ?? f.supplier_reg_no,
+        supplier_phone: extracted.supplier_phone ?? f.supplier_phone,
+        supplier_address: extracted.supplier_address ?? f.supplier_address,
         buyer_name: extracted.buyer_name ?? f.buyer_name,
+        buyer_email: extracted.buyer_email ?? f.buyer_email,
+        buyer_tin: extracted.buyer_tin ?? f.buyer_tin,
+        buyer_reg_no: extracted.buyer_reg_no ?? f.buyer_reg_no,
+        buyer_phone: extracted.buyer_phone ?? f.buyer_phone,
+        buyer_address: extracted.buyer_address ?? f.buyer_address,
         invoice_no: extracted.invoice_no ?? f.invoice_no,
+        item_description: extracted.item_description ?? f.item_description,
         issue_date: extracted.issue_date ?? f.issue_date,
+        due_date: extracted.due_date ?? f.due_date,
         currency: extracted.currency ?? f.currency,
         tax_type: extracted.tax_type ?? f.tax_type,
         tax_rate: extracted.tax_rate ?? f.tax_rate,
+        payment_terms: extracted.payment_terms ?? f.payment_terms,
+        bank_account_no: extracted.bank_account_no ?? f.bank_account_no,
         total_amount: extracted.total_amount ?? f.total_amount,
       }));
-      setExtractNotice("Fields auto-filled from the PDF — please review before saving.");
+      if (extracted.supplier_address || extracted.supplier_tin || extracted.bank_account_no) {
+        setShowCompanyDetails(true);
+      }
+      setExtractNotice("Fields auto-filled from the scanned PDF — please review before saving.");
     } catch (err) {
       setExtractNotice(
         "Couldn't auto-fill from this PDF (" +
