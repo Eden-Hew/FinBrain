@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
 import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
@@ -29,6 +30,7 @@ interface Message {
   id: number;
   from: "user" | "agent";
   text: string;
+  timestamp: number;
   embed?: React.ReactNode;
   thinking?: boolean;
   protectedText?: string;
@@ -88,6 +90,7 @@ const SUGGESTIONS = [
 ];
 
 let msgId = 1;
+const now = () => Date.now();
 
 export default function Agents() {
   const {
@@ -99,10 +102,12 @@ export default function Agents() {
     clearPendingAskPrompt,
     currentCustomerKey,
     clearCustomerContext,
+    displayName,
   } = useAppState();
+  const { identity } = useAuth();
   const { lang, t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([
-    { id: msgId++, from: "agent", text: "Hi, I’m FinBrain. I can handle invoicing, spreadsheets, files, sales follow-ups, compliance checks, and more — ask me anything, or try one of the suggestions above." },
+    { id: msgId++, from: "agent", text: "Hi, I’m FinBrain. I can handle invoicing, spreadsheets, files, sales follow-ups, compliance checks, and more — ask me anything, or try one of the suggestions above.", timestamp: now() },
   ]);
   const [input, setInput] = useState("");
   const [chips, setChips] = useState<ContextChip[]>([]);
@@ -129,6 +134,9 @@ export default function Agents() {
   const voiceSupported = typeof window !== "undefined"
     && Boolean((window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition
       || (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition);
+  const profileLabel = displayName || identity?.email || "You";
+  const userInitial = profileLabel[0]?.toUpperCase() ?? "U";
+  const formatTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -156,10 +164,10 @@ export default function Agents() {
       setChips([]);
     }
 
-    setMessages((m) => [...m, { id: msgId++, from: "user", text: attachedNote + trimmed }]);
+    setMessages((m) => [...m, { id: msgId++, from: "user", text: attachedNote + trimmed, timestamp: now() }]);
     setInput("");
     const thinkingId = msgId++;
-    setMessages((m) => [...m, { id: thinkingId, from: "agent", text: "", thinking: true }]);
+    setMessages((m) => [...m, { id: thinkingId, from: "agent", text: "", thinking: true, timestamp: now() }]);
     scrollToBottom();
 
     setTimeout(async () => {
@@ -206,6 +214,7 @@ export default function Agents() {
           ? {
               ...message,
               thinking: false,
+              timestamp: now(),
               text: finalText,
               protectedText,
               citations,
@@ -249,6 +258,7 @@ export default function Agents() {
         id: msgId++,
         from: "agent",
         text: "New protected conversation started. What would you like to investigate?",
+        timestamp: now(),
       },
     ]);
   };
@@ -267,6 +277,7 @@ export default function Agents() {
         id: msgId++,
         from: "agent",
         text: `Continuing "${entry.title}" — ask your next question and FinBrain will pick up where that conversation left off.`,
+        timestamp: now(),
       },
     ]);
   };
@@ -385,8 +396,12 @@ export default function Agents() {
               <div
                 key={msg.id}
                 ref={idx === messages.length - 1 ? lastMessageRef : undefined}
-                className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}
+                className={"fb-chat-row " + msg.from + (msg.brief || msg.queryIntent === "list_records" ? " is-wide" : "")}
               >
+                <span className={"fb-chat-avatar " + msg.from} aria-hidden="true">
+                  {msg.from === "agent" ? <LogoMark large /> : userInitial}
+                </span>
+                <div className={"fb-chat-bubble " + msg.from + (msg.embed ? " has-embed" : "") + (msg.brief ? " has-intelligence" : "") + (msg.queryIntent === "list_records" ? " has-structured-records" : "")}>
                 {msg.thinking ? (
                   <div className="fb-intel-building" role="status">
                     <span className="fb-thinking"><span></span><span></span><span></span></span>
@@ -460,6 +475,8 @@ export default function Agents() {
                     )}
                   </>
                 )}
+                {!msg.thinking && <span className="fb-chat-time">{formatTime(msg.timestamp)}</span>}
+                </div>
               </div>
             ))}
           </div>

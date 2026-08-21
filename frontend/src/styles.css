@@ -414,13 +414,24 @@ img{max-width:100%}
    back-and-forth exists (.is-active) the full-height scrolling layout above
    takes back over. */
 .fb-chat-transcript-wrap.is-empty{justify-content:center;}
-.fb-chat-transcript-wrap.is-empty .fb-unified-chat-panel{flex:0 1 auto;max-height:min(68vh,640px);}
+.fb-chat-transcript-wrap.is-empty .fb-unified-chat-panel{flex:0 1 auto;max-height:min(76vh,760px);}
 .fb-chat-transcript-wrap.is-empty .fb-unified-messages{flex:0 0 auto;}
 
-.fb-unified-messages .fb-chat-bubble{max-width:min(640px,80%);padding:.8rem 1.05rem;border-radius:18px;font-size:.86rem;line-height:1.62;}
-.fb-unified-messages .fb-chat-bubble.agent{max-width:min(720px,92%);}
+.fb-unified-chat-panel .fb-unified-messages{gap:1.15rem;}
+.fb-chat-row{display:flex;align-items:flex-end;gap:.65rem;max-width:min(680px,84%);}
+.fb-chat-row.agent{align-self:flex-start;max-width:min(760px,94%);}
+.fb-chat-row.user{align-self:flex-end;flex-direction:row-reverse;}
+.fb-chat-row.is-wide{max-width:100%;}
+.fb-chat-avatar{width:36px;height:36px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;color:#fff;background:var(--accent);}
+.fb-chat-avatar.agent{background:transparent;}
+.fb-chat-avatar.agent svg{width:36px;height:36px;}
+.fb-chat-time{display:block;margin-top:.5rem;font-size:.68rem;color:var(--ink-soft);}
+.fb-chat-bubble.user .fb-chat-time{color:color-mix(in srgb, var(--btn-text) 65%, transparent);text-align:right;}
+.fb-unified-messages .fb-chat-bubble{flex:1 1 auto;min-width:0;padding:.95rem 1.2rem;border-radius:20px;font-size:.92rem;line-height:1.65;}
 .fb-unified-messages .fb-chat-bubble.has-intelligence,
-.fb-unified-messages .fb-chat-bubble.has-structured-records{max-width:100%;}
+.fb-unified-messages .fb-chat-bubble.has-structured-records{padding:0;border:0;background:transparent;}
+.fb-unified-messages .fb-chat-bubble.has-intelligence .fb-chat-time,
+.fb-unified-messages .fb-chat-bubble.has-structured-records .fb-chat-time{margin-top:.8rem;}
 .fb-answer-actions{display:flex;flex-direction:column;gap:.5rem;margin-top:.8rem;}
 .fb-answer-actions-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-start;}
 .fb-answer-action{display:inline-flex;align-items:center;gap:.4rem;}
@@ -1050,6 +1061,10 @@ html{scroll-behavior:smooth;}
   .fb-nav-user-name,.fb-nav-user-role{font-size:.7rem;}
   .fb-unified-wrap{padding:0 .8rem;}
   .fb-unified-messages{padding:.8rem;}
+  .fb-chat-row{max-width:94%;gap:.45rem;}
+  .fb-chat-row.agent{max-width:97%;}
+  .fb-chat-avatar{width:28px;height:28px;}
+  .fb-chat-avatar.agent svg{width:28px;height:28px;}
   .fb-intel-brief-head,.fb-intel-action{flex-direction:column;}
   .fb-structured-records-head{flex-direction:column;}
   .fb-intel-action-controls{align-items:flex-start;}
