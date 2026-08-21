@@ -160,7 +160,8 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
 
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const canManage = PERSONAS[askRole].capabilities.manageEinvoiceReadiness;
-  const showApproveBtn = record.status === "pending";
+  const needsAction = record.status === "review" || (!record.supplier_tin || !record.supplier_tin.trim());
+  const showApproveBtn = record.status === "pending" && !needsAction;
   const isPaid = Boolean(record.paid_at);
   const showRecordPaymentBtn = record.status === "validated" && !isPaid && (canManage || canApprove);
   const showUinPanel = record.status === "validated";
@@ -195,12 +196,12 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
             <p>{record.readiness_reason}</p>
           </div>
           <div style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
-            {record.status === "review" && canManage && (
+            {needsAction && (
               <button className="fb-btn fb-btn-outline" type="button" onClick={openEdit}>
                 ✏️ Fix &amp; Edit Details
               </button>
             )}
-            {record.status === "review" && canManage && (
+            {needsAction && (
               <button
                 className="fb-btn fb-btn-outline"
                 type="button"
@@ -230,7 +231,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
           </div>
         </div>
 
-        {record.status === "review" && (
+        {needsAction && (
           <div
             className="fb-callout"
             style={{
@@ -552,15 +553,20 @@ export default function EinvoiceDetail() {
   const isPaid = Boolean(inv.paid_at);
   const canApprove = PERSONAS[askRole].capabilities.approveEinvoiceSubmission;
   const canManage = PERSONAS[askRole].capabilities.manageEinvoiceReadiness;
-  const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
-  const showRecordPaymentBtn = inv.status === "validated" && !isPaid && (canManage || canApprove);
-  const showUinPanel = inv.status === "validated";
-  const displayUin = inv.uin || ("MY29A" + inv.id.replace("-", "").toUpperCase());
 
   const getFieldVal = (name: string) => {
     const found = inv.fields.find(([k]) => k.toLowerCase().includes(name.toLowerCase()));
     return found ? found[1] : "";
   };
+
+  const rawTin = getFieldVal("tin");
+  const isTinMissing = !rawTin || rawTin.toLowerCase().includes("missing") || rawTin === "—";
+  const needsAction = inv.status === "review" || isTinMissing;
+
+  const showApproveBtn = inv.status !== "submitted" && inv.status !== "validated";
+  const showRecordPaymentBtn = inv.status === "validated" && !isPaid && (canManage || canApprove);
+  const showUinPanel = inv.status === "validated";
+  const displayUin = inv.uin || ("MY29A" + inv.id.replace("-", "").toUpperCase());
 
   const openEdit = () => {
     const rawTin = getFieldVal("tin");
@@ -636,12 +642,12 @@ export default function EinvoiceDetail() {
             <p>{inv.description}</p>
           </div>
           <div style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
-            {inv.status === "review" && canManage && (
+            {needsAction && (
               <button className="fb-btn fb-btn-outline" type="button" onClick={openEdit}>
                 ✏️ Fix &amp; Edit Details
               </button>
             )}
-            {inv.status === "review" && canManage && (
+            {needsAction && (
               <button
                 className="fb-btn fb-btn-outline"
                 type="button"
@@ -651,11 +657,10 @@ export default function EinvoiceDetail() {
                 {requestingFix ? "Sending request…" : fixSuccessNotice ? "✓ Fix Requested" : "📩 Request Fix from Supplier"}
               </button>
             )}
-            {showApproveBtn && (
+            {showApproveBtn && !needsAction && (
               <button
                 className="fb-btn fb-btn-solid"
                 type="button"
-                disabled={inv.status === "review"}
                 onClick={() => approveEinvoiceById(inv.id)}
               >
                 Approve &amp; Submit to MyInvois
@@ -676,7 +681,7 @@ export default function EinvoiceDetail() {
           </div>
         </div>
 
-        {inv.status === "review" && (
+        {needsAction && (
           <div
             className="fb-callout"
             style={{
