@@ -345,6 +345,24 @@ function CaptureCard() {
   );
 }
 
+function MiniSparkline({ points }: { points: { total_amount: string }[] }) {
+  const values = points.map((p) => Number(p.total_amount) || 0);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const w = 100, h = 26;
+  const stepX = values.length > 1 ? w / (values.length - 1) : 0;
+  const coords = values.map((v, i) => `${i * stepX},${h - ((v - min) / range) * (h - 4) - 2}`).join(" ");
+  const lastX = (values.length - 1) * stepX;
+  const lastY = h - ((values[values.length - 1] - min) / range) * (h - 4) - 2;
+  return (
+    <svg className="fb-home-sparkline" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label="Revenue trend over recent periods">
+      <polyline points={coords} fill="none" stroke="var(--chart-good)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lastX} cy={lastY} r="2.4" fill="var(--chart-good)" />
+    </svg>
+  );
+}
+
 function FinanceCard() {
   const { show } = useAppState();
   const [data, setData] = useState<FinanceSummaryResponse | null>(null);
@@ -380,6 +398,12 @@ function FinanceCard() {
         <>
           <div className="fb-home-card-headline"><span className="num">{formatRm(Number(data.outstanding_ar) || 0)}</span></div>
           <div className="fb-home-card-sub">Outstanding receivables</div>
+          {data.revenue_trend.length > 1 && (
+            <div className="fb-home-sparkline-row">
+              <span className="fb-home-sparkline-label">Revenue trend</span>
+              <MiniSparkline points={data.revenue_trend} />
+            </div>
+          )}
           <div className="fb-home-card-foot">
             {data.revenue_change_pct != null && (
               <span className={"fb-home-delta-badge" + (data.revenue_change_pct >= 0 ? " is-active" : "")}>
@@ -393,32 +417,14 @@ function FinanceCard() {
   );
 }
 
-function AttentionSection() {
+function AttentionSection({
+  needsAttention, state, onRetry,
+}: {
+  needsAttention: CustomerSummary[];
+  state: LoadState;
+  onRetry: () => void;
+}) {
   const { showCustomerDetail } = useAppState();
-  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
-  const [state, setState] = useState<LoadState>("loading");
-  const [reloadToken, setReloadToken] = useState(0);
-  const retry = () => setReloadToken((t) => t + 1);
-
-  useEffect(() => {
-    let active = true;
-    const run = async () => {
-      setState("loading");
-      try {
-        const res = await fetchCustomers();
-        if (active) { setCustomers(res); setState("loaded"); }
-      } catch {
-        if (active) setState("error");
-      }
-    };
-    void run();
-    return () => { active = false; };
-  }, [reloadToken]);
-
-  const needsAttention = [...customers]
-    .filter((c) => c.priority !== "healthy")
-    .sort((a, b) => b.attention_score - a.attention_score)
-    .slice(0, 5);
 
   return (
     <section style={{ marginBottom: "1.6rem" }}>
@@ -436,7 +442,7 @@ function AttentionSection() {
       )}
       {state === "error" && (
         <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>
-          <ErrorWithRetry message="Couldn't load customer data." onRetry={retry} />
+          <ErrorWithRetry message="Couldn't load customer data." onRetry={onRetry} />
         </div>
       )}
       {state === "loaded" && needsAttention.length === 0 && (
@@ -513,10 +519,10 @@ function GreetingHeader({ firstName, lang }: { firstName: string | null; lang: L
     <div className={"fb-greeting is-" + period}>
       <span className="fb-greeting-icon"><GreetingIcon period={period} /></span>
       <div>
-        <div className="fb-greeting-line">
+        <h1 className="fb-greeting-line">
           {t(GREETING_KEY[period])}
           {firstName && <span className="fb-greeting-name">, {firstName}</span>}
-        </div>
+        </h1>
         <div className="fb-greeting-clock">{timeStr} · {dateStr}</div>
       </div>
     </div>
@@ -525,11 +531,42 @@ function GreetingHeader({ firstName, lang }: { firstName: string | null; lang: L
 
 export default function Home() {
   const { t, lang } = useI18n();
-  const { show, sampleBanner, dismissSampleBanner, displayName } = useAppState();
+  const { show, sampleBanner, dismissSampleBanner, displayName, askAbout, approvalsCount } = useAppState();
   const { identity } = useAuth();
   const emailFirstName = identity?.email ? identity.email.split("@")[0] : null;
   const derivedName = emailFirstName ? emailFirstName.charAt(0).toUpperCase() + emailFirstName.slice(1) : null;
   const greetingName = displayName || derivedName;
+
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
+  const [customersState, setCustomersState] = useState<LoadState>("loading");
+  const [customersReloadToken, setCustomersReloadToken] = useState(0);
+  const retryCustomers = () => setCustomersReloadToken((n) => n + 1);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      setCustomersState("loading");
+      try {
+        const res = await fetchCustomers();
+        if (active) { setCustomers(res); setCustomersState("loaded"); }
+      } catch {
+        if (active) setCustomersState("error");
+      }
+    };
+    void run();
+    return () => { active = false; };
+  }, [customersReloadToken]);
+
+  const needsAttention = [...customers]
+    .filter((c) => c.priority !== "healthy")
+    .sort((a, b) => b.attention_score - a.attention_score)
+    .slice(0, 5);
+  const topAttention = needsAttention[0] ?? null;
+
+  const askSuggestions: string[] = [];
+  if (topAttention) askSuggestions.push(`What's overdue for ${topAttention.name}?`);
+  if (approvalsCount > 0) askSuggestions.push("What's waiting for my approval?");
+  askSuggestions.push("What should I prioritize this week?");
 
   return (
     <div className="fb-root fb-shell">
@@ -544,13 +581,13 @@ export default function Home() {
       )}
 
       <header className="fb-app-header">
+        <div className="fb-eyebrow" style={{ marginBottom: ".5rem" }}>{t("home.title")}</div>
         <GreetingHeader firstName={greetingName} lang={lang} />
-        <h1>{t("home.title")}</h1>
-        <p>{t("home.desc")}</p>
+        <p className="fb-fine" style={{ marginTop: ".6rem" }}>{t("home.desc")}</p>
       </header>
 
       <div className="fb-page-body">
-        <AttentionSection />
+        <AttentionSection needsAttention={needsAttention} state={customersState} onRetry={retryCustomers} />
 
         <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Workspace signals</div>
         <div className="fb-home-grid">
@@ -565,6 +602,11 @@ export default function Home() {
           <div className="fb-home-ask-cta-copy">
             <h2>Have a question about any of this?</h2>
             <p>Ask FinBrain in plain language — it cites every source and never shows a persona more than their role allows.</p>
+            <div className="fb-home-ask-chips">
+              {askSuggestions.map((q) => (
+                <button key={q} className="fb-home-ask-chip" type="button" onClick={() => askAbout(q)}>{q}</button>
+              ))}
+            </div>
           </div>
           <button className="fb-btn fb-btn-solid" type="button" onClick={() => show("agents")}>
             Start a conversation

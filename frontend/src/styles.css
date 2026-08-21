@@ -292,7 +292,7 @@ img{max-width:100%}
 .fb-greeting.is-morning .fb-greeting-icon{background:color-mix(in srgb, var(--chart-attn) 16%, transparent);color:var(--chart-attn);}
 .fb-greeting.is-afternoon .fb-greeting-icon{background:var(--accent-soft);color:var(--accent);}
 .fb-greeting.is-evening .fb-greeting-icon{background:var(--purple-soft);color:var(--purple);}
-.fb-greeting-line{font-family:var(--font-display);font-size:1.32rem;font-weight:800;letter-spacing:-.01em;color:var(--ink);}
+.fb-greeting-line{margin:0;font-family:var(--font-display);font-size:1.32rem;font-weight:800;letter-spacing:-.01em;color:var(--ink);}
 .fb-greeting.is-morning .fb-greeting-name{color:var(--chart-attn);}
 .fb-greeting.is-afternoon .fb-greeting-name{color:var(--accent);}
 .fb-greeting.is-evening .fb-greeting-name{color:var(--purple);}
@@ -649,10 +649,16 @@ img{max-width:100%}
 
 .fb-home-delta-badge{display:inline-flex;align-items:center;font-size:.72rem;font-weight:700;color:var(--ink-soft);}
 .fb-home-delta-badge.is-active{color:var(--chart-good);}
+.fb-home-sparkline-row{display:flex;align-items:center;gap:.5rem;margin:.35rem 0;}
+.fb-home-sparkline-label{font-size:.64rem;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.04em;flex:0 0 auto;}
+.fb-home-sparkline{width:64px;height:22px;flex:0 0 auto;}
 
 .fb-home-ask-cta{position:relative;overflow:hidden;background:linear-gradient(135deg, var(--accent-soft), transparent 60%), var(--card);border:1px solid var(--line);border-radius:20px;padding:1.6rem 1.8rem;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;font-family:'Inter',-apple-system,sans-serif;}
 .fb-home-ask-cta-copy h2{font-family:'Inter Tight','Inter',sans-serif;font-size:1.05rem;font-weight:700;margin:0 0 .4rem;}
 .fb-home-ask-cta-copy p{font-size:.8rem;color:var(--ink-soft);margin:0;max-width:46ch;}
+.fb-home-ask-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.9rem;}
+.fb-home-ask-chip{padding:.45rem .9rem;border-radius:99px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);font-size:.76rem;font-weight:600;cursor:pointer;font-family:inherit;transition:border-color .15s ease,color .15s ease,background-color .15s ease;}
+.fb-home-ask-chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
 @media (max-width:640px){
   .fb-home-ask-cta{flex-direction:column;align-items:flex-start;}
 }
