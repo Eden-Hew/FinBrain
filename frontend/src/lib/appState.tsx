@@ -20,8 +20,6 @@ export type Screen =
   | "landing" | "login" | "signup" | "onboarding" | "security" | "legal"
   | "home" | "agents" | "customers" | "einvoice" | "einvoice-detail" | "finance" | "audit" | "approvals" | "ingestion" | "settings";
 
-export const AVATAR_COLORS = ["#266DF0", "#7C4DFF", "#F43F7C", "#0E9F8E", "#F5A524", "#17B892"];
-
 interface AppStateValue {
   screen: Screen;
   show: (screen: Screen) => void;
@@ -82,8 +80,6 @@ interface AppStateValue {
   openApprovalRecommendation: (id: number) => void;
   clearFocusedRecommendation: () => void;
 
-  avatarColor: string;
-  setAvatarColor: (color: string) => void;
   displayName: string;
   setDisplayName: (name: string) => void;
 }
@@ -125,13 +121,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [auditRows, setAuditRows] = useState<AuditRow[]>(() => initialAuditRows());
   const [pendingActions, setPendingActions] = useState<PendingAction[]>(() => initialPendingActions());
   const [focusedRecommendationId, setFocusedRecommendationId] = useState<number | null>(null);
-  const [avatarColor, setAvatarColorState] = useState<string>(() => readLocalPref("fb-avatar-color", AVATAR_COLORS[0]));
   const [displayName, setDisplayNameState] = useState<string>(() => readLocalPref("fb-display-name", ""));
-
-  const setAvatarColor = useCallback((color: string) => {
-    setAvatarColorState(color);
-    writeLocalPref("fb-avatar-color", color);
-  }, []);
 
   const setDisplayName = useCallback((name: string) => {
     setDisplayNameState(name);
@@ -395,7 +385,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     pendingActions, approveAction, rejectAction,
     approvalsCount,
     focusedRecommendationId, openApprovalRecommendation, clearFocusedRecommendation,
-    avatarColor, setAvatarColor, displayName, setDisplayName,
+    displayName, setDisplayName,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

@@ -230,7 +230,7 @@ const SCREEN_TITLES: Partial<Record<Screen, string>> = {
 };
 
 export function AppTopBar({ current }: { current: Screen }) {
-  const { show, askRole, approvalsCount, avatarColor, displayName } = useAppState();
+  const { show, askRole, approvalsCount, displayName } = useAppState();
   const { openAsk, openPalette } = useUiChrome();
   const { identity, signOut } = useAuth();
   const { t } = useI18n();
@@ -276,7 +276,7 @@ export function AppTopBar({ current }: { current: Screen }) {
           }}
         >
           <button className="fb-topbar-profile-trigger" type="button" onClick={() => setProfileOpen((v) => !v)} aria-haspopup="true" aria-expanded={profileOpen}>
-            <span className="fb-topbar-avatar" style={{ background: avatarColor }} aria-hidden="true">{profileLabel[0]?.toUpperCase() ?? "?"}</span>
+            <span className="fb-topbar-avatar" aria-hidden="true">{profileLabel[0]?.toUpperCase() ?? "?"}</span>
             <span className="fb-topbar-profile-text">
               <span className="fb-topbar-profile-email">{profileLabel}</span>
               <span className="fb-topbar-profile-role">{PERSONAS[activeRole].label}</span>

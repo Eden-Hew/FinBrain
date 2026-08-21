@@ -320,11 +320,6 @@ img{max-width:100%}
 .fb-settings-lang-row{display:flex;gap:.6rem;padding:1.1rem 1.3rem;flex-wrap:wrap;}
 .fb-settings-lang-pill{padding:.55rem 1.1rem;border-radius:99px;border:1px solid var(--line);background:var(--bg-alt);color:var(--ink-soft);font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;transition:border-color .15s ease,color .15s ease,background-color .15s ease;}
 .fb-settings-lang-pill.is-selected{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);}
-.fb-settings-avatar-row{display:flex;align-items:center;gap:.9rem;padding:1.3rem;flex-wrap:wrap;}
-.fb-settings-avatar-preview{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:1.1rem;flex:0 0 auto;}
-.fb-settings-swatch{width:34px;height:34px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;transition:transform .15s ease,border-color .15s ease;}
-.fb-settings-swatch:hover{transform:scale(1.08);}
-.fb-settings-swatch.is-selected{border-color:var(--ink);box-shadow:0 0 0 2px var(--card);}
 .fb-settings-field{padding:1.1rem 1.3rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
 .fb-settings-field:last-child{border-bottom:none;}
 .fb-settings-field-label{font-size:.78rem;color:var(--ink-soft);font-weight:600;flex:0 0 auto;}

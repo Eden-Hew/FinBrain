@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useI18n, type Lang } from "../lib/i18n";
-import { useAppState, AVATAR_COLORS } from "../lib/appState";
+import { useAppState } from "../lib/appState";
 import { useAuth } from "../auth/AuthProvider";
 import { useTheme, type ThemePreference } from "../lib/theme";
 import { Sidebar, AppTopBar } from "../components/Nav";
@@ -21,13 +21,12 @@ const LANG_OPTIONS: { value: Lang; label: string }[] = [
 export default function Settings() {
   const { t, lang, setLang } = useI18n();
   const { preference, setPreference } = useTheme();
-  const { askRole, avatarColor, setAvatarColor, displayName, setDisplayName } = useAppState();
+  const { askRole, displayName, setDisplayName } = useAppState();
   const { identity } = useAuth();
   const [nameDraft, setNameDraft] = useState(displayName);
 
   const email = identity?.email ?? "—";
   const role = identity?.role ?? askRole;
-  const initials = (displayName || email)[0]?.toUpperCase() ?? "?";
 
   const saveName = () => setDisplayName(nameDraft.trim());
 
@@ -78,26 +77,6 @@ export default function Settings() {
                 >
                   {opt.label}
                 </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="fb-settings-section">
-          <h2>Avatar</h2>
-          <div className="fb-settings-card">
-            <div className="fb-settings-avatar-row">
-              <span className="fb-settings-avatar-preview" style={{ background: avatarColor }}>{initials}</span>
-              {AVATAR_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={"fb-settings-swatch" + (avatarColor === color ? " is-selected" : "")}
-                  style={{ background: color }}
-                  onClick={() => setAvatarColor(color)}
-                  aria-label={`Use ${color} as avatar color`}
-                  aria-pressed={avatarColor === color}
-                />
               ))}
             </div>
           </div>
