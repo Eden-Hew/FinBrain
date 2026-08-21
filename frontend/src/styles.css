@@ -251,6 +251,24 @@ img{max-width:100%}
 .fb-topbar-profile-role{font-size:.66rem;color:var(--ink-soft);}
 .fb-topbar-chevron{width:14px;height:14px;color:var(--ink-soft);flex:0 0 auto;}
 .fb-topbar-profile-menu{position:absolute;top:calc(100% + .5rem);right:0;min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);padding:.6rem;display:flex;flex-direction:column;gap:.6rem;z-index:60;}
+
+.fb-notif{position:relative;}
+.fb-notif-panel{position:absolute;top:calc(100% + .6rem);right:0;width:min(340px,90vw);max-height:420px;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);padding:.5rem;z-index:60;}
+.fb-notif-panel-head{padding:.5rem .6rem;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);}
+.fb-notif-item{display:flex;align-items:flex-start;gap:.65rem;width:100%;text-align:left;padding:.6rem;border-radius:10px;border:none;background:none;cursor:pointer;font-family:inherit;}
+.fb-notif-item:hover{background:var(--bg-alt);}
+.fb-notif-item-icon{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.fb-notif-item-icon svg{width:15px;height:15px;}
+.fb-notif-item-icon.is-invoicing{background:var(--accent-soft);color:var(--accent);}
+.fb-notif-item-icon.is-audit{background:var(--purple-soft);color:var(--purple);}
+.fb-notif-item-icon.is-approvals{background:color-mix(in srgb, var(--chart-attn) 12%, transparent);color:var(--chart-attn);}
+.fb-notif-item-body{display:flex;flex-direction:column;gap:.15rem;min-width:0;}
+.fb-notif-item-body strong{font-size:.78rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fb-notif-item-body .fb-fine{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fb-notif-empty{padding:1.2rem .6rem;text-align:center;font-size:.75rem;color:var(--ink-soft);}
+@media (max-width:900px){
+  .fb-notif-panel{position:fixed;top:60px;right:.75rem;left:.75rem;width:auto;}
+}
 .fb-topbar-ask svg{width:15px;height:15px;color:var(--accent);}
 @media (max-width:900px){
   /* Placed after the base rules above (both set display:flex) so this
