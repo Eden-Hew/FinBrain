@@ -27,6 +27,27 @@ type LoadState = "loading" | "loaded" | "error";
 
 const TIER_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", monitoring: "Monitoring", healthy: "Healthy" };
 
+// Backend fallback for a customer whose display name never resolved (e.g. "[person — restricted]") —
+// distinct from the PERSON_xxxxx mask tokens MaskedText handles, so it needs its own check.
+function isPlaceholderName(name: string): boolean {
+  return /^\[.*\]$/.test(name.trim());
+}
+
+// Presentational-only casing fix so "GOHSHENGKAI" / "xiao ming" / "Meranti Trading" don't
+// look like three different conventions side by side — never touches the underlying data.
+function displayCase(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return trimmed;
+  const isAllUpper = trimmed === trimmed.toUpperCase() && trimmed !== trimmed.toLowerCase();
+  const isAllLower = trimmed === trimmed.toLowerCase() && trimmed !== trimmed.toUpperCase();
+  if (!isAllUpper && !isAllLower) return trimmed;
+  return trimmed
+    .toLowerCase()
+    .split(" ")
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
+
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diffMs / 60000);
@@ -79,11 +100,12 @@ function ErrorWithRetry({ message, onRetry }: { message: string; onRetry: () => 
 }
 
 function CardShell({
-  tone, icon, label, onClick, children,
+  tone, icon, label, desc, onClick, children,
 }: {
   tone: string;
   icon: React.ReactNode;
   label: string;
+  desc: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -99,7 +121,10 @@ function CardShell({
         </span>
         <span className="fb-home-card-arrow" aria-hidden="true">→</span>
       </div>
-      <div className="fb-home-card-label">{label}</div>
+      <div>
+        <div className="fb-home-card-label">{label}</div>
+        <div className="fb-home-card-desc">{desc}</div>
+      </div>
       {children}
     </button>
   );
@@ -136,6 +161,7 @@ function EinvoiceCard() {
     <CardShell
       tone="einvoice"
       label="e-Invoicing"
+      desc="MyInvois readiness score"
       onClick={() => show("einvoice")}
       icon={<path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />}
     >
@@ -201,6 +227,7 @@ function AuditCard() {
     <CardShell
       tone="audit"
       label="Audit"
+      desc="Hash-chained log of every disclosure"
       onClick={() => show("audit")}
       icon={<path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />}
     >
@@ -265,6 +292,7 @@ function ApprovalsCard() {
     <CardShell
       tone="approvals"
       label="Approvals"
+      desc="Recommendations and drafts waiting on you"
       onClick={() => show("approvals")}
       icon={<path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />}
     >
@@ -320,6 +348,7 @@ function CaptureCard() {
     <CardShell
       tone="capture"
       label="Message Capture"
+      desc="Emails and Telegram messages captured"
       onClick={() => show("ingestion")}
       icon={<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />}
     >
@@ -389,6 +418,7 @@ function FinanceCard() {
     <CardShell
       tone="finance"
       label="Financial Intelligence"
+      desc="Revenue and receivables this period"
       onClick={() => show("finance")}
       icon={<path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />}
     >
@@ -454,14 +484,36 @@ function AttentionSection({
       )}
       {state === "loaded" && needsAttention.length > 0 && (
         <div className="fb-briefing-list">
-          {needsAttention.map((c) => (
-            <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
-              <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
-              <span className="fb-briefing-name">{c.name}</span>
-              <span className="fb-briefing-detail">{formatRm(Number(c.overdue_total))} overdue · {c.attention_score}/100</span>
-              <span className="fb-home-card-arrow" aria-hidden="true">→</span>
-            </button>
-          ))}
+          {needsAttention.map((c) => {
+            const overdueAmt = Number(c.overdue_total) || 0;
+            const outstandingAmt = Number(c.outstanding_total) || 0;
+            const reason = overdueAmt > 0
+              ? `${formatRm(overdueAmt)} overdue`
+              : outstandingAmt > 0
+                ? `${formatRm(outstandingAmt)} outstanding`
+                : "flagged by cross-source signals";
+            const unresolved = c.profile_status !== "confirmed" || c.identity_review_status !== "clear";
+            return (
+              <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
+                <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
+                {isPlaceholderName(c.name) ? (
+                  <span className="fb-briefing-name">
+                    <span className="fb-mask-badge">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                      Protected customer
+                    </span>
+                  </span>
+                ) : (
+                  <span className="fb-briefing-name">
+                    <span className="fb-briefing-name-text">{displayCase(c.name)}</span>
+                    {unresolved && <span className="fb-mask-badge" title="Identity not yet confirmed by an owner">Unconfirmed</span>}
+                  </span>
+                )}
+                <span className="fb-briefing-detail">{reason} · {c.attention_score}/100</span>
+                <span className="fb-home-card-arrow" aria-hidden="true">→</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </section>
@@ -564,7 +616,10 @@ export default function Home() {
   const topAttention = needsAttention[0] ?? null;
 
   const askSuggestions: string[] = [];
-  if (topAttention) askSuggestions.push(`What's overdue for ${topAttention.name}?`);
+  if (topAttention) {
+    const topAttentionLabel = isPlaceholderName(topAttention.name) ? "my most urgent customer" : displayCase(topAttention.name);
+    askSuggestions.push(`What's overdue for ${topAttentionLabel}?`);
+  }
   if (approvalsCount > 0) askSuggestions.push("What's waiting for my approval?");
   askSuggestions.push("What should I prioritize this week?");
 
@@ -589,7 +644,7 @@ export default function Home() {
       <div className="fb-page-body">
         <AttentionSection needsAttention={needsAttention} state={customersState} onRetry={retryCustomers} />
 
-        <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Workspace signals</div>
+        <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>At a glance</div>
         <div className="fb-home-grid">
           <EinvoiceCard />
           <AuditCard />
