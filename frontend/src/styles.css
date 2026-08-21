@@ -275,6 +275,22 @@ img{max-width:100%}
 .fb-drawer-input-row{display:flex;align-items:center;gap:.5rem;border:1px solid var(--line);border-radius:99px;padding:.35rem .35rem .35rem 1rem;}
 
 .fb-app-header{padding:2.4rem 1.5rem 1.8rem;max-width:var(--content-width);margin:0 auto;}
+.fb-greeting{display:flex;align-items:center;gap:.9rem;margin-bottom:1.2rem;animation:fb-home-rise-in .5s cubic-bezier(.16,1,.3,1) both;}
+.fb-greeting-icon{flex:0 0 auto;width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:transform .3s cubic-bezier(.16,1,.3,1);}
+.fb-greeting-icon svg{width:22px;height:22px;}
+.fb-greeting:hover .fb-greeting-icon{transform:scale(1.08) rotate(-8deg);}
+.fb-greeting.is-morning .fb-greeting-icon{background:color-mix(in srgb, var(--chart-attn) 16%, transparent);color:var(--chart-attn);}
+.fb-greeting.is-afternoon .fb-greeting-icon{background:var(--accent-soft);color:var(--accent);}
+.fb-greeting.is-evening .fb-greeting-icon{background:var(--purple-soft);color:var(--purple);}
+.fb-greeting-line{font-family:var(--font-display);font-size:1.32rem;font-weight:800;letter-spacing:-.01em;color:var(--ink);}
+.fb-greeting.is-morning .fb-greeting-name{color:var(--chart-attn);}
+.fb-greeting.is-afternoon .fb-greeting-name{color:var(--accent);}
+.fb-greeting.is-evening .fb-greeting-name{color:var(--purple);}
+.fb-greeting-clock{font-size:.76rem;color:var(--ink-soft);font-variant-numeric:tabular-nums;margin-top:.2rem;}
+@media (prefers-reduced-motion: reduce){
+  .fb-greeting{animation:none;}
+  .fb-greeting-icon{transition:none;}
+}
 .fb-app-header h1{font-size:1.5rem;font-weight:500;margin:0 0 .4rem;text-wrap:balance;}
 .fb-app-header p{font-size:.8rem;color:var(--ink-soft);font-family:Arial,Helvetica,sans-serif;margin:0;}
 .fb-lang-row{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1.1rem;}

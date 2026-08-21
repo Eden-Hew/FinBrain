@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useI18n } from "../lib/i18n";
+import { useI18n, type Lang } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
 import { useAuth } from "../auth/AuthProvider";
 import { Sidebar, AppTopBar } from "../components/Nav";
@@ -462,18 +462,73 @@ function AttentionSection() {
   );
 }
 
-function greetingKey(): "home.greeting.morning" | "home.greeting.afternoon" | "home.greeting.evening" {
-  const hour = new Date().getHours();
-  if (hour < 12) return "home.greeting.morning";
-  if (hour < 18) return "home.greeting.afternoon";
-  return "home.greeting.evening";
+type GreetingPeriod = "morning" | "afternoon" | "evening";
+
+function greetingPeriod(hour: number): GreetingPeriod {
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
+}
+
+const GREETING_KEY: Record<GreetingPeriod, "home.greeting.morning" | "home.greeting.afternoon" | "home.greeting.evening"> = {
+  morning: "home.greeting.morning",
+  afternoon: "home.greeting.afternoon",
+  evening: "home.greeting.evening",
+};
+
+const GREETING_LOCALE: Record<Lang, string> = { en: "en-US", ms: "ms-MY", zh: "zh-CN" };
+
+function GreetingIcon({ period }: { period: GreetingPeriod }) {
+  if (period === "evening") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20.5 14.7A8.5 8.5 0 1 1 9.3 3.5a7 7 0 0 0 11.2 11.2z" />
+        <path d="M17.5 3.8v2.2M16.4 4.9h2.2" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 3v2.5M12 18.5V21M4.5 12H2M22 12h-2.5M6.3 6.3 4.6 4.6M19.4 19.4l-1.7-1.7M6.3 17.7l-1.7 1.7M19.4 4.6l-1.7 1.7" />
+    </svg>
+  );
+}
+
+function GreetingHeader({ firstName, lang }: { firstName: string | null; lang: Lang }) {
+  const { t } = useI18n();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const period = greetingPeriod(now.getHours());
+  const locale = GREETING_LOCALE[lang] ?? "en-US";
+  const timeStr = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(now);
+  const dateStr = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(now);
+
+  return (
+    <div className={"fb-greeting is-" + period}>
+      <span className="fb-greeting-icon"><GreetingIcon period={period} /></span>
+      <div>
+        <div className="fb-greeting-line">
+          {t(GREETING_KEY[period])}
+          {firstName && <span className="fb-greeting-name">, {firstName}</span>}
+        </div>
+        <div className="fb-greeting-clock">{timeStr} · {dateStr}</div>
+      </div>
+    </div>
+  );
 }
 
 export default function Home() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { show, sampleBanner, dismissSampleBanner } = useAppState();
   const { identity } = useAuth();
   const firstName = identity?.email ? identity.email.split("@")[0] : null;
+  const displayName = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1) : null;
 
   return (
     <div className="fb-root fb-shell">
@@ -488,7 +543,7 @@ export default function Home() {
       )}
 
       <header className="fb-app-header">
-        <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>{t(greetingKey())}{firstName ? `, ${firstName}` : ""}</div>
+        <GreetingHeader firstName={displayName} lang={lang} />
         <h1>{t("home.title")}</h1>
         <p>{t("home.desc")}</p>
       </header>
