@@ -928,6 +928,51 @@ def render_einvoice_pdf(
     story.append(banner_table)
     story.append(Spacer(1, 5))
 
+    # ==========================================
+    # PAYMENT STATUS BANNER (paid / overdue only -- an invoice that's simply
+    # unpaid-but-not-yet-due is the normal state and doesn't need a big banner,
+    # matching how Xero/QuickBooks/Wave etc. only call out paid or overdue)
+    # ==========================================
+    is_overdue = False
+    days_overdue = 0
+    if not data.payment.paid_at and data.payment.due_date:
+        try:
+            due = date.fromisoformat(data.payment.due_date)
+        except ValueError:
+            due = None
+        if due is not None and due < date.today():
+            days_overdue = (date.today() - due).days
+            is_overdue = True
+
+    payment_banner_label: str | None = None
+    payment_banner_color = None
+    if data.payment.paid_at:
+        payment_banner_label = f"PAYMENT RECEIVED · PAID ON {data.payment.paid_at}"
+        payment_banner_color = HexColor("#00A868")
+    elif is_overdue:
+        day_word = "DAY" if days_overdue == 1 else "DAYS"
+        payment_banner_label = (
+            f"PAYMENT OVERDUE — {days_overdue} {day_word} LATE (WAS DUE {data.payment.due_date})"
+        )
+        payment_banner_color = HexColor("#DC2626")
+
+    if payment_banner_label:
+        payment_banner_table = Table(
+            [[Paragraph(payment_banner_label, style_banner)]], colWidths=[538]
+        )
+        payment_banner_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), payment_banner_color),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ]
+            )
+        )
+        story.append(payment_banner_table)
+        story.append(Spacer(1, 5))
+
     # Only a `validated` record ever has a real UIN -- approve_record() is the
     # only code path that assigns one, and it jumps straight pending -> validated.
     # review/pending/submitted therefore never have a UIN or QR to show.
@@ -1320,6 +1365,22 @@ def render_einvoice_pdf(
         pay_right = [
             ("PAYMENT METHOD", data.payment.mode or "Bank Transfer"),
             ("BENEFICIARY ACCOUNT", data.payment.bank_account_no or "—"),
+        ]
+    elif is_overdue:
+        pay_bar_text = "PAYMENT INFORMATION &bull; <font color='#FECACA'>OVERDUE</font>"
+        pay_bar_color = HexColor("#DC2626")
+        day_word = "day" if days_overdue == 1 else "days"
+        pay_left = [
+            ("PAYMENT TERMS", data.payment.terms or "Net 30 Days"),
+            ("PAYMENT MODE", data.payment.mode or "Bank Transfer"),
+        ]
+        pay_right = [
+            ("BENEFICIARY ACCOUNT", data.payment.bank_account_no or "—"),
+            (
+                "PAYMENT STATUS",
+                f"<font color='#DC2626'><b>Overdue — was due {data.payment.due_date} "
+                f"({days_overdue} {day_word} late)</b></font>",
+            ),
         ]
     else:
         pay_bar_text = "PAYMENT INFORMATION"
