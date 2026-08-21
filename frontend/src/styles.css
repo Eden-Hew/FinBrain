@@ -1449,8 +1449,8 @@ html{scroll-behavior:smooth;}
   .fb-mkt-btn-spinner{animation-duration:1.4s;}
 }
 @media (max-width:900px){
-  /* On a phone, the split panel stacks — put the form first so a visitor
-     isn't scrolling past a screen of marketing copy to find the fields. */
-  .fb-mkt-auth-story{order:2;border-right:0;border-top:1px solid var(--a-line);padding:2.6rem 1.8rem;}
-  .fb-mkt-auth-form-wrap{order:1;padding:2.6rem 1.8rem;}
+  /* On a phone, the split panel stacks — story/branding panel on top,
+     form below it. */
+  .fb-mkt-auth-story{order:1;border-right:0;padding:2.6rem 1.8rem;}
+  .fb-mkt-auth-form-wrap{order:2;border-top:1px solid var(--a-line);padding:2.6rem 1.8rem;}
 }
