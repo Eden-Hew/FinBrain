@@ -1,16 +1,7 @@
-"""Extract structured invoice fields from an uploaded PDF: OCR/text-layer extraction
-(reusing the same pipeline as the general ingestion upload flow) followed by an LLM
-structuring pass, with a deterministic offline fallback when Morpheus isn't configured."""
-import re
-
-from app.config import get_settings
-from app.integrations.telegram.extractors import ExtractionError, extract_document
-from app.schemas import InvoiceExtraction
-from app.services.morpheus import morpheus_chat
-
 """Extract structured invoice fields from an uploaded PDF/image: OCR/text-layer extraction
 (reusing the same pipeline as the general ingestion upload flow) followed by an LLM
 structuring pass, with a deterministic offline fallback when Morpheus isn't configured."""
+
 import re
 
 from app.config import get_settings
@@ -118,6 +109,18 @@ def _detect_amount(text: str) -> str | None:
     return None
 
 
+def _looks_like_phone_line(line: str) -> bool:
+    address_markers = (
+        "street", "road", "jalan", "taman", "box", "#", "suite", "avenue", "floor", "level"
+    )
+    return (
+        any(char.isdigit() for char in line)
+        and ("+" in line or "-" in line)
+        and len(re.sub(r"\D", "", line)) >= 8
+        and not any(marker in line.lower() for marker in address_markers)
+    )
+
+
 def _offline_extraction(text: str) -> InvoiceExtraction:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
 
@@ -163,8 +166,12 @@ def _offline_extraction(text: str) -> InvoiceExtraction:
 
     # Bill to section
     bill_to_idx = -1
-    for idx, l in enumerate(lines):
-        if re.match(r"^(?:Bill\s*to|Billed\s*to|Customer|Kepada|Ship\s*to)[:]?$", l, re.IGNORECASE):
+    for idx, line in enumerate(lines):
+        if re.match(
+            r"^(?:Bill\s*to|Billed\s*to|Customer|Kepada|Ship\s*to)[:]?$",
+            line,
+            re.IGNORECASE,
+        ):
             bill_to_idx = idx
             break
 
@@ -179,40 +186,44 @@ def _offline_extraction(text: str) -> InvoiceExtraction:
 
     if bill_to_idx != -1 and bill_to_idx + 1 < len(lines):
         buyer_name = lines[bill_to_idx + 1]
-        for l in lines[bill_to_idx + 2:]:
+        for line in lines[bill_to_idx + 2:]:
             if re.match(
                 r"^(?:Description|Item|Subtotal|Total|Amount|US\$|RM|MYR|\$|Payment|Qty|Unit)",
-                l,
+                line,
                 re.IGNORECASE,
             ):
                 break
-            if "@" in l:
-                buyer_email = l.strip()
-            elif any(c.isdigit() for c in l) and ("+" in l or "-" in l) and len(re.sub(r"\D", "", l)) >= 8 and not any(k in l.lower() for k in ("street", "road", "jalan", "taman", "box", "#", "suite", "avenue", "floor", "level")):
-                buyer_phone = l.strip()
+            if "@" in line:
+                buyer_email = line.strip()
+            elif _looks_like_phone_line(line):
+                buyer_phone = line.strip()
             else:
-                buyer_address_lines.append(l)
+                buyer_address_lines.append(line)
 
     # Supplier block
     header_keywords = ("invoice", "date of issue", "date due", "due date", "tax invoice", "page ")
     candidate_supplier_lines = []
     end_supplier_idx = bill_to_idx if bill_to_idx != -1 else len(lines)
-    for l in lines[:end_supplier_idx]:
-        if any(l.lower().startswith(hk) for hk in header_keywords):
+    for line in lines[:end_supplier_idx]:
+        if any(line.lower().startswith(header) for header in header_keywords):
             continue
-        if re.search(r"^(?:NV[0-9]|INV-|[A-Z0-9]{6,})", l) and invoice_no and l == invoice_no:
+        if (
+            re.search(r"^(?:NV[0-9]|INV-|[A-Z0-9]{6,})", line)
+            and invoice_no
+            and line == invoice_no
+        ):
             continue
-        candidate_supplier_lines.append(l)
+        candidate_supplier_lines.append(line)
 
     if candidate_supplier_lines:
         supplier_name = candidate_supplier_lines[0]
-        for l in candidate_supplier_lines[1:]:
-            if "@" in l:
-                supplier_email = l.strip()
-            elif any(c.isdigit() for c in l) and ("+" in l or "-" in l) and len(re.sub(r"\D", "", l)) >= 8 and not any(k in l.lower() for k in ("street", "road", "jalan", "taman", "box", "#", "suite", "avenue", "floor", "level")):
-                supplier_phone = l.strip()
+        for line in candidate_supplier_lines[1:]:
+            if "@" in line:
+                supplier_email = line.strip()
+            elif _looks_like_phone_line(line):
+                supplier_phone = line.strip()
             else:
-                supplier_address_lines.append(l)
+                supplier_address_lines.append(line)
 
     if not buyer_email and len(emails) >= 2:
         supplier_email = emails[0]
@@ -288,13 +299,16 @@ def extract_invoice_fields(data: bytes, *, filename: str, mime_type: str) -> Inv
     if settings.morpheus_api_key:
         try:
             instruction = (
-                "You are an expert Malaysian and International e-invoice OCR data extraction parser. "
+                "You are an expert Malaysian and International e-invoice OCR data "
+                "extraction parser. "
                 "Extract structured invoice fields from the document text. "
                 "Return ONLY a valid JSON object strictly matching this schema: "
                 f"{InvoiceExtraction.model_json_schema()}.\n"
                 "Field extraction rules:\n"
-                "- supplier_name: Company or entity issuing the invoice (e.g. 'Anomaly', 'Tenaga Nasional Berhad').\n"
-                "- supplier_address: Full street address, city, state, postal code, country of the supplier.\n"
+                "- supplier_name: Company or entity issuing the invoice "
+                "(e.g. 'Anomaly', 'Tenaga Nasional Berhad').\n"
+                "- supplier_address: Full street address, city, state, postal code, "
+                "country of the supplier.\n"
                 "- supplier_email: Email address of the supplier (e.g. 'help@anoma.ly').\n"
                 "- supplier_phone: Contact phone number of supplier (e.g. '+1 415-712-4747').\n"
                 "- supplier_reg_no: Business registration or tax registry number of supplier.\n"
@@ -306,15 +320,19 @@ def extract_invoice_fields(data: bytes, *, filename: str, mime_type: str) -> Inv
                 "- buyer_tin: Tax Identification Number of the buyer if present.\n"
                 "- buyer_reg_no: Business registration number of the buyer if present.\n"
                 "- invoice_no: Unique invoice reference code (e.g. 'NV54FJDH-0001').\n"
-                "- issue_date: Date issued in ISO format YYYY-MM-DD (e.g. '17 August 2026' -> '2026-08-17').\n"
+                "- issue_date: Date issued in ISO format YYYY-MM-DD "
+                "(e.g. '17 August 2026' -> '2026-08-17').\n"
                 "- due_date: Due date in ISO format YYYY-MM-DD (e.g. '2026-08-17').\n"
-                "- item_description: Description of the main item or service invoiced (e.g. 'OpenCode Go 17 Aug-17 Sept 2026').\n"
-                "- currency: 3-letter currency code, e.g. 'USD', 'MYR', 'EUR', 'SGD' (e.g. 'US$' -> 'USD', 'RM' -> 'MYR').\n"
+                "- item_description: Description of the main item or service invoiced "
+                "(e.g. 'OpenCode Go 17 Aug-17 Sept 2026').\n"
+                "- currency: 3-letter currency code, e.g. 'USD', 'MYR', 'EUR', 'SGD' "
+                "(e.g. 'US$' -> 'USD', 'RM' -> 'MYR').\n"
                 "- tax_type: Tax category (e.g. 'SST', 'VAT', 'Sales Tax', or null).\n"
                 "- tax_rate: Tax percentage (e.g. '6%', '0%').\n"
                 "- payment_terms: Terms of payment (e.g. 'Due on receipt', 'Net 30 Days').\n"
                 "- bank_account_no: Remittance bank account or payment instructions.\n"
-                "- total_amount: Final payable total amount as a plain decimal number string with no currency symbols or commas (e.g. '5.00').\n"
+                "- total_amount: Final payable total amount as a plain decimal number "
+                "string with no currency symbols or commas (e.g. '5.00').\n"
                 "Use null for any field not found. Do not invent data."
             )
             response = morpheus_chat([

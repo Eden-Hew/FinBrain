@@ -3,6 +3,7 @@ import { useAppState } from "../lib/appState";
 import { useI18n, FB_UI_STRINGS } from "../lib/i18n";
 import { FB_UNIFIED_FALLBACK } from "../data/sampleData";
 import { Sidebar, AppTopBar } from "../components/Nav";
+import { LogoMark } from "../components/Logo";
 import {
   IntelligenceExperience,
   StandaloneExposureReceipt,
@@ -371,7 +372,7 @@ export default function Agents() {
         {!hasConversation && (
           <div className="fb-chat-welcome">
             <header className="fb-app-header" style={{ paddingBottom: "1rem" }}>
-              <h1>{t("agents.title")}</h1>
+              <h1 className="fb-chat-welcome-title"><LogoMark large /> {t("agents.title")}</h1>
               <p>{t("agents.desc")}</p>
             </header>
           </div>
@@ -477,7 +478,7 @@ export default function Agents() {
             <div className="fb-suggest-row">
               <span className="fb-eyebrow fb-suggest-label">Try asking</span>
               {SUGGESTIONS.map((s) => (
-                <button key={s.text} className="fb-suggest-chip" type="button" onClick={() => handleSuggestion(s.text)}>
+                <button key={s.text} className="fb-suggest-chip" type="button" title={s.text} onClick={() => handleSuggestion(s.text)}>
                   <span className="fb-suggest-chip-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{s.icon}</svg>
                   </span>

@@ -6,6 +6,7 @@ import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
 import { EmptyState } from "../components/EmptyState";
 import { MaskedText } from "../components/MaskedText";
+import { disclosureTitle, humanize } from "../lib/auditFormatting";
 import {
   fetchAuditLog,
   fetchWorkflowAudit,
@@ -47,30 +48,6 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-function humanize(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-// Every disclosure row otherwise carries the identical hardcoded title
-// ("Disclosure decision") — the one thing that actually varies per row is
-// what kind of masked value was at stake and whether it was allowed, so say
-// that in plain language instead of repeating a static label on every row.
-const DISCLOSURE_NOUNS: Record<string, string> = {
-  PERSON: "personal details",
-  NRIC: "an ID number",
-  PHONE: "a phone number",
-  EMAIL: "an email address",
-  BANKACC: "bank account details",
-  CARD: "card details",
-  ADDR: "an address",
-  ORG: "organization details",
-};
-
-function disclosureTitle(token: string, authorized: boolean) {
-  const noun = token.startsWith("AMOUNT_BAND") ? "a financial amount" : (DISCLOSURE_NOUNS[token.split("_")[0]] ?? "protected details");
-  return authorized ? `Viewed ${noun}` : `Blocked from ${noun}`;
 }
 
 function workflowReference(entry: WorkflowAuditEntry) {

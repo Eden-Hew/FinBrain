@@ -6,6 +6,7 @@ import { PERSONAS } from "../lib/personas";
 import { useActiveSection, useScrollY } from "../lib/interactivity";
 import { useUiChrome } from "../lib/uiChrome";
 import { LogoMark, Wordmark } from "./Logo";
+import { NotificationBell } from "./NotificationBell";
 
 const MARKETING_SECTIONS = ["landing-flow", "landing-agents", "landing-proof", "landing-why", "landing-pricing", "landing-faq"];
 
@@ -230,7 +231,7 @@ const SCREEN_TITLES: Partial<Record<Screen, string>> = {
 };
 
 export function AppTopBar({ current }: { current: Screen }) {
-  const { show, askRole, approvalsCount, displayName } = useAppState();
+  const { show, askRole, displayName } = useAppState();
   const { openAsk, openPalette } = useUiChrome();
   const { identity, signOut } = useAuth();
   const { t } = useI18n();
@@ -262,10 +263,7 @@ export function AppTopBar({ current }: { current: Screen }) {
       </button>
 
       <div className="fb-topbar-actions">
-        <button className="fb-topbar-icon-btn" type="button" onClick={() => show("approvals")} title="Pending approvals" aria-label="Pending approvals">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-          {approvalsCount > 0 && <span className="fb-nav-badge fb-topbar-badge">{approvalsCount}</span>}
-        </button>
+        <NotificationBell />
         <button className="fb-topbar-ask" type="button" onClick={openAsk}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4h13a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H9l-5 3v-3a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" /></svg>
           <span>Ask FinBrain</span>

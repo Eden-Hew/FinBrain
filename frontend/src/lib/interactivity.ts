@@ -57,7 +57,7 @@ export function useTypewriterDemo(demos: TypewriterDemoItem[], options?: { typeS
     if (reduced || phase !== "answered") return;
     const t = window.setTimeout(() => setDemoIndex((i) => (i + 1) % demos.length), answerHold);
     return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [phase, reduced, answerHold, demos.length]);
 
   return { demo: demos[demoIndex], typed, phase, demoIndex, select: setDemoIndex };
