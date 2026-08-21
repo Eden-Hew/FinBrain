@@ -4,7 +4,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.db import _sqlalchemy_url, set_worker_context
-from app.models import Base, TokenizedContent, TokenVaultEntry
+from app.models import (
+    Base,
+    CustomerEndpoint,
+    EInvoiceRecord,
+    OutreachAction,
+    TelegramOnboardingSession,
+    TelegramUpdateReceipt,
+    TenantOutreachPolicy,
+    TokenizedContent,
+    TokenVaultEntry,
+)
 from app.services import ingestion
 from app.services.retrieval import retrieve_top_k
 
@@ -28,6 +38,22 @@ def test_role_list_compiles_to_postgres_jsonb():
     column_type = TokenVaultEntry.__table__.c.allowed_roles.type
     postgres_type = column_type.load_dialect_impl(postgresql.dialect())
     assert isinstance(postgres_type, JSONB)
+
+
+def test_telegram_customer_schema_is_available_to_sqlite_and_postgres_models():
+    assert {"delivery_token", "last_interaction_at"} <= set(CustomerEndpoint.__table__.c.keys())
+    assert {
+        "tenant_id", "telegram_endpoint_token", "telegram_delivery_token",
+        "name_token", "email_token", "phone_token", "status", "customer_id",
+    } <= set(TelegramOnboardingSession.__table__.c.keys())
+    assert {"tenant_id", "customer_id", "onboarding_session_id"} <= set(
+        TelegramUpdateReceipt.__table__.c.keys()
+    )
+    assert {"buyer_email_token", "buyer_phone_token"} <= set(EInvoiceRecord.__table__.c.keys())
+    assert {
+        "origin_type", "origin_invoice_id", "scheduled_for", "created_by_actor_ref",
+    } <= set(OutreachAction.__table__.c.keys())
+    assert TenantOutreachPolicy.__table__.c.telegram_reminders_enabled.default.arg is False
 
 
 def test_worker_context_carries_every_key_the_after_begin_listener_needs(monkeypatch):

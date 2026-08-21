@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import EinvoiceOutreachDraft, EInvoiceRecord
+from app.models import Customer, CustomerEndpoint, EinvoiceOutreachDraft, EInvoiceRecord
 from app.schemas import (
     CanonicalIngestionRecord,
     EInvoiceCreatePayload,
@@ -134,8 +134,34 @@ def _recalculate_attention_if_enabled(db: Session, record: EInvoiceRecord) -> No
 def create_record(
     db: Session, payload: EInvoiceCreatePayload, *, role: UserRole, actor_ref: str, tenant_id: str
 ) -> EInvoiceRecordResponse:
+    from app.security.tokenize import derive_token, protect_scalar
+
+    normalized_buyer_email = (
+        payload.buyer_email.strip().casefold() if payload.buyer_email else None
+    )
+    buyer_email_token = (
+        derive_token("EMAIL", normalized_buyer_email, tenant_id)
+        if normalized_buyer_email
+        else None
+    )
+    buyer_phone_token = (
+        derive_token("PHONE", payload.buyer_phone, tenant_id) if payload.buyer_phone else None
+    )
+    endpoint = None
+    if buyer_email_token:
+        endpoint = db.scalar(select(CustomerEndpoint).where(
+            CustomerEndpoint.tenant_id == tenant_id,
+            CustomerEndpoint.channel == "email",
+            CustomerEndpoint.endpoint_token == buyer_email_token,
+            CustomerEndpoint.verification_status != "revoked",
+        ))
     buyer_customer = (
-        resolve_customer(db, tenant_id, payload.buyer_name) if payload.buyer_name else None
+        db.get(Customer, endpoint.customer_id) if endpoint is not None
+        else (
+            resolve_customer(db, tenant_id, payload.buyer_name)
+            if payload.buyer_name and not payload.buyer_email
+            else None
+        )
     )
     due_date = payload.due_date
     if due_date is None and payload.issue_date is not None:
@@ -147,6 +173,8 @@ def create_record(
         supplier_tin=payload.supplier_tin,
         buyer_name=payload.buyer_name,
         buyer_customer_id=buyer_customer.id if buyer_customer else None,
+        buyer_email_token=buyer_email_token,
+        buyer_phone_token=buyer_phone_token,
         invoice_no=payload.invoice_no,
         issue_date=payload.issue_date,
         due_date=due_date,
@@ -158,6 +186,16 @@ def create_record(
     )
     db.add(record)
     db.flush()
+    if normalized_buyer_email:
+        record.buyer_email_token = protect_scalar(
+            db, entity_type="EMAIL", value=normalized_buyer_email,
+            source_record_id=f"einvoice:{record.id}", tenant_id=tenant_id,
+        )
+    if payload.buyer_phone:
+        record.buyer_phone_token = protect_scalar(
+            db, entity_type="PHONE", value=payload.buyer_phone.strip(),
+            source_record_id=f"einvoice:{record.id}", tenant_id=tenant_id,
+        )
     if (
         get_settings().customer_intelligence_enabled
         and buyer_customer

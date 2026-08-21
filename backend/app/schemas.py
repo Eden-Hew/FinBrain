@@ -786,3 +786,21 @@ class OutreachStatusResponse(BaseModel):
     failure_code: str | None
     sent_at: datetime | None
     replied_at: datetime | None
+
+
+class TenantOutreachPolicyResponse(BaseModel):
+    telegram_reminders_enabled: bool
+    grace_days: int
+    repeat_interval_days: int
+    max_reminders: int
+    require_approval: bool
+    policy_version: int
+    updated_at: datetime
+
+
+class TenantOutreachPolicyUpdate(BaseModel):
+    telegram_reminders_enabled: bool
+    grace_days: int = Field(ge=0, le=365)
+    repeat_interval_days: int = Field(ge=1, le=365)
+    max_reminders: int = Field(ge=1, le=20)
+    require_approval: bool = True

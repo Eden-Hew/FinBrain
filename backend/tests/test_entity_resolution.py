@@ -3,8 +3,9 @@ from decimal import Decimal
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models import Base, Customer
+from app.models import Base, Customer, CustomerEndpoint
 from app.schemas import EInvoiceCreatePayload, UserRole
+from app.security.tokenize import derive_token
 from app.services.einvoice_readiness import create_record
 from app.services.entity_resolution import normalize_business_name, resolve_customer
 
@@ -107,5 +108,43 @@ def test_create_record_without_buyer_name_has_no_customer_link(monkeypatch):
             tenant_id=TENANT_A,
         )
         assert record.buyer_customer_id is None
+    finally:
+        db.close()
+
+
+def test_create_record_matches_existing_email_endpoint_case_insensitively(monkeypatch):
+    monkeypatch.setenv("MORPHEUS_API_KEY", "")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    db = _session()
+    try:
+        customer = Customer(
+            tenant_id=TENANT_A,
+            canonical_name="Email customer",
+            normalized_name="EMAILCUSTOMER",
+            profile_status="confirmed",
+        )
+        db.add(customer)
+        db.flush()
+        db.add(CustomerEndpoint(
+            tenant_id=TENANT_A,
+            customer_id=customer.id,
+            channel="email",
+            endpoint_token=derive_token("EMAIL", "buyer@gmail.com", TENANT_A),
+            verification_status="observed",
+            origin="telegram_onboarding",
+        ))
+        db.commit()
+
+        payload = _payload("Different Display Name")
+        payload.buyer_email = "  BUYER@GMAIL.COM  "
+        record = create_record(
+            db,
+            payload,
+            role=UserRole.OWNER_DIRECTOR,
+            actor_ref="test-actor",
+            tenant_id=TENANT_A,
+        )
+
+        assert record.buyer_customer_id == customer.id
     finally:
         db.close()

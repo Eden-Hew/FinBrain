@@ -4,7 +4,7 @@ This is a human-readable disaster-recovery snapshot of the FinBrain `public` sch
 from the live Supabase PostgreSQL catalog on **21 August 2026**, with repository commit `5d6fbc2` as
 the known-good code and migration baseline.
 
-This file records all 32 application tables and every live column. It complements
+This file records all 34 application tables and every live column. It complements
 `SUPABASE_ARCHITECTURE.md`, which documents RLS, roles, privacy boundaries, worker invariants, and
 safe change rules.
 
@@ -185,14 +185,53 @@ This table is append-only through a database trigger.
 
 ```text
 update_id         bigint      PK
+tenant_id         uuid        NOT NULL, FK tenants(id)
 message_ref_hash  text        NULL, UNIQUE
 actor_ref         text        NOT NULL
 source_record_id  text        NULL
 update_kind       text        NOT NULL
 status            text        NOT NULL, default 'received'
 failure_code      text        NULL
+customer_id       bigint      NULL, FK customers(id), ON DELETE RESTRICT
+onboarding_session_id bigint  NULL, FK telegram_onboarding_sessions(id), ON DELETE RESTRICT
 created_at        timestamptz NOT NULL, default now()
 updated_at        timestamptz NOT NULL, default now()
+```
+
+### `telegram_onboarding_sessions`
+
+```text
+id                       bigint      PK, identity
+tenant_id                uuid        NOT NULL, FK tenants(id)
+telegram_endpoint_token  text        NOT NULL
+telegram_delivery_token  text        NOT NULL
+name_token               text        NULL
+email_token              text        NULL
+phone_token              text        NULL
+customer_id              bigint      NULL, FK customers(id), ON DELETE RESTRICT
+profile_content_id       bigint      NULL, FK tokenized_content(id), ON DELETE RESTRICT
+status                   text        NOT NULL, default 'awaiting_consent'
+failure_code             text        NULL
+consented_at             timestamptz NULL
+completed_at             timestamptz NULL
+created_at               timestamptz NOT NULL, default now()
+updated_at               timestamptz NOT NULL, default now()
+```
+
+Unique key: `(tenant_id, telegram_endpoint_token)`.
+
+### `tenant_outreach_policies`
+
+```text
+tenant_id                    uuid        PK, FK tenants(id)
+telegram_reminders_enabled   boolean     NOT NULL, default false
+grace_days                   integer     NOT NULL, default 1
+repeat_interval_days         integer     NOT NULL, default 7
+max_reminders                integer     NOT NULL, default 3
+require_approval             boolean     NOT NULL, default true
+policy_version               integer     NOT NULL, default 1
+updated_by_user_id           uuid        NULL, FK auth.users(id)
+updated_at                   timestamptz NOT NULL, default now()
 ```
 
 ### `integration_status`
@@ -436,9 +475,11 @@ tenant_id             uuid        NOT NULL, FK tenants(id)
 customer_id           bigint      NOT NULL, FK customers(id), ON DELETE RESTRICT
 channel               text        NOT NULL
 endpoint_token        text        NOT NULL
+delivery_token        text        NULL
 verification_status   text        NOT NULL
 verified_by_user_id   uuid        NULL
 verified_at           timestamptz NULL
+last_interaction_at   timestamptz NULL
 created_at            timestamptz NOT NULL, default now()
 origin                text        NOT NULL, default 'manual'
 ```
@@ -513,7 +554,11 @@ protected_subject          text        NOT NULL
 protected_body             text        NOT NULL
 status                     text        NOT NULL
 idempotency_key            text        NOT NULL
-created_by_user_id         uuid        NOT NULL
+created_by_user_id         uuid        NULL
+created_by_actor_ref       text        NULL
+origin_type                text        NOT NULL, default 'manual'
+origin_invoice_id          bigint      NULL, FK einvoice_records(id), ON DELETE RESTRICT
+scheduled_for              timestamptz NULL
 approved_by_user_id        uuid        NULL
 approved_at                timestamptz NULL
 send_started_at            timestamptz NULL
@@ -561,6 +606,8 @@ document_storage_path  text           NULL
 uin                    text           NULL
 tenant_id              uuid           NOT NULL, FK tenants(id)
 buyer_customer_id      bigint         NULL, FK customers(id)
+buyer_email_token      text           NULL
+buyer_phone_token      text           NULL
 due_date               date           NULL
 paid_at                date           NULL
 ```

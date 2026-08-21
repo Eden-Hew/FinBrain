@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from app.config import get_settings
-from app.db import SessionLocal
+from app.db import SessionLocal, set_worker_context
 from app.models import IntegrationStatus, utcnow
 from app.schemas import CanonicalIngestionRecord, IngestionResult
 from app.services.health import heartbeat_key
@@ -13,6 +13,10 @@ _semaphore: asyncio.Semaphore | None = None
 
 def protect(record: CanonicalIngestionRecord) -> IngestionResult:
     with SessionLocal() as db:
+        set_worker_context(
+            db, actor_ref="telegram-worker",
+            tenant_id=record.tenant_id,
+        )
         result = protect_canonical_record(db, record)
         status = db.get(
             IntegrationStatus,
@@ -26,6 +30,10 @@ def protect(record: CanonicalIngestionRecord) -> IngestionResult:
 
 def enrich(source_record_id: str) -> IngestionResult:
     with SessionLocal() as db:
+        set_worker_context(
+            db, actor_ref="telegram-worker",
+            tenant_id=get_settings().telegram_customer_tenant_id,
+        )
         return enrich_protected_record(db, source_record_id)
 
 

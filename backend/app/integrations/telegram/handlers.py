@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.config import get_settings
-from app.db import SessionLocal
+from app.db import SessionLocal, set_worker_context
 from app.integrations.telegram.adapter import (
     RECORD_TYPES,
     canonical_record,
@@ -17,7 +17,20 @@ from app.integrations.telegram.adapter import (
 from app.integrations.telegram.auth import actor_ref, operator_role
 from app.integrations.telegram.drafts import draft_store, verify_callback
 from app.integrations.telegram.extractors import ExtractionError, extract_document, extract_text
-from app.integrations.telegram.keyboards import record_type_keyboard, review_keyboard
+from app.integrations.telegram.keyboards import (
+    phone_keyboard,
+    record_type_keyboard,
+    remove_reply_keyboard,
+    review_keyboard,
+)
+from app.integrations.telegram.onboarding import (
+    accept_consent,
+    begin_onboarding,
+    ingest_customer_message,
+    submit_gmail,
+    submit_name,
+    submit_phone,
+)
 from app.integrations.telegram.receipts import claim_update, update_receipt
 from app.integrations.telegram.service import enrich_in_background, protect
 from app.integrations.telegram.types import CaptureDraft
@@ -56,23 +69,172 @@ async def _require_authorized(update: Update) -> tuple[object, object, object] |
 
 def _claim(update: Update, user_id: int, kind: str) -> bool:
     with SessionLocal() as db:
+        set_worker_context(
+            db,
+            actor_ref="telegram-worker",
+            tenant_id=get_settings().telegram_customer_tenant_id,
+        )
         return claim_update(
             db,
             update_id=update.update_id,
             actor_ref=actor_ref(user_id),
             update_kind=kind,
+            tenant_id=get_settings().telegram_customer_tenant_id,
         )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    identity = await _require_authorized(update)
-    if identity is None:
+    user, chat, role = _identity(update)
+    if user is None or chat is None:
         return
-    _, _, role = identity
-    await update.effective_message.reply_text(
-        f"FinBrain Capture is connected. Your fixed role is {role.value}.\n\n{PRIVACY}",
-        reply_markup=record_type_keyboard(),
+    if role is not None:
+        await update.effective_message.reply_text(
+            f"FinBrain Capture is connected. Your fixed role is {role.value}.\n\n{PRIVACY}",
+            reply_markup=record_type_keyboard(),
+        )
+        return
+    settings = get_settings()
+    if not settings.telegram_customer_onboarding_enabled or chat.type != "private":
+        await update.effective_message.reply_text(RESTRICTED)
+        return
+    with SessionLocal() as db:
+        set_worker_context(
+            db, actor_ref="telegram-onboarding-worker",
+            tenant_id=settings.telegram_customer_tenant_id,
+        )
+        onboarding = begin_onboarding(
+            db,
+            tenant_id=settings.telegram_customer_tenant_id,
+            user_id=user.id,
+            chat_id=chat.id,
+        )
+        if onboarding.status == "awaiting_consent":
+            onboarding = accept_consent(db, onboarding.id)
+    context.user_data["onboarding_session_id"] = onboarding.id
+    if onboarding.status in {"awaiting_message", "completed"}:
+        await update.effective_message.reply_text(
+            "Your customer profile is connected. How can we help you today?"
+        )
+        return
+    if onboarding.status == "awaiting_phone":
+        await update.effective_message.reply_text(
+            "Please share your phone number using the button below.",
+            reply_markup=phone_keyboard(),
+        )
+        return
+    prompt = (
+        "What is your Gmail address?"
+        if onboarding.status == "awaiting_gmail"
+        else (
+            "Welcome to FinBrain. Your details and messages are stored in protected form.\n\n"
+            "What is your full name?"
+        )
     )
+    await update.effective_message.reply_text(prompt)
+
+
+async def _customer_content(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user, chat
+) -> bool:
+    settings = get_settings()
+    if not settings.telegram_customer_onboarding_enabled or chat.type != "private":
+        return False
+    message = update.effective_message
+    if message is None:
+        return True
+    if not _claim(update, user.id, "customer_message"):
+        return True
+    with SessionLocal() as db:
+        set_worker_context(
+            db, actor_ref="telegram-onboarding-worker",
+            tenant_id=settings.telegram_customer_tenant_id,
+        )
+        onboarding = begin_onboarding(
+            db, tenant_id=settings.telegram_customer_tenant_id,
+            user_id=user.id, chat_id=chat.id,
+        )
+        context.user_data["onboarding_session_id"] = onboarding.id
+        try:
+            if onboarding.status == "awaiting_name":
+                if not message.text:
+                    raise ValueError("valid_customer_name_required")
+                onboarding = submit_name(db, onboarding.id, message.text)
+                update_receipt(
+                    db, update.update_id, status="onboarding",
+                    onboarding_session_id=onboarding.id,
+                )
+                await message.reply_text("What is your Gmail address?")
+            elif onboarding.status == "awaiting_gmail":
+                if not message.text:
+                    raise ValueError("valid_gmail_required")
+                onboarding = submit_gmail(db, onboarding.id, message.text)
+                update_receipt(
+                    db, update.update_id, status="onboarding",
+                    onboarding_session_id=onboarding.id,
+                )
+                await message.reply_text(
+                    "Please share your phone number using the button below.",
+                    reply_markup=phone_keyboard(),
+                )
+            elif onboarding.status == "awaiting_phone":
+                contact = message.contact
+                if contact is None or contact.user_id != user.id:
+                    raise ValueError("own_telegram_contact_required")
+                onboarding = submit_phone(db, onboarding.id, contact.phone_number)
+                profile = db.get(TokenizedContent, onboarding.profile_content_id)
+                update_receipt(
+                    db,
+                    update.update_id,
+                    status="ready",
+                    source_record_id=profile.source_record_id if profile else None,
+                    customer_id=onboarding.customer_id,
+                    onboarding_session_id=onboarding.id,
+                )
+                await message.reply_text(
+                    "Your protected customer profile is ready. How can we help you today?",
+                    reply_markup=remove_reply_keyboard(),
+                )
+            elif onboarding.status in {"awaiting_message", "completed"}:
+                if not message.text:
+                    raise ValueError("customer_message_text_required")
+                content = ingest_customer_message(
+                    db, session_id=onboarding.id,
+                    message_id=message.message_id, text=message.text,
+                )
+                update_receipt(
+                    db,
+                    update.update_id,
+                    status="ready",
+                    source_record_id=content.source_record_id,
+                    customer_id=onboarding.customer_id,
+                    onboarding_session_id=onboarding.id,
+                )
+                await message.reply_text(
+                    "Thank you. Your message was protected and linked to your customer profile."
+                )
+            else:
+                await message.reply_text("Please use /start to continue onboarding.")
+        except ValueError as error:
+            update_receipt(
+                db,
+                update.update_id,
+                status="awaiting_input",
+                onboarding_session_id=onboarding.id,
+                failure_code=str(error),
+            )
+            prompts = {
+                "valid_customer_name_required": "Please enter your full name using letters.",
+                "valid_gmail_required": "Please enter one valid @gmail.com address.",
+                "own_telegram_contact_required": (
+                    "Please use the button to share the phone number belonging to this "
+                    "Telegram account."
+                ),
+                "customer_message_text_required": "Please send your message as text.",
+            }
+            await message.reply_text(
+                prompts.get(str(error), "That information could not be accepted.")
+            )
+    return True
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -172,10 +334,14 @@ async def type_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def content_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    identity = await _require_authorized(update)
-    if identity is None:
+    user, chat, role = _identity(update)
+    if user is None or chat is None:
         return
-    user, chat, _ = identity
+    if role is None:
+        if await _customer_content(update, context, user, chat):
+            return
+        await update.effective_message.reply_text(RESTRICTED)
+        return
     if not _claim(update, user.id, "message"):
         return
     record_type = context.user_data.get("record_type")

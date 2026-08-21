@@ -5,11 +5,13 @@ from datetime import UTC, datetime
 from telegram import Update
 
 from app.config import get_settings
-from app.db import SessionLocal, initialize_local_schema
+from app.db import SessionLocal, initialize_local_schema, set_worker_context
 from app.integrations.telegram.bot import build_application
 from app.integrations.telegram.drafts import draft_store
+from app.integrations.telegram.sender import dispatch_one
 from app.security.detect import warm_detector
 from app.services.health import write_heartbeat
+from app.services.overdue_reminders import plan_due_reminders
 
 
 def _write_status(
@@ -46,6 +48,27 @@ async def _heartbeat(detector_ready: bool) -> None:
         await asyncio.sleep(interval)
 
 
+async def _reminder_loop(bot) -> None:
+    settings = get_settings()
+    while True:
+        try:
+            with SessionLocal() as db:
+                set_worker_context(
+                    db,
+                    actor_ref="overdue-reminders-worker",
+                    tenant_id=settings.telegram_customer_tenant_id,
+                )
+                plan_due_reminders(
+                    db, settings.telegram_customer_tenant_id, datetime.now(UTC).date()
+                )
+                for _ in range(settings.telegram_outbound_batch_size):
+                    if await dispatch_one(db, bot) is None:
+                        break
+        except Exception:
+            logging.getLogger(__name__).exception("telegram_reminder_loop_failed")
+        await asyncio.sleep(settings.telegram_reminder_interval_seconds)
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -72,6 +95,10 @@ def main() -> None:
         app.bot_data["heartbeat_task"] = asyncio.create_task(
             _heartbeat(detector.loaded), name="telegram-heartbeat"
         )
+        if settings.telegram_outbound_enabled:
+            app.bot_data["reminder_task"] = asyncio.create_task(
+                _reminder_loop(app.bot), name="telegram-reminders"
+            )
 
     application.post_init = start_tasks
     try:

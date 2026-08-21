@@ -31,6 +31,8 @@ ACL_POLICY = {
     "EMAIL": ["finance_ops", "owner_director", "compliance", "general_employee"],
     "ORG": ["finance_ops", "owner_director", "compliance", "general_employee"],
     "AMOUNT": ["finance_ops", "owner_director", "compliance"],
+    "TGUSER": ["finance_ops", "owner_director", "compliance"],
+    "TGCHAT": ["compliance"],
 }
 
 AMOUNT_BANDS = [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000]
@@ -160,3 +162,52 @@ def persist_vault_entries(db: Session, entries: list[TokenVaultEntry]) -> None:
     for entry in entries:
         if db.get(TokenVaultEntry, entry.token) is None:
             db.add(entry)
+
+
+def protect_scalar(
+    db: Session,
+    *,
+    entity_type: str,
+    value: str,
+    source_record_id: str,
+    tenant_id: str,
+) -> str:
+    """Protect one explicitly classified value that detectors cannot safely infer."""
+    label = entity_type.upper()
+    token = derive_token(label, value, tenant_id)
+    if db.get(TokenVaultEntry, token) is None:
+        ciphertext, nonce, key_version = encrypt_vault_value(
+            db,
+            token=token,
+            entity_type=label,
+            source_record_id=source_record_id,
+            value=value,
+        )
+        masked = {
+            "TGUSER": "telegram-user-********",
+            "TGCHAT": "telegram-chat-********",
+            "PERSON": "[person — restricted]",
+            "EMAIL": "*****@*******.***",
+            "PHONE": "01*-***-****",
+        }.get(label, f"[{label.lower()} — restricted]")
+        db.add(TokenVaultEntry(
+            token=token,
+            tenant_id=tenant_id,
+            entity_type=label,
+            encrypted_value=ciphertext,
+            nonce=nonce,
+            key_version=key_version,
+            masked_value=masked,
+            encryption_algorithm="AES-256-GCM",
+            allowed_roles=ACL_POLICY.get(label, ["compliance"]),
+            sensitivity="medium",
+            source_record_id=source_record_id,
+        ))
+        if db.get(ProtectedTokenRegistry, token) is None:
+            db.add(ProtectedTokenRegistry(
+                token=token,
+                tenant_id=tenant_id,
+                entity_type=label,
+                masked_value=masked,
+            ))
+    return token

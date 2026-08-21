@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
@@ -237,12 +238,21 @@ class TelegramUpdateReceipt(Base):
     __tablename__ = "telegram_update_receipts"
 
     update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), default=DEFAULT_TENANT_ID, nullable=False
+    )
     message_ref_hash: Mapped[str | None] = mapped_column(String, unique=True)
     actor_ref: Mapped[str] = mapped_column(String, nullable=False)
     source_record_id: Mapped[str | None] = mapped_column(String)
     update_kind: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="received")
     failure_code: Mapped[str | None] = mapped_column(String)
+    customer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="RESTRICT")
+    )
+    onboarding_session_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("telegram_onboarding_sessions.id", ondelete="RESTRICT")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -666,11 +676,71 @@ class CustomerEndpoint(Base):
     customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id"), nullable=False)
     channel: Mapped[str] = mapped_column(String, nullable=False)
     endpoint_token: Mapped[str] = mapped_column(String, nullable=False)
+    delivery_token: Mapped[str | None] = mapped_column(String)
     verification_status: Mapped[str] = mapped_column(String, default="observed", nullable=False)
     origin: Mapped[str] = mapped_column(String, default="manual", nullable=False)
     verified_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_interaction_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TelegramOnboardingSession(Base):
+    """Durable protected onboarding state; contains tokens, never raw contact values."""
+
+    __tablename__ = "telegram_onboarding_sessions"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "telegram_endpoint_token",
+            name="telegram_onboarding_tenant_endpoint_unique",
+        ),
+        Index("telegram_onboarding_tenant_status_idx", "tenant_id", "status", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    telegram_endpoint_token: Mapped[str] = mapped_column(String, nullable=False)
+    telegram_delivery_token: Mapped[str] = mapped_column(String, nullable=False)
+    name_token: Mapped[str | None] = mapped_column(String)
+    email_token: Mapped[str | None] = mapped_column(String)
+    phone_token: Mapped[str | None] = mapped_column(String)
+    customer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("customers.id", ondelete="RESTRICT")
+    )
+    profile_content_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tokenized_content.id", ondelete="RESTRICT")
+    )
+    status: Mapped[str] = mapped_column(String, default="awaiting_consent", nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String)
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class TenantOutreachPolicy(Base):
+    __tablename__ = "tenant_outreach_policies"
+
+    tenant_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("tenants.id"), primary_key=True
+    )
+    telegram_reminders_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    grace_days: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    repeat_interval_days: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    max_reminders: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    require_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    policy_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    updated_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class CustomerIdentityClaim(Base):
@@ -733,7 +803,13 @@ class OutreachAction(Base):
     protected_body: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String, default="draft", nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
-    created_by_user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
+    created_by_actor_ref: Mapped[str | None] = mapped_column(String)
+    origin_type: Mapped[str] = mapped_column(String, default="manual", nullable=False)
+    origin_invoice_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("einvoice_records.id", ondelete="RESTRICT")
+    )
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     approved_by_user_id: Mapped[str | None] = mapped_column(Uuid(as_uuid=False))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     send_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -781,6 +857,8 @@ class EInvoiceRecord(Base):
     buyer_customer_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("customers.id")
     )
+    buyer_email_token: Mapped[str | None] = mapped_column(String)
+    buyer_phone_token: Mapped[str | None] = mapped_column(String)
     invoice_no: Mapped[str | None] = mapped_column(String)
     issue_date: Mapped[date | None] = mapped_column(Date)
     due_date: Mapped[date | None] = mapped_column(Date)

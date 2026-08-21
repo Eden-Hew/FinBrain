@@ -41,8 +41,11 @@ async def post_init(application: Application) -> None:
 
 
 async def post_shutdown(application: Application) -> None:
-    task = application.bot_data.get("heartbeat_task")
-    if task:
+    tasks = [
+        application.bot_data.get("heartbeat_task"),
+        application.bot_data.get("reminder_task"),
+    ]
+    for task in (item for item in tasks if item is not None):
         task.cancel()
         try:
             await task
@@ -76,7 +79,7 @@ def build_application() -> Application:
     )
     application.add_handler(
         MessageHandler(
-            (filters.TEXT | filters.Document.ALL) & ~filters.COMMAND,
+            (filters.TEXT | filters.Document.ALL | filters.CONTACT) & ~filters.COMMAND,
             content_message,
         )
     )

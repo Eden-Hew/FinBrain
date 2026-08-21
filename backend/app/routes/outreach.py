@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from app.models import (
     OutreachAction,
     OutreachEvidence,
     ProtectedTokenRegistry,
+    TenantOutreachPolicy,
 )
 from app.schemas import (
     CustomerEndpointCreateRequest,
@@ -23,6 +26,8 @@ from app.schemas import (
     OutreachGenerateRequest,
     OutreachStatusResponse,
     OutreachUpdateRequest,
+    TenantOutreachPolicyResponse,
+    TenantOutreachPolicyUpdate,
     UserRole,
 )
 from app.security.detokenize import detokenize_response_with_trace, hash_query
@@ -38,9 +43,71 @@ from app.services.outreach import (
     update_draft,
     verify_endpoint,
 )
+from app.services.workflow_audit import write_workflow_event
 
 router = APIRouter(tags=["outreach"])
 _MANAGE = (UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR)
+
+
+def _policy_response(row: TenantOutreachPolicy) -> TenantOutreachPolicyResponse:
+    return TenantOutreachPolicyResponse.model_validate(row, from_attributes=True)
+
+
+@router.get("/outreach-policy", response_model=TenantOutreachPolicyResponse)
+def get_outreach_policy(
+    principal: AuthPrincipal = Depends(require_roles(
+        UserRole.FINANCE_OPS, UserRole.OWNER_DIRECTOR, UserRole.COMPLIANCE
+    )),
+    db: Session = Depends(get_db),
+):
+    tenant_id = str(principal.tenant_id)
+    row = db.get(TenantOutreachPolicy, tenant_id)
+    if row is None:
+        return TenantOutreachPolicyResponse(
+            telegram_reminders_enabled=False,
+            grace_days=1,
+            repeat_interval_days=7,
+            max_reminders=3,
+            require_approval=True,
+            policy_version=1,
+            updated_at=datetime.now(UTC),
+        )
+    return _policy_response(row)
+
+
+@router.put("/outreach-policy", response_model=TenantOutreachPolicyResponse)
+def update_outreach_policy(
+    payload: TenantOutreachPolicyUpdate,
+    principal: AuthPrincipal = Depends(require_roles(UserRole.OWNER_DIRECTOR)),
+    db: Session = Depends(get_db),
+):
+    tenant_id = str(principal.tenant_id)
+    row = db.get(TenantOutreachPolicy, tenant_id)
+    if row is None:
+        row = TenantOutreachPolicy(tenant_id=tenant_id)
+        db.add(row)
+    previous_enabled = row.telegram_reminders_enabled
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    row.policy_version += 1
+    row.updated_by_user_id = str(principal.user_id)
+    write_workflow_event(
+        db,
+        event_type="tenant_outreach_policy_updated",
+        actor_role=principal.role.value,
+        actor_ref=principal.actor_ref,
+        resource_type="tenant_outreach_policy",
+        resource_id=tenant_id,
+        tenant_id=tenant_id,
+        event_payload={
+            "telegram_reminders_enabled": row.telegram_reminders_enabled,
+            "previous_enabled": previous_enabled,
+            "require_approval": row.require_approval,
+            "policy_version": row.policy_version,
+        },
+    )
+    db.commit()
+    return _policy_response(row)
 
 
 def _enabled() -> None:

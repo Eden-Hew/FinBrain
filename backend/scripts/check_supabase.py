@@ -35,6 +35,8 @@ REQUIRED_TABLES = (
     "outreach_actions",
     "outreach_evidence",
     "email_reply_correlations",
+    "telegram_onboarding_sessions",
+    "tenant_outreach_policies",
 )
 REQUIRED_INGESTION_COLUMNS = {
     "source_system",
@@ -57,13 +59,25 @@ REQUIRED_CURRENT_COLUMNS = {
         "tenant_id", "canonical_name", "normalized_name", "profile_status",
         "identity_review_status", "profile_origin", "primary_name_token"
     },
-    "customer_endpoints": {"origin"},
+    "customer_endpoints": {"origin", "delivery_token", "last_interaction_at"},
+    "telegram_onboarding_sessions": {
+        "tenant_id", "telegram_endpoint_token", "telegram_delivery_token", "name_token",
+        "email_token", "phone_token", "customer_id", "profile_content_id", "status"
+    },
+    "telegram_update_receipts": {
+        "tenant_id", "customer_id", "onboarding_session_id", "status"
+    },
+    "tenant_outreach_policies": {
+        "tenant_id", "telegram_reminders_enabled", "grace_days", "repeat_interval_days",
+        "max_reminders", "require_approval", "policy_version"
+    },
     "customer_identity_claims": {
         "tenant_id", "customer_id", "endpoint_id", "identity_token", "claim_basis",
         "confidence", "evidence_content_id", "status", "occurrence_count"
     },
     "einvoice_records": {
-        "tenant_id", "buyer_customer_id", "due_date", "paid_at", "source_record_id"
+        "tenant_id", "buyer_customer_id", "buyer_email_token", "buyer_phone_token",
+        "due_date", "paid_at", "source_record_id"
     },
     "einvoice_outreach_drafts": {
         "tenant_id", "einvoice_record_id", "channel", "draft_text", "status"
@@ -74,7 +88,8 @@ REQUIRED_CURRENT_COLUMNS = {
     },
     "outreach_actions": {
         "tenant_id", "customer_id", "customer_endpoint_id", "protected_subject",
-        "protected_body", "status", "provider_message_ref_hash", "replied_at"
+        "protected_body", "status", "provider_message_ref_hash", "replied_at",
+        "origin_type", "origin_invoice_id", "scheduled_for", "created_by_actor_ref"
     },
     "email_ingestion_receipts": {
         "customer_id", "outreach_action_id", "in_reply_to_ref_hash",
@@ -235,6 +250,12 @@ def main() -> None:
                 "outreach_queue_idx",
                 "email_reply_customer_idx",
                 "customer_identity_claims_review_idx",
+                "customer_endpoints_delivery_idx",
+                "telegram_onboarding_tenant_status_idx",
+                "telegram_receipts_tenant_status_idx",
+                "einvoice_buyer_email_token_idx",
+                "einvoice_buyer_phone_token_idx",
+                "outreach_worker_queue_idx",
             )
         }
 

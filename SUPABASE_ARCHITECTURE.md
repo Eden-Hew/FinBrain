@@ -110,10 +110,12 @@ before every referenced row has moved and the rotation job has completed.
 |---|---|
 | `structured_ingestion_batches` | Idempotent structured-file batch status and row counts |
 | `telegram_update_receipts` | Durable Telegram update deduplication and ingestion status |
+| `telegram_onboarding_sessions` | Durable tenant-scoped guided customer onboarding using protected identity tokens |
 | `email_sync_state` | IMAP cursor, mailbox reference, sync health, and last synchronization |
 | `email_ingestion_receipts` | HMAC-addressed email delivery receipt, protected source reference, customer/outreach correlation status |
 | `email_reply_correlations` | Evidence that one protected inbound email matched one governed outbound action |
 | `integration_status` | Heartbeats for API and background workers |
+| `tenant_outreach_policies` | Owner-controlled tenant rules for approval and automatic Telegram reminders |
 
 A connector receipt means the delivery was observed; it does not by itself prove every downstream
 step completed. Email processing is intentionally recoverable:
@@ -186,6 +188,14 @@ cancelled    rejected         failed   delivery_unknown
 Do not send directly from a route or mark an action `sent` before SMTP succeeds. The sender worker
 claims approved work idempotently, stores only a hash of the provider message reference, and uses
 that hash plus the protected sender endpoint for reply correlation.
+
+Telegram customer onboarding shows the privacy notice at `/start`, then collects name, Gmail,
+and a sender-owned shared phone in order. The completed values plus Telegram user/chat identities are unified into one protected
+`customer_onboarding_profile` record. Later customer messages are separate protected records linked
+through the verified Telegram endpoint. Telegram overdue reminders reuse `outreach_actions`; they
+are idempotent by tenant/invoice/endpoint/stage/policy version and are revalidated immediately
+before delivery. Automatic approval is disabled unless an owner explicitly enables it in the
+tenant outreach policy.
 
 ### Audit
 

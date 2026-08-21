@@ -20,8 +20,12 @@ def test_update_receipts_make_delivery_idempotent():
             123,
             status="protected",
             source_record_id="telegram:abc",
+            customer_id=42,
+            onboarding_session_id=7,
         )
         row = db.scalar(select(TelegramUpdateReceipt))
         assert row.status == "protected"
         assert row.source_record_id == "telegram:abc"
+        assert row.customer_id == 42
+        assert row.onboarding_session_id == 7
     engine.dispose()
