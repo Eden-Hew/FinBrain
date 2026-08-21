@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAppState } from "../lib/appState";
 import { PERSONAS } from "../lib/personas";
 import { disclosureTitle, humanize } from "../lib/auditFormatting";
+import { getReadIds, markManyRead, markRead } from "../lib/notificationReads";
 import {
   fetchAuditLog,
   fetchEinvoiceReadiness,
@@ -10,7 +11,7 @@ import {
   type WorkflowAuditEntry,
 } from "../api/client";
 
-type NotificationCategory = "invoicing" | "audit";
+type NotificationCategory = "invoicing" | "audit" | "approvals";
 
 interface NotificationItem {
   id: string;
@@ -21,7 +22,7 @@ interface NotificationItem {
   onOpen: () => void;
 }
 
-const CATEGORY_ICON: Record<NotificationCategory | "approvals", ReactNode> = {
+const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
   invoicing: <path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />,
   audit: <path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />,
   approvals: <path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />,
@@ -31,7 +32,7 @@ function relativeTime(iso: string | null): string {
   if (!iso) return "";
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
+  if (mins < 1) return "Just now";
   if (mins < 60) return `${mins} min ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours} hr ago`;
@@ -40,15 +41,20 @@ function relativeTime(iso: string | null): string {
 }
 
 // Aggregates real signals already fetched elsewhere in the app (e-invoice
-// readiness issues, the hash-chained audit log) into one feed instead of the
-// bell being a bare shortcut to Workflows — every item here links to the
-// real record it's about, nothing here is synthesized.
+// readiness issues, the hash-chained audit log, pending approvals) into one
+// feed instead of the bell being a bare shortcut to Workflows — every item
+// here links to the real record it's about, nothing here is synthesized.
+// Read state is tracked client-side only (see lib/notificationReads.ts),
+// the same disclosed, session-local pattern already used for "Recent"
+// conversations on the Ask page.
 export function NotificationBell() {
   const { show, showEinvoiceDetail, askRole, approvalsCount } = useAppState();
   const capabilities = PERSONAS[askRole].capabilities;
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const [tab, setTab] = useState<"all" | "unread">("all");
+  const [readIds, setReadIds] = useState<Set<string>>(() => getReadIds());
 
   useEffect(() => {
     let active = true;
@@ -109,11 +115,34 @@ export function NotificationBell() {
     return () => { active = false; window.clearInterval(timer); };
   }, [askRole, capabilities.viewAudit, show, showEinvoiceDetail]);
 
-  const totalCount = items.length + approvalsCount;
+  const allItems = useMemo<NotificationItem[]>(() => {
+    const list = [...items];
+    if (approvalsCount > 0) {
+      list.unshift({
+        id: "approvals-summary",
+        category: "approvals",
+        title: `${approvalsCount} item${approvalsCount === 1 ? "" : "s"} waiting for review`,
+        detail: "Recommendations and outreach drafts in Workflows.",
+        time: null,
+        onOpen: () => show("approvals"),
+      });
+    }
+    return list;
+  }, [items, approvalsCount, show]);
 
-  const openItem = (onOpen: () => void) => {
+  const unreadCount = allItems.filter((item) => !readIds.has(item.id)).length;
+  const visibleItems = tab === "unread" ? allItems.filter((item) => !readIds.has(item.id)) : allItems;
+
+  const openItem = (item: NotificationItem) => {
     setOpen(false);
-    onOpen();
+    markRead(item.id);
+    setReadIds(getReadIds());
+    item.onOpen();
+  };
+
+  const markAllRead = () => {
+    markManyRead(allItems.map((item) => item.id));
+    setReadIds(getReadIds());
   };
 
   return (
@@ -133,36 +162,49 @@ export function NotificationBell() {
         aria-label="Notifications"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-        {totalCount > 0 && <span className="fb-nav-badge fb-topbar-badge">{totalCount > 9 ? "9+" : totalCount}</span>}
+        {unreadCount > 0 && <span className="fb-nav-badge fb-topbar-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>}
       </button>
       {open && (
         <div className="fb-notif-panel" role="menu">
-          <div className="fb-notif-panel-head">Notifications</div>
-          {approvalsCount > 0 && (
-            <button className="fb-notif-item" type="button" role="menuitem" onClick={() => openItem(() => show("approvals"))}>
-              <span className="fb-notif-item-icon is-approvals" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{CATEGORY_ICON.approvals}</svg>
-              </span>
-              <span className="fb-notif-item-body">
-                <strong>{approvalsCount} item{approvalsCount === 1 ? "" : "s"} waiting for review</strong>
-                <span className="fb-fine">Workflows</span>
-              </span>
+          <div className="fb-notif-head">
+            <span className="fb-notif-head-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              Notifications
+              {unreadCount > 0 && <span className="fb-notif-head-badge">{unreadCount} new</span>}
+            </span>
+            <button className="fb-notif-mark-all" type="button" onClick={markAllRead} disabled={unreadCount === 0}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 12 4 4L18 5" /><path d="m9 16 2 2L20 8" /></svg>
+              Mark all read
             </button>
-          )}
-          {items.map((item) => (
-            <button key={item.id} className="fb-notif-item" type="button" role="menuitem" onClick={() => openItem(item.onOpen)}>
-              <span className={"fb-notif-item-icon is-" + item.category} aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{CATEGORY_ICON[item.category]}</svg>
-              </span>
-              <span className="fb-notif-item-body">
-                <strong>{item.title}</strong>
-                <span className="fb-fine">{item.detail}{item.time ? " · " + relativeTime(item.time) : ""}</span>
-              </span>
-            </button>
-          ))}
-          {loadedOnce && items.length === 0 && approvalsCount === 0 && (
-            <div className="fb-notif-empty">You're all caught up.</div>
-          )}
+          </div>
+
+          <div className="fb-notif-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === "all"} className={tab === "all" ? "is-current" : ""} onClick={() => setTab("all")}>All ({allItems.length})</button>
+            <button type="button" role="tab" aria-selected={tab === "unread"} className={tab === "unread" ? "is-current" : ""} onClick={() => setTab("unread")}>Unread ({unreadCount})</button>
+          </div>
+
+          <div className="fb-notif-list">
+            {visibleItems.map((item) => (
+              <button key={item.id} className={"fb-notif-item" + (readIds.has(item.id) ? "" : " is-unread")} type="button" role="menuitem" onClick={() => openItem(item)}>
+                <span className={"fb-notif-item-icon is-" + item.category} aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{CATEGORY_ICON[item.category]}</svg>
+                </span>
+                <span className="fb-notif-item-body">
+                  <span className="fb-notif-item-row">
+                    <strong>{item.title}</strong>
+                    <span className="fb-notif-item-time">
+                      {!readIds.has(item.id) && <span className="fb-notif-dot" aria-hidden="true" />}
+                      {relativeTime(item.time)}
+                    </span>
+                  </span>
+                  <span className="fb-notif-item-detail">{item.detail}</span>
+                </span>
+              </button>
+            ))}
+            {loadedOnce && visibleItems.length === 0 && (
+              <div className="fb-notif-empty">{tab === "unread" ? "No unread notifications." : "You're all caught up."}</div>
+            )}
+          </div>
         </div>
       )}
     </div>
