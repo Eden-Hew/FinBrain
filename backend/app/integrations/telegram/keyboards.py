@@ -1,8 +1,6 @@
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
 
@@ -42,14 +40,6 @@ def review_keyboard(nonce: str, user_id: int) -> InlineKeyboardMarkup:
                 ),
             ],
         ]
-    )
-
-
-def phone_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton("Share my phone number", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
     )
 
 

@@ -258,6 +258,22 @@ def main() -> None:
                 "outreach_worker_queue_idx",
             )
         }
+        customer_origin_checks = {
+            row.conname: row.definition
+            for row in connection.execute(
+                text(
+                    "select c.conname, pg_get_constraintdef(c.oid) as definition "
+                    "from pg_constraint c "
+                    "join pg_class t on t.oid = c.conrelid "
+                    "join pg_namespace n on n.oid = t.relnamespace "
+                    "where n.nspname = 'public' "
+                    "and t.relname in ('customers', 'customer_endpoints') "
+                    "and c.conname in ("
+                    "'customers_profile_origin_check', "
+                    "'customer_endpoints_origin_check')"
+                )
+            )
+        }
 
     missing = [name for name, relation in tables.items() if relation is None]
     if vector_version is None:
@@ -323,6 +339,18 @@ def main() -> None:
             )
     if missing_indexes := [name for name, value in current_indexes.items() if value is None]:
         raise SystemExit("Current product schema is missing indexes: " + ", ".join(missing_indexes))
+    expected_origin_values = {
+        "customers_profile_origin_check": ("manual", "einvoice", "email", "telegram"),
+        "customer_endpoints_origin_check": (
+            "manual", "inbound_email", "telegram_onboarding", "telegram_contact_share"
+        ),
+    }
+    for constraint, expected_values in expected_origin_values.items():
+        definition = customer_origin_checks.get(constraint, "")
+        if any(f"'{value}'" not in definition for value in expected_values):
+            raise SystemExit(
+                f"Current product schema has an incompatible {constraint} constraint."
+            )
 
     print(f"Database: {database}")
     print(f"Database user: {user}")

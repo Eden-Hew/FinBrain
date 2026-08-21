@@ -18,7 +18,6 @@ from app.integrations.telegram.auth import actor_ref, operator_role
 from app.integrations.telegram.drafts import draft_store, verify_callback
 from app.integrations.telegram.extractors import ExtractionError, extract_document, extract_text
 from app.integrations.telegram.keyboards import (
-    phone_keyboard,
     record_type_keyboard,
     remove_reply_keyboard,
     review_keyboard,
@@ -26,6 +25,8 @@ from app.integrations.telegram.keyboards import (
 from app.integrations.telegram.onboarding import (
     accept_consent,
     begin_onboarding,
+    cancel_onboarding,
+    customer_display_name,
     ingest_customer_message,
     submit_gmail,
     submit_name,
@@ -34,7 +35,7 @@ from app.integrations.telegram.onboarding import (
 from app.integrations.telegram.receipts import claim_update, update_receipt
 from app.integrations.telegram.service import enrich_in_background, protect
 from app.integrations.telegram.types import CaptureDraft
-from app.models import TokenizedContent
+from app.models import Customer, TokenizedContent
 from app.security.detect import detect_spans, get_detector_status
 from app.security.tokenize import tokenize_record
 
@@ -97,9 +98,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not settings.telegram_customer_onboarding_enabled or chat.type != "private":
         await update.effective_message.reply_text(RESTRICTED)
         return
+    display_name = None
     with SessionLocal() as db:
         set_worker_context(
-            db, actor_ref="telegram-onboarding-worker",
+            db,
+            actor_ref="telegram-onboarding-worker",
             tenant_id=settings.telegram_customer_tenant_id,
         )
         onboarding = begin_onboarding(
@@ -110,16 +113,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         if onboarding.status == "awaiting_consent":
             onboarding = accept_consent(db, onboarding.id)
+        if onboarding.status in {"awaiting_message", "completed"}:
+            display_name = customer_display_name(db, onboarding)
     context.user_data["onboarding_session_id"] = onboarding.id
     if onboarding.status in {"awaiting_message", "completed"}:
-        await update.effective_message.reply_text(
-            "Your customer profile is connected. How can we help you today?"
+        greeting = (
+            f"Welcome back, {display_name}. How can we help you today?"
+            if display_name
+            else "Welcome back. How can we help you today?"
         )
+        await update.effective_message.reply_text(greeting)
         return
     if onboarding.status == "awaiting_phone":
         await update.effective_message.reply_text(
-            "Please share your phone number using the button below.",
-            reply_markup=phone_keyboard(),
+            "What is your phone number? Enter it as text, for example +60124567890 or 012-4567890.",
         )
         return
     prompt = (
@@ -133,9 +140,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(prompt)
 
 
-async def _customer_content(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, user, chat
-) -> bool:
+async def _customer_content(update: Update, context: ContextTypes.DEFAULT_TYPE, user, chat) -> bool:
     settings = get_settings()
     if not settings.telegram_customer_onboarding_enabled or chat.type != "private":
         return False
@@ -146,12 +151,15 @@ async def _customer_content(
         return True
     with SessionLocal() as db:
         set_worker_context(
-            db, actor_ref="telegram-onboarding-worker",
+            db,
+            actor_ref="telegram-onboarding-worker",
             tenant_id=settings.telegram_customer_tenant_id,
         )
         onboarding = begin_onboarding(
-            db, tenant_id=settings.telegram_customer_tenant_id,
-            user_id=user.id, chat_id=chat.id,
+            db,
+            tenant_id=settings.telegram_customer_tenant_id,
+            user_id=user.id,
+            chat_id=chat.id,
         )
         context.user_data["onboarding_session_id"] = onboarding.id
         try:
@@ -160,7 +168,9 @@ async def _customer_content(
                     raise ValueError("valid_customer_name_required")
                 onboarding = submit_name(db, onboarding.id, message.text)
                 update_receipt(
-                    db, update.update_id, status="onboarding",
+                    db,
+                    update.update_id,
+                    status="onboarding",
                     onboarding_session_id=onboarding.id,
                 )
                 await message.reply_text("What is your Gmail address?")
@@ -169,18 +179,27 @@ async def _customer_content(
                     raise ValueError("valid_gmail_required")
                 onboarding = submit_gmail(db, onboarding.id, message.text)
                 update_receipt(
-                    db, update.update_id, status="onboarding",
+                    db,
+                    update.update_id,
+                    status="onboarding",
                     onboarding_session_id=onboarding.id,
                 )
                 await message.reply_text(
-                    "Please share your phone number using the button below.",
-                    reply_markup=phone_keyboard(),
+                    "What is your phone number? Enter it as text, for example +60124567890 or "
+                    "012-4567890.",
                 )
             elif onboarding.status == "awaiting_phone":
-                contact = message.contact
-                if contact is None or contact.user_id != user.id:
-                    raise ValueError("own_telegram_contact_required")
-                onboarding = submit_phone(db, onboarding.id, contact.phone_number)
+                if not message.text:
+                    raise ValueError("valid_phone_required")
+                onboarding = submit_phone(db, onboarding.id, message.text)
+                display_name = customer_display_name(db, onboarding)
+                customer = db.get(Customer, onboarding.customer_id)
+                identity_note = (
+                    " Your details matched an existing customer, and the submitted name is "
+                    "waiting for an owner to review."
+                    if customer is not None and customer.identity_review_status == "review_required"
+                    else ""
+                )
                 profile = db.get(TokenizedContent, onboarding.profile_content_id)
                 update_receipt(
                     db,
@@ -191,15 +210,25 @@ async def _customer_content(
                     onboarding_session_id=onboarding.id,
                 )
                 await message.reply_text(
-                    "Your protected customer profile is ready. How can we help you today?",
+                    (
+                        f"Welcome, {display_name}. Your protected customer profile is ready. "
+                        f"How can we help you today?{identity_note}"
+                        if display_name
+                        else (
+                            "Your protected customer profile is ready. "
+                            f"How can we help you today?{identity_note}"
+                        )
+                    ),
                     reply_markup=remove_reply_keyboard(),
                 )
             elif onboarding.status in {"awaiting_message", "completed"}:
                 if not message.text:
                     raise ValueError("customer_message_text_required")
                 content = ingest_customer_message(
-                    db, session_id=onboarding.id,
-                    message_id=message.message_id, text=message.text,
+                    db,
+                    session_id=onboarding.id,
+                    message_id=message.message_id,
+                    text=message.text,
                 )
                 update_receipt(
                     db,
@@ -225,9 +254,9 @@ async def _customer_content(
             prompts = {
                 "valid_customer_name_required": "Please enter your full name using letters.",
                 "valid_gmail_required": "Please enter one valid @gmail.com address.",
-                "own_telegram_contact_required": (
-                    "Please use the button to share the phone number belonging to this "
-                    "Telegram account."
+                "valid_phone_required": (
+                    "Please enter a valid phone number as text, such as +60124567890 or "
+                    "012-4567890."
                 ),
                 "customer_message_text_required": "Please send your message as text.",
             }
@@ -274,10 +303,37 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
+    user, chat, role = _identity(update)
     if user:
         draft_store.pop(user.id)
         context.user_data.pop("record_type", None)
+        context.user_data.pop("onboarding_session_id", None)
+    settings = get_settings()
+    if (
+        user is not None
+        and chat is not None
+        and role is None
+        and settings.telegram_customer_onboarding_enabled
+        and chat.type == "private"
+    ):
+        with SessionLocal() as db:
+            set_worker_context(
+                db,
+                actor_ref="telegram-onboarding-worker",
+                tenant_id=settings.telegram_customer_tenant_id,
+            )
+            onboarding = begin_onboarding(
+                db,
+                tenant_id=settings.telegram_customer_tenant_id,
+                user_id=user.id,
+                chat_id=chat.id,
+            )
+            cancel_onboarding(db, onboarding.id)
+        await update.effective_message.reply_text(
+            "Onboarding cancelled. Send /start whenever you want to begin again.",
+            reply_markup=remove_reply_keyboard(),
+        )
+        return
     await update.effective_message.reply_text("Capture cancelled.")
 
 
@@ -505,9 +561,7 @@ async def review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 ),
             )
         if enriched.processing_status == "ready":
-            await query.message.reply_text(
-                f"Record ready\n\nReference: {reference}\nStatus: ready"
-            )
+            await query.message.reply_text(f"Record ready\n\nReference: {reference}\nStatus: ready")
         else:
             await query.message.reply_text(
                 f"Record protected, enrichment pending\n\nReference: {reference}\n"
@@ -518,4 +572,13 @@ async def review_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("telegram_handler_failed", extra={"event_code": "handler_failed"})
+    error = context.error
+    error_info = (
+        (type(error), error, error.__traceback__) if isinstance(error, BaseException) else None
+    )
+    logger.error(
+        "telegram_handler_failed error_type=%s",
+        type(error).__name__ if error is not None else "unknown",
+        exc_info=error_info,
+        extra={"event_code": "handler_failed"},
+    )

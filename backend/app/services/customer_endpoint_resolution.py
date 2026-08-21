@@ -1,9 +1,16 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Customer, CustomerEndpoint, CustomerRecordLink, EInvoiceRecord
+from app.models import (
+    Customer,
+    CustomerEndpoint,
+    CustomerIdentityClaim,
+    CustomerRecordLink,
+    EInvoiceRecord,
+)
 from app.services.workflow_audit import write_workflow_event
 
 
@@ -55,6 +62,16 @@ def _add_endpoint(
             raise ValueError(f"{channel}_endpoint_revoked")
         if verification_status == "verified":
             existing.verification_status = "verified"
+        elif (
+            channel == "phone"
+            and origin == "telegram_onboarding"
+            and existing.origin == "telegram_contact_share"
+        ):
+            # Older Telegram onboarding treated typed phone text as a verified
+            # Telegram contact share. Correct that legacy classification when
+            # the protected identity bundle is reconciled again.
+            existing.verification_status = "observed"
+            existing.origin = "telegram_onboarding"
         if delivery_token is not None:
             existing.delivery_token = delivery_token
         return existing
@@ -72,9 +89,72 @@ def _add_endpoint(
     return row
 
 
-def resolve_customer_endpoint(
-    db: Session, evidence: EndpointEvidence
-) -> EndpointResolutionResult:
+def _record_onboarding_name(
+    db: Session,
+    *,
+    customer: Customer,
+    telegram_endpoint: CustomerEndpoint,
+    evidence: EndpointEvidence,
+    created: bool,
+) -> bool:
+    """Persist the self-declared Telegram name without silently replacing identity."""
+    previous_primary = customer.primary_name_token
+    if previous_primary is None:
+        customer.primary_name_token = evidence.name_token
+
+    conflicts = previous_primary is not None and previous_primary != evidence.name_token
+    status = "conflicting" if conflicts else "accepted"
+    now = datetime.now(UTC)
+    claim = db.scalar(
+        select(CustomerIdentityClaim).where(
+            CustomerIdentityClaim.tenant_id == evidence.tenant_id,
+            CustomerIdentityClaim.customer_id == customer.id,
+            CustomerIdentityClaim.endpoint_id == telegram_endpoint.id,
+            CustomerIdentityClaim.identity_token == evidence.name_token,
+            CustomerIdentityClaim.claim_basis == "self_identification",
+        )
+    )
+    if claim is None:
+        db.add(
+            CustomerIdentityClaim(
+                tenant_id=evidence.tenant_id,
+                customer_id=customer.id,
+                endpoint_id=telegram_endpoint.id,
+                identity_token=evidence.name_token,
+                claim_basis="self_identification",
+                confidence=1.0,
+                evidence_content_id=evidence.evidence_content_id,
+                status=status,
+            )
+        )
+    else:
+        claim.confidence = 1.0
+        claim.evidence_content_id = evidence.evidence_content_id
+        claim.last_seen_at = now
+        claim.occurrence_count += 1
+        if claim.status not in {"accepted", "rejected"}:
+            claim.status = status
+
+    if conflicts:
+        customer.identity_review_status = "review_required"
+        write_workflow_event(
+            db,
+            event_type="telegram_identity_review_required",
+            actor_role="system_worker",
+            actor_ref="telegram-onboarding-worker",
+            resource_type="customer",
+            resource_id=str(customer.id),
+            tenant_id=evidence.tenant_id,
+            event_payload={
+                "evidence_content_id": evidence.evidence_content_id,
+                "telegram_endpoint_id": telegram_endpoint.id,
+                "profile_created": created,
+            },
+        )
+    return conflicts
+
+
+def resolve_customer_endpoint(db: Session, evidence: EndpointEvidence) -> EndpointResolutionResult:
     """Resolve one protected Telegram identity bundle to exactly one tenant customer."""
     candidates = {
         row.customer_id
@@ -122,8 +202,6 @@ def resolve_customer_endpoint(
         db.add(customer)
         db.flush()
 
-    if customer.primary_name_token is None:
-        customer.primary_name_token = evidence.name_token
     telegram = _add_endpoint(
         db,
         tenant_id=evidence.tenant_id,
@@ -149,8 +227,15 @@ def resolve_customer_endpoint(
         customer_id=customer.id,
         channel="phone",
         token=evidence.phone_token,
-        verification_status="verified",
-        origin="telegram_contact_share",
+        verification_status="observed",
+        origin="telegram_onboarding",
+    )
+    review_required = _record_onboarding_name(
+        db,
+        customer=customer,
+        telegram_endpoint=telegram,
+        evidence=evidence,
+        created=created,
     )
     customer.profile_status = "confirmed"
     link = db.scalar(
@@ -162,19 +247,23 @@ def resolve_customer_endpoint(
         )
     )
     if link is None:
-        db.add(CustomerRecordLink(
-            tenant_id=evidence.tenant_id,
-            customer_id=customer.id,
-            tokenized_content_id=evidence.evidence_content_id,
-            match_status="verified",
-            confidence=1.0,
-            match_basis="telegram_onboarding_profile",
-        ))
-    for invoice in db.scalars(select(EInvoiceRecord).where(
-        EInvoiceRecord.tenant_id == evidence.tenant_id,
-        EInvoiceRecord.buyer_customer_id.is_(None),
-        EInvoiceRecord.buyer_email_token == evidence.email_token,
-    )).all():
+        db.add(
+            CustomerRecordLink(
+                tenant_id=evidence.tenant_id,
+                customer_id=customer.id,
+                tokenized_content_id=evidence.evidence_content_id,
+                match_status="verified",
+                confidence=1.0,
+                match_basis="telegram_onboarding_profile",
+            )
+        )
+    for invoice in db.scalars(
+        select(EInvoiceRecord).where(
+            EInvoiceRecord.tenant_id == evidence.tenant_id,
+            EInvoiceRecord.buyer_customer_id.is_(None),
+            EInvoiceRecord.buyer_email_token == evidence.email_token,
+        )
+    ).all():
         invoice.buyer_customer_id = customer.id
     write_workflow_event(
         db,
@@ -191,4 +280,5 @@ def resolve_customer_endpoint(
         customer_id=customer.id,
         telegram_endpoint_id=telegram.id,
         created=created,
+        review_required=review_required,
     )

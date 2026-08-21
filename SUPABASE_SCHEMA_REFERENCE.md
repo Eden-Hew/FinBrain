@@ -428,6 +428,8 @@ primary_name_token      text        NULL
 
 Unique key: `(tenant_id, normalized_name)`.
 
+`profile_origin` is constrained to `manual`, `einvoice`, `email`, or `telegram`.
+
 ### `customer_aliases`
 
 ```text
@@ -486,6 +488,9 @@ origin                text        NOT NULL, default 'manual'
 
 Unique key: `(tenant_id, channel, endpoint_token)`. Endpoint ownership must remain unique within a
 tenant regardless of customer.
+
+`origin` is constrained to `manual`, `inbound_email`, `telegram_onboarding`, or
+`telegram_contact_share`.
 
 ### `customer_identity_claims`
 

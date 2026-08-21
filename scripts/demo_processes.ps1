@@ -78,6 +78,8 @@ function Get-DemoDescendants {
     Write-Warning "Process ancestry is unavailable; stopping only the validated tracked process."
     return @()
   }
+  $rootItem = $all | Where-Object { [int]$_.ProcessId -eq $RootPid } | Select-Object -First 1
+  if (-not $rootItem) { return @() }
   $children = @{}
   foreach ($item in $all) {
     $parent = [int]$item.ParentProcessId
@@ -85,7 +87,11 @@ function Get-DemoDescendants {
     $children[$parent] += $item
   }
   $result = @()
-  $queue = @(@{ pid = $RootPid; depth = 0 })
+  $queue = @(@{
+      pid = $RootPid
+      depth = 0
+      created = [datetime]$rootItem.CreationDate
+    })
   $visited = @{}
   while ($queue.Count -gt 0) {
     $current = $queue[0]
@@ -95,9 +101,21 @@ function Get-DemoDescendants {
     $visited[$currentPid] = $true
     if (-not $children.ContainsKey($currentPid)) { continue }
     foreach ($child in @($children[$currentPid])) {
-      $entry = [pscustomobject]@{ pid = [int]$child.ProcessId; depth = [int]$current.depth + 1 }
+      $childPid = [int]$child.ProcessId
+      $childCreated = [datetime]$child.CreationDate
+      # Windows keeps only a numeric parent PID. If that PID is later reused,
+      # an older unrelated process can appear beneath a newly started demo
+      # launcher. Only follow children created at or after their current parent.
+      if ($childPid -eq $currentPid -or $childCreated -lt [datetime]$current.created) {
+        continue
+      }
+      $entry = [pscustomobject]@{
+        pid = $childPid
+        depth = [int]$current.depth + 1
+        created = $childCreated
+      }
       $result += $entry
-      $queue += @{ pid = $entry.pid; depth = $entry.depth }
+      $queue += @{ pid = $entry.pid; depth = $entry.depth; created = $entry.created }
     }
   }
   return @($result | Sort-Object depth -Descending)
