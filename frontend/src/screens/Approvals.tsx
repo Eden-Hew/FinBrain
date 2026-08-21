@@ -5,6 +5,7 @@ import { Sidebar, AppTopBar } from "../components/Nav";
 import { PersonaSelector } from "../components/PersonaSelector";
 import { PERSONAS } from "../lib/personas";
 import { EmptyState } from "../components/EmptyState";
+import { MaskedText } from "../components/MaskedText";
 import {
   analyzeProcesses,
   decideEinvoiceOutreach,
@@ -338,7 +339,7 @@ export default function Approvals() {
                   {item.evidence.map((evidence) => (
                     <div className="fb-rec-evidence" key={`${item.id}-${evidence.citation_id}`}>
                       <strong>{evidence.citation_id}</strong> · {evidence.source_system} · {evidence.record_type ?? "record"}
-                      <div style={{ marginTop: ".3rem" }}>{evidence.evidence_excerpt}</div>
+                      <div style={{ marginTop: ".3rem" }}><MaskedText text={evidence.evidence_excerpt} /></div>
                     </div>
                   ))}
                 </div>
@@ -440,8 +441,8 @@ export default function Approvals() {
             <div className="fb-rec-card is-type-outreach" key={`customer-outreach-${action.id}`}>
               <TypeBadge type="outreach" />
               <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>Customer intelligence · protected email · waiting for approval</div>
-              <h3>{action.protected_subject}</h3>
-              <div className="fb-rec-evidence">{action.protected_body}</div>
+              <h3><MaskedText text={action.protected_subject} /></h3>
+              <div className="fb-rec-evidence"><MaskedText text={action.protected_body} /></div>
               <div className="fb-fine" style={{ marginTop: ".5rem" }}>Customer #{action.customer_id} · {action.attempt_count} delivery attempt(s)</div>
               <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap", alignItems: "center", marginTop: ".8rem" }}>
                 <ConfirmApproveButton
