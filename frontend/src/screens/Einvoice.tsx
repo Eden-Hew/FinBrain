@@ -53,6 +53,9 @@ export function splitReadinessIssues(reason: string): string[] {
     .map((s) => (s.endsWith(".") ? s : s + "."));
 }
 
+const RING_RADIUS = 25;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
 type ReadinessCategoryKey = "critical" | "warning" | "passing";
 type FixState = "idle" | "sending" | "sent" | "failed";
 type DocumentState = "idle" | "loading" | "failed";
@@ -140,7 +143,18 @@ function ReadinessCheckPanel({ canManage }: { canManage: boolean }) {
   return (
     <div>
       <div className="fb-readiness-score">
-        <div className="fb-readiness-score-value">{Math.round(data.score * 100)}%</div>
+        <div className="fb-home-ring-wrap" style={{ width: "72px", height: "72px" }}>
+          <svg width="72" height="72" viewBox="0 0 60 60" aria-hidden="true">
+            <circle cx="30" cy="30" r={RING_RADIUS} fill="none" stroke="var(--bg-alt)" strokeWidth="6" />
+            <circle
+              cx="30" cy="30" r={RING_RADIUS} fill="none" stroke="var(--accent)" strokeWidth="6" strokeLinecap="round"
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={RING_CIRCUMFERENCE * (1 - data.score)}
+              transform="rotate(-90 30 30)"
+            />
+          </svg>
+          <span className="fb-home-ring-value" style={{ fontSize: "1.1rem" }}>{Math.round(data.score * 100)}<small>%</small></span>
+        </div>
         <div>
           <div className="fb-readiness-score-label">Ready for MyInvois submission</div>
           <div className="fb-fine">{data.passing_count} of {data.total_records} invoices pass all checks</div>
@@ -432,16 +446,18 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
       <div style={{ marginTop: ".4rem" }}>
         <button
           type="button"
-          className="fb-btn fb-btn-outline"
+          className="fb-btn fb-btn-outline fb-answer-action"
           style={{ fontSize: ".72rem", padding: ".3rem .6rem" }}
           onClick={() => setShowCompanyDetails((v) => !v)}
+          aria-expanded={showCompanyDetails}
         >
-          {showCompanyDetails ? "Hide additional company & payment details ▲" : "Add company addresses, TINs & remittance bank details ▼"}
+          <span className={"fb-link-toggle-caret" + (showCompanyDetails ? " is-open" : "")}>▸</span>
+          {showCompanyDetails ? "Hide additional company & payment details" : "Add company addresses, TINs & remittance bank details"}
         </button>
       </div>
 
       {showCompanyDetails && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem", background: "var(--card-subtle, #f9fafb)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--line)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem", background: "var(--bg-alt)", padding: "1rem", borderRadius: "10px", border: "1px solid var(--line)" }}>
           <label className="fb-field-label">Supplier TIN
             <input className="fb-field-mock" {...field("supplier_tin")} placeholder="e.g. C1234567890" />
           </label>
@@ -586,7 +602,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("overdue")}
           aria-pressed={categoryFilter === "overdue"}
         >
-          <div className="fb-kpi-label">🔴 Overdue</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 2 10 18H2z" /><path d="M12 9v4M12 16h.01" /></svg>
+            Overdue
+          </div>
           <div className="fb-kpi-value" style={{ color: stats.overdueCount > 0 ? "var(--chart-attn)" : undefined }}>
             {stats.overdueCount} ({stats.overdueAmount})
           </div>
@@ -597,7 +616,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("unpaid")}
           aria-pressed={categoryFilter === "unpaid"}
         >
-          <div className="fb-kpi-label">🟡 Unpaid / Current</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>
+            Unpaid / Current
+          </div>
           <div className="fb-kpi-value">
             {stats.unpaidCount} ({stats.unpaidAmount})
           </div>
@@ -608,7 +630,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("paid")}
           aria-pressed={categoryFilter === "paid"}
         >
-          <div className="fb-kpi-label">🟢 Paid / Settled</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>
+            Paid / Settled
+          </div>
           <div className="fb-kpi-value" style={{ color: "var(--chart-good)" }}>
             {stats.paidCount} ({stats.paidAmount})
           </div>
@@ -619,7 +644,10 @@ function AllInvoicesPanel() {
           onClick={() => toggleFilter("review")}
           aria-pressed={categoryFilter === "review"}
         >
-          <div className="fb-kpi-label">⚠️ Needs Review</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
+            Needs Review
+          </div>
           <div className="fb-kpi-value">{stats.reviewCount}</div>
         </button>
         <button
@@ -628,7 +656,10 @@ function AllInvoicesPanel() {
           onClick={() => setCategoryFilter("all")}
           aria-pressed={categoryFilter === "all"}
         >
-          <div className="fb-kpi-label">📋 Total ({stats.allCount})</div>
+          <div className="fb-kpi-label fb-kpi-label-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" /></svg>
+            Total ({stats.allCount})
+          </div>
           <div className="fb-kpi-value">{stats.allAmount}</div>
         </button>
       </div>
