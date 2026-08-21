@@ -693,11 +693,17 @@ img{max-width:100%}
 .fb-rec-type-badge.is-type-action{color:var(--chart-attn);}
 .fb-rec-type-badge.is-type-recommendation{color:var(--chart-good);}
 .fb-rec-type-badge.is-type-outreach{color:var(--teal);}
-.fb-disabled-hint{display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--ink-soft);align-self:center;}
-.fb-disabled-hint svg{width:13px;height:13px;}
+/* flex:1 centers the hint in whatever vertical space is left once the card
+   is stretched to match its taller row-mates, instead of the note floating
+   left-aligned at the top of an otherwise-empty card. */
+.fb-disabled-hint{display:flex;flex:1;align-items:center;justify-content:center;text-align:center;gap:.35rem;font-size:.7rem;color:var(--ink-soft);}
+.fb-disabled-hint svg{width:13px;height:13px;flex:0 0 auto;}
 
-.fb-home-grid{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;}
-.fb-home-card{flex:1 1 250px;position:relative;text-align:left;display:flex;flex-direction:column;gap:.6rem;background:var(--card);border:1px solid var(--line);border-left-width:3px;border-radius:16px;padding:1.2rem 1.3rem;cursor:pointer;font-family:'Inter',-apple-system,sans-serif;transition:transform .18s cubic-bezier(.16,1,.3,1),box-shadow .18s ease,border-color .18s ease;}
+/* CSS Grid with auto-fill (not auto-fit/flexbox) so a lone card left over in
+   the last row keeps the same column width as every other card instead of
+   stretching to fill the whole row. */
+.fb-home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1rem;margin-bottom:1rem;}
+.fb-home-card{position:relative;text-align:left;display:flex;flex-direction:column;gap:.6rem;background:var(--card);border:1px solid var(--line);border-left-width:3px;border-radius:16px;padding:1.2rem 1.3rem;cursor:pointer;font-family:'Inter',-apple-system,sans-serif;transition:transform .18s cubic-bezier(.16,1,.3,1),box-shadow .18s ease,border-color .18s ease;}
 .fb-home-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(16,17,18,.28);border-color:var(--ink-soft);}
 .fb-home-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .fb-home-card.is-einvoice{border-left-color:var(--accent);}
@@ -784,9 +790,16 @@ img{max-width:100%}
 .fb-briefing-name{flex:1;min-width:0;display:flex;align-items:center;gap:.4rem;font-weight:700;font-size:.85rem;color:var(--ink);}
 .fb-briefing-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .fb-briefing-detail{flex:0 0 auto;font-size:.78rem;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+.fb-briefing-foot{display:flex;align-items:center;gap:.5rem;flex:0 0 auto;}
 @media (max-width:640px){
   .fb-briefing-row{flex-wrap:wrap;}
-  .fb-briefing-detail{flex-basis:100%;}
+  /* The detail+arrow wrapper (not .fb-briefing-detail alone) claims the full
+     wrapped line, so the arrow sits at its right edge via space-between
+     instead of wrapping again onto a dangling line of its own. Wrapping the
+     name's own flex-basis would let it get shrunk to near-nothing instead
+     (min-width:0 lets it collapse to make room for the detail text) --
+     grouping keeps the name's line reserved to itself. */
+  .fb-briefing-foot{flex-basis:100%;justify-content:space-between;}
   .fb-greeting-name{max-width:180px;}
 }
 .fb-customer-detail-head{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem;}

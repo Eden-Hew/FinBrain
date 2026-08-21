@@ -146,7 +146,10 @@ function EinvoiceCard() {
     >
       {state === "loading" && <CardSkeleton />}
       {state === "error" && <ErrorWithRetry message="Couldn't load e-Invoicing data." onRetry={retry} />}
-      {state === "loaded" && data && (
+      {state === "loaded" && data && data.total_records === 0 && (
+        <div className="fb-home-card-sub">No invoices yet — readiness will show once you have some.</div>
+      )}
+      {state === "loaded" && data && data.total_records > 0 && (
         <div className="fb-home-ring-row">
           <div className="fb-home-ring-wrap">
             <svg width="60" height="60" viewBox="0 0 60 60" aria-hidden="true">
@@ -488,8 +491,10 @@ function AttentionSection({
                     {unresolved && <span className="fb-mask-badge" title="Identity not yet confirmed by an owner">Unconfirmed</span>}
                   </span>
                 )}
-                <span className="fb-briefing-detail">{reason} · {c.attention_score}/100</span>
-                <span className="fb-home-card-arrow" aria-hidden="true">→</span>
+                <span className="fb-briefing-foot">
+                  <span className="fb-briefing-detail">{reason} · {c.attention_score}/100</span>
+                  <span className="fb-home-card-arrow" aria-hidden="true">→</span>
+                </span>
               </button>
             );
           })}
@@ -552,7 +557,7 @@ function GreetingHeader({ firstName, lang }: { firstName: string | null; lang: L
       <div>
         <h1 className="fb-greeting-line">
           {t(GREETING_KEY[period])}
-          {firstName && <span className="fb-greeting-name">, {firstName}</span>}
+          {firstName && <>, <span className="fb-greeting-name">{firstName}</span></>}
         </h1>
         <div className="fb-greeting-clock">{timeStr} · {dateStr}</div>
       </div>
