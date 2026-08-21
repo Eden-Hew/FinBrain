@@ -681,7 +681,7 @@ class CustomerSummaryResponse(BaseModel):
     name: str
     profile_status: Literal["provisional", "confirmed"] = "confirmed"
     identity_review_status: Literal["clear", "review_required"] = "clear"
-    profile_origin: Literal["manual", "einvoice", "email"] = "manual"
+    profile_origin: Literal["manual", "einvoice", "email", "telegram"] = "manual"
     attention_score: int
     priority: str
     outstanding_total: Decimal

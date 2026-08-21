@@ -10,6 +10,7 @@ from app.models import (
     TokenizedContent,
 )
 from app.services.customer_endpoint_resolution import EndpointEvidence, resolve_customer_endpoint
+from app.services.customer_intelligence import customer_summary
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 
@@ -51,6 +52,9 @@ def test_telegram_identity_bundle_creates_one_customer_and_three_endpoints():
 
         assert result.created
         assert db.query(Customer).count() == 1
+        customer = db.get(Customer, result.customer_id)
+        assert customer is not None
+        assert customer_summary(db, TENANT, customer).profile_origin == "telegram"
         endpoints = db.scalars(select(CustomerEndpoint).order_by(CustomerEndpoint.channel)).all()
         assert [(row.channel, row.verification_status) for row in endpoints] == [
             ("email", "observed"),
