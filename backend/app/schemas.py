@@ -532,12 +532,25 @@ class EinvoiceDocumentUrlResponse(BaseModel):
 class InvoiceExtraction(BaseModel):
     supplier_name: str | None = None
     supplier_tin: str | None = None
+    supplier_email: str | None = None
+    supplier_reg_no: str | None = None
+    supplier_phone: str | None = None
+    supplier_address: str | None = None
     buyer_name: str | None = None
+    buyer_email: str | None = None
+    buyer_tin: str | None = None
+    buyer_reg_no: str | None = None
+    buyer_phone: str | None = None
+    buyer_address: str | None = None
     invoice_no: str | None = None
+    item_description: str | None = None
     issue_date: str | None = None
+    due_date: str | None = None
     currency: str | None = None
     tax_type: str | None = None
     tax_rate: str | None = None
+    payment_terms: str | None = None
+    bank_account_no: str | None = None
     total_amount: str | None = None
 
 

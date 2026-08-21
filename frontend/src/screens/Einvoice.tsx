@@ -300,13 +300,23 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         bank_account_no: extracted.bank_account_no ?? f.bank_account_no,
         total_amount: extracted.total_amount ?? f.total_amount,
       }));
-      if (extracted.supplier_address || extracted.supplier_tin || extracted.bank_account_no) {
+      if (
+        extracted.supplier_address ||
+        extracted.supplier_phone ||
+        extracted.supplier_reg_no ||
+        extracted.supplier_tin ||
+        extracted.buyer_address ||
+        extracted.buyer_phone ||
+        extracted.buyer_reg_no ||
+        extracted.buyer_tin ||
+        extracted.bank_account_no
+      ) {
         setShowCompanyDetails(true);
       }
-      setExtractNotice("Fields auto-filled from the scanned PDF — please review before saving.");
+      setExtractNotice("All fields auto-filled from the scanned document — please review before saving.");
     } catch (err) {
       setExtractNotice(
-        "Couldn't auto-fill from this PDF (" +
+        "Couldn't auto-fill from this file (" +
         (err instanceof Error ? err.message : "extraction failed") +
         "). You can still fill in the fields manually — the file will still be attached.",
       );
@@ -353,7 +363,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
         onCreated(await uploadEinvoiceDocument(created.id, file));
       } catch (uploadErr) {
         onWarning(
-          `${created.supplier_name} was saved, but the PDF failed to attach (` +
+          `${created.supplier_name} was saved, but the document failed to attach (` +
           (uploadErr instanceof Error ? uploadErr.message : "unknown error") +
           "). Open the invoice's detail page to retry.",
         );
@@ -368,16 +378,16 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
 
   return (
     <form onSubmit={submit} className="fb-answer-card" style={{ display: "flex", flexDirection: "column", gap: ".9rem", maxWidth: "760px", margin: "0 0 1.4rem", padding: "1.2rem 1.4rem" }}>
-      <label className="fb-field-label">Invoice PDF (optional — auto-fills the fields below)
+      <label className="fb-field-label">Invoice PDF or Image (optional — auto-fills the fields below)
         <input
           className="fb-field-mock"
           type="file"
-          accept="application/pdf"
+          accept="application/pdf,image/png,image/jpeg,image/webp"
           disabled={extracting}
           onChange={(e) => void selectFile(e.target.files?.[0])}
         />
       </label>
-      {extracting && <div className="fb-fine">Reading the PDF and extracting fields…</div>}
+      {extracting && <div className="fb-fine">Scanning document and extracting all invoice fields…</div>}
       {extractNotice && !extracting && <div className="fb-fine">{extractNotice}</div>}
       
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1rem" }}>
