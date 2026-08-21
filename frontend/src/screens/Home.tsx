@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { useAppState } from "../lib/appState";
+import { useAuth } from "../auth/AuthProvider";
 import { Sidebar, AppTopBar } from "../components/Nav";
 import { EmptyState } from "../components/EmptyState";
 import { PERSONAS } from "../lib/personas";
@@ -52,6 +53,31 @@ function RestrictedNote({ label }: { label: string }) {
   );
 }
 
+function CardSkeleton({ twoLines = true }: { twoLines?: boolean }) {
+  return (
+    <div aria-hidden="true">
+      <div className="fb-skeleton-line" style={{ width: "55%", height: "1.35rem" }} />
+      {twoLines && <div className="fb-skeleton-line" style={{ width: "80%" }} />}
+    </div>
+  );
+}
+
+function ErrorWithRetry({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="fb-card-error">
+      <span className="fb-fine">{message}</span>
+      <span
+        className="fb-card-retry"
+        role="button"
+        tabIndex={0}
+        onClick={(event) => { event.stopPropagation(); onRetry(); }}
+      >
+        Retry
+      </span>
+    </div>
+  );
+}
+
 function CardShell({
   tone, icon, label, onClick, children,
 }: {
@@ -86,14 +112,23 @@ function EinvoiceCard() {
   const { show } = useAppState();
   const [data, setData] = useState<EinvoiceReadinessResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
+  const [reloadToken, setReloadToken] = useState(0);
+  const retry = () => setReloadToken((t) => t + 1);
 
   useEffect(() => {
     let active = true;
-    fetchEinvoiceReadiness()
-      .then((res) => { if (active) { setData(res); setState("loaded"); } })
-      .catch(() => { if (active) setState("error"); });
+    const run = async () => {
+      setState("loading");
+      try {
+        const res = await fetchEinvoiceReadiness();
+        if (active) { setData(res); setState("loaded"); }
+      } catch {
+        if (active) setState("error");
+      }
+    };
+    void run();
     return () => { active = false; };
-  }, []);
+  }, [reloadToken]);
 
   const pct = data ? Math.round(data.score * 100) : 0;
 
@@ -104,8 +139,8 @@ function EinvoiceCard() {
       onClick={() => show("einvoice")}
       icon={<path d="M6 2h9l3 3v17H6z M9 8h6M9 12h6M9 16h4" />}
     >
-      {state === "loading" && <div className="fb-fine">Loading…</div>}
-      {state === "error" && <div className="fb-fine">Couldn't load e-Invoicing data.</div>}
+      {state === "loading" && <CardSkeleton />}
+      {state === "error" && <ErrorWithRetry message="Couldn't load e-Invoicing data." onRetry={retry} />}
       {state === "loaded" && data && (
         <div className="fb-home-ring-row">
           <div className="fb-home-ring-wrap">
@@ -136,11 +171,13 @@ function AuditCard() {
   const canView = PERSONAS[askRole].capabilities.viewAudit;
   const [state, setState] = useState<LoadState>("loading");
   const [summary, setSummary] = useState<{ total: number; chainValid: boolean; latest: string | null } | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const retry = () => setReloadToken((t) => t + 1);
 
   useEffect(() => {
     if (!canView) return;
     let active = true;
-    const load = async () => {
+    const run = async () => {
       setState("loading");
       try {
         const [disclosures, workflow] = await Promise.all([fetchAuditLog(), fetchWorkflowAudit()]);
@@ -156,9 +193,9 @@ function AuditCard() {
         if (active) setState("error");
       }
     };
-    void load();
+    void run();
     return () => { active = false; };
-  }, [canView]);
+  }, [canView, reloadToken]);
 
   return (
     <CardShell
@@ -168,8 +205,8 @@ function AuditCard() {
       icon={<path d="M12 3 20 6.5v5.3c0 4.7-3.2 8.9-8 10.2-4.8-1.3-8-5.5-8-10.2V6.5z" />}
     >
       {!canView && <RestrictedNote label="Compliance role required" />}
-      {canView && state === "loading" && <div className="fb-fine">Loading…</div>}
-      {canView && state === "error" && <div className="fb-fine">Couldn't load audit data.</div>}
+      {canView && state === "loading" && <CardSkeleton />}
+      {canView && state === "error" && <ErrorWithRetry message="Couldn't load audit data." onRetry={retry} />}
       {canView && state === "loaded" && summary && (
         <>
           <div className="fb-home-card-headline"><span className="num">{summary.total}</span><span className="unit">events logged</span></div>
@@ -190,10 +227,12 @@ function ApprovalsCard() {
   const [state, setState] = useState<LoadState>("loading");
   const [recCount, setRecCount] = useState<number | null>(null);
   const [outreachCount, setOutreachCount] = useState<number | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const retry = () => setReloadToken((t) => t + 1);
 
   useEffect(() => {
     let active = true;
-    const load = async () => {
+    const run = async () => {
       setState("loading");
       try {
         if (capabilities.viewRecommendations) {
@@ -211,9 +250,9 @@ function ApprovalsCard() {
         if (active) setState("error");
       }
     };
-    void load();
+    void run();
     return () => { active = false; };
-  }, [askRole, capabilities.viewRecommendations, capabilities.manageEinvoiceReadiness]);
+  }, [capabilities.viewRecommendations, capabilities.manageEinvoiceReadiness, reloadToken]);
 
   const visible = capabilities.viewRecommendations || capabilities.manageEinvoiceReadiness;
   const total = (recCount ?? 0) + (outreachCount ?? 0);
@@ -230,8 +269,8 @@ function ApprovalsCard() {
       icon={<path d="M9 12l2 2 4-4M12 3l8 4v5c0 4.5-3.2 8.5-8 10-4.8-1.5-8-5.5-8-10V7z" />}
     >
       {!visible && <RestrictedNote label="Owner / finance role required" />}
-      {visible && state === "loading" && <div className="fb-fine">Loading…</div>}
-      {visible && state === "error" && <div className="fb-fine">Couldn't load approvals data.</div>}
+      {visible && state === "loading" && <CardSkeleton />}
+      {visible && state === "error" && <ErrorWithRetry message="Couldn't load approvals data." onRetry={retry} />}
       {visible && state === "loaded" && (
         <>
           <div className="fb-home-card-headline"><span className="num">{total}</span><span className="unit">awaiting your review</span></div>
@@ -249,11 +288,17 @@ function CaptureCard() {
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [reloadToken, setReloadToken] = useState(0);
+  const retry = () => setReloadToken((t) => t + 1);
 
   useEffect(() => {
     let active = true;
-    Promise.all([fetchEmailStatus(), fetchEmailRecords(), fetchTelegramStatus(), fetchTelegramRecords()])
-      .then(([emailStatus, emailRecords, telegramStatus, telegramRecords]) => {
+    const run = async () => {
+      setState("loading");
+      try {
+        const [emailStatus, emailRecords, telegramStatus, telegramRecords] = await Promise.all([
+          fetchEmailStatus(), fetchEmailRecords(), fetchTelegramStatus(), fetchTelegramRecords(),
+        ]);
         if (!active) return;
         setEmailConfigured(emailStatus.configured);
         setTelegramConfigured(telegramStatus.configured);
@@ -261,10 +306,13 @@ function CaptureCard() {
         setTotalCount(all.length);
         setTodayCount(all.filter((r) => isToday(r.created_at)).length);
         setState("loaded");
-      })
-      .catch(() => { if (active) setState("error"); });
+      } catch {
+        if (active) setState("error");
+      }
+    };
+    void run();
     return () => { active = false; };
-  }, []);
+  }, [reloadToken]);
 
   const connected = [emailConfigured && "Email", telegramConfigured && "Telegram"].filter(Boolean) as string[];
 
@@ -275,8 +323,8 @@ function CaptureCard() {
       onClick={() => show("ingestion")}
       icon={<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5-5 5 5M12 4v13" />}
     >
-      {state === "loading" && <div className="fb-fine">Loading…</div>}
-      {state === "error" && <div className="fb-fine">Couldn't load capture status.</div>}
+      {state === "loading" && <CardSkeleton />}
+      {state === "error" && <ErrorWithRetry message="Couldn't load capture status." onRetry={retry} />}
       {state === "loaded" && (
         <>
           <div className="fb-home-card-headline">
@@ -301,14 +349,23 @@ function FinanceCard() {
   const { show } = useAppState();
   const [data, setData] = useState<FinanceSummaryResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
+  const [reloadToken, setReloadToken] = useState(0);
+  const retry = () => setReloadToken((t) => t + 1);
 
   useEffect(() => {
     let active = true;
-    fetchFinanceSummary("month", 0)
-      .then((res) => { if (active) { setData(res); setState("loaded"); } })
-      .catch(() => { if (active) setState("error"); });
+    const run = async () => {
+      setState("loading");
+      try {
+        const res = await fetchFinanceSummary("month", 0);
+        if (active) { setData(res); setState("loaded"); }
+      } catch {
+        if (active) setState("error");
+      }
+    };
+    void run();
     return () => { active = false; };
-  }, []);
+  }, [reloadToken]);
 
   return (
     <CardShell
@@ -317,8 +374,8 @@ function FinanceCard() {
       onClick={() => show("finance")}
       icon={<path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />}
     >
-      {state === "loading" && <div className="fb-fine">Loading…</div>}
-      {state === "error" && <div className="fb-fine">Couldn't load financial data.</div>}
+      {state === "loading" && <CardSkeleton />}
+      {state === "error" && <ErrorWithRetry message="Couldn't load financial data." onRetry={retry} />}
       {state === "loaded" && data && (
         <>
           <div className="fb-home-card-headline"><span className="num">{formatRm(Number(data.outstanding_ar) || 0)}</span></div>
@@ -340,14 +397,23 @@ function AttentionSection() {
   const { showCustomerDetail } = useAppState();
   const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [state, setState] = useState<LoadState>("loading");
+  const [reloadToken, setReloadToken] = useState(0);
+  const retry = () => setReloadToken((t) => t + 1);
 
   useEffect(() => {
     let active = true;
-    fetchCustomers()
-      .then((res) => { if (active) { setCustomers(res); setState("loaded"); } })
-      .catch(() => { if (active) setState("error"); });
+    const run = async () => {
+      setState("loading");
+      try {
+        const res = await fetchCustomers();
+        if (active) { setCustomers(res); setState("loaded"); }
+      } catch {
+        if (active) setState("error");
+      }
+    };
+    void run();
     return () => { active = false; };
-  }, []);
+  }, [reloadToken]);
 
   const needsAttention = [...customers]
     .filter((c) => c.priority !== "healthy")
@@ -357,8 +423,22 @@ function AttentionSection() {
   return (
     <section style={{ marginBottom: "1.6rem" }}>
       <div className="fb-eyebrow" style={{ marginBottom: ".6rem" }}>Attention — verified cross-source signals</div>
-      {state === "loading" && <div className="fb-callout">Loading customer attention…</div>}
-      {state === "error" && <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>Couldn't load customer data.</div>}
+      {state === "loading" && (
+        <div className="fb-briefing-list" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <div className="fb-briefing-row" key={i} style={{ cursor: "default" }}>
+              <div className="fb-skeleton-line" style={{ width: "60px", height: "1.4rem", margin: 0 }} />
+              <div className="fb-skeleton-line" style={{ width: "140px", margin: 0 }} />
+              <div className="fb-skeleton-line" style={{ width: "100px", marginLeft: "auto" }} />
+            </div>
+          ))}
+        </div>
+      )}
+      {state === "error" && (
+        <div className="fb-callout" style={{ borderColor: "var(--chart-attn)", color: "var(--chart-attn)" }}>
+          <ErrorWithRetry message="Couldn't load customer data." onRetry={retry} />
+        </div>
+      )}
       {state === "loaded" && needsAttention.length === 0 && (
         <EmptyState
           icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>}
@@ -382,16 +462,33 @@ function AttentionSection() {
   );
 }
 
+function greetingKey(): "home.greeting.morning" | "home.greeting.afternoon" | "home.greeting.evening" {
+  const hour = new Date().getHours();
+  if (hour < 12) return "home.greeting.morning";
+  if (hour < 18) return "home.greeting.afternoon";
+  return "home.greeting.evening";
+}
+
 export default function Home() {
   const { t } = useI18n();
-  const { show } = useAppState();
+  const { show, sampleBanner, dismissSampleBanner } = useAppState();
+  const { identity } = useAuth();
+  const firstName = identity?.email ? identity.email.split("@")[0] : null;
 
   return (
     <div className="fb-root fb-shell">
       <Sidebar current="home" />
       <AppTopBar current="home" />
 
+      {sampleBanner && (
+        <div className="fb-callout fb-sample-banner">
+          <span>You're exploring FinBrain with sample data from a demo workspace — connect your own sources anytime.</span>
+          <button className="fb-icon-btn" type="button" onClick={dismissSampleBanner} aria-label="Dismiss">✕</button>
+        </div>
+      )}
+
       <header className="fb-app-header">
+        <div className="fb-eyebrow" style={{ marginBottom: ".4rem" }}>{t(greetingKey())}{firstName ? `, ${firstName}` : ""}</div>
         <h1>{t("home.title")}</h1>
         <p>{t("home.desc")}</p>
       </header>

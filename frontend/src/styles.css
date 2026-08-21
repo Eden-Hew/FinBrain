@@ -195,8 +195,7 @@ img{max-width:100%}
   .fb-sidebar-label,.fb-sidebar-group-label,.fb-sidebar-back span:not(svg),.fb-wordmark-text{display:none;}
   .fb-sidebar-link,.fb-sidebar-back{justify-content:center;}
   .fb-sidebar-link .fb-nav-badge{position:absolute;margin-left:0;transform:translate(10px,-10px);}
-  .fb-topbar-search span:first-of-type,.fb-topbar-kbd,.fb-topbar-profile-text{display:none;}
-  .fb-topbar-crumb{display:none;}
+  .fb-topbar-search span:first-of-type,.fb-topbar-kbd{display:none;}
   .fb-topbar-ask span{display:none;}
 }
 @media (max-width:640px){
@@ -245,6 +244,11 @@ img{max-width:100%}
 .fb-topbar-chevron{width:14px;height:14px;color:var(--ink-soft);flex:0 0 auto;}
 .fb-topbar-profile-menu{position:absolute;top:calc(100% + .5rem);right:0;min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);padding:.6rem;display:flex;flex-direction:column;gap:.6rem;z-index:60;}
 .fb-topbar-ask svg{width:15px;height:15px;color:var(--accent);}
+@media (max-width:900px){
+  /* Placed after the base rules above (both set display:flex) so this
+     override actually wins the cascade instead of being shadowed. */
+  .fb-topbar-crumb,.fb-topbar-profile-text{display:none;}
+}
 
 /* Quick actions command palette */
 .fb-palette-backdrop{position:fixed;inset:0;z-index:200;background:rgba(16,17,18,.5);display:flex;align-items:flex-start;justify-content:center;padding-top:14vh;}
@@ -551,8 +555,8 @@ img{max-width:100%}
 .fb-disabled-hint{display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--ink-soft);align-self:center;}
 .fb-disabled-hint svg{width:13px;height:13px;}
 
-.fb-home-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;margin-bottom:1rem;}
-.fb-home-card{position:relative;text-align:left;display:flex;flex-direction:column;gap:.6rem;background:var(--card);border:1px solid var(--line);border-left-width:3px;border-radius:16px;padding:1.2rem 1.3rem;cursor:pointer;font-family:'Inter',-apple-system,sans-serif;transition:transform .18s cubic-bezier(.16,1,.3,1),box-shadow .18s ease,border-color .18s ease;}
+.fb-home-grid{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;}
+.fb-home-card{flex:1 1 250px;position:relative;text-align:left;display:flex;flex-direction:column;gap:.6rem;background:var(--card);border:1px solid var(--line);border-left-width:3px;border-radius:16px;padding:1.2rem 1.3rem;cursor:pointer;font-family:'Inter',-apple-system,sans-serif;transition:transform .18s cubic-bezier(.16,1,.3,1),box-shadow .18s ease,border-color .18s ease;}
 .fb-home-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(16,17,18,.28);border-color:var(--ink-soft);}
 .fb-home-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .fb-home-card.is-einvoice{border-left-color:var(--accent);}
@@ -580,6 +584,15 @@ img{max-width:100%}
 .fb-home-card.is-capture .fb-home-card-icon{background:color-mix(in srgb, var(--chart-good) 14%, transparent);color:var(--chart-good);}
 .fb-home-card.is-finance .fb-home-card-icon{background:color-mix(in srgb, var(--chart-attn) 14%, transparent);color:var(--chart-attn);}
 .fb-home-not-connected{display:inline-flex;align-items:center;gap:.35rem;font-size:.66rem;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:.25rem .55rem;border-radius:99px;border:1px solid var(--line);color:var(--ink-soft);width:fit-content;flex:0 0 auto;}
+
+.fb-skeleton-line{height:.85rem;border-radius:6px;background:linear-gradient(90deg,var(--bg-alt) 25%,var(--line) 50%,var(--bg-alt) 75%);background-size:200% 100%;animation:fb-skeleton-shimmer 1.4s ease-in-out infinite;}
+.fb-skeleton-line + .fb-skeleton-line{margin-top:.5rem;}
+@keyframes fb-skeleton-shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+@media (prefers-reduced-motion: reduce){.fb-skeleton-line{animation:none;opacity:.6;}}
+
+.fb-card-error{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;}
+.fb-card-retry{font-size:.7rem;font-weight:700;color:var(--accent);background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px;flex:0 0 auto;}
+.fb-card-retry:hover{color:var(--ink);}
 
 .fb-home-ring-row{display:flex;align-items:center;gap:.9rem;}
 .fb-home-ring-wrap{position:relative;flex:0 0 auto;width:60px;height:60px;display:flex;align-items:center;justify-content:center;}
