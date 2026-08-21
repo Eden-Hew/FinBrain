@@ -51,36 +51,46 @@ export function MarketingNav() {
   };
   const linkClass = (id: string) => (active === id ? "is-current" : undefined);
   return (
-    <nav className={"fb-mkt-nav" + (scrollY > 12 ? " is-scrolled" : "")}>
-      <button className="fb-mkt-wordmark" onClick={() => show("landing")}>
-        <LogoMark large />FINBRAIN OS
-      </button>
-      <div className="fb-mkt-nav-links">
-        {MARKETING_NAV_ITEMS.map((item) => (
-          <span key={item.id} className={linkClass(item.id)} tabIndex={0} role="button" onClick={() => scrollTo(item.id)}>{item.label}</span>
-        ))}
-      </div>
-      <div className="fb-mkt-nav-actions">
-        <span tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
-        <button className="fb-mkt-btn is-accent" onClick={() => show("signup")}>Get Started</button>
-        <button
-          className={"fb-mkt-nav-toggle" + (menuOpen ? " is-open" : "")}
-          type="button"
-          aria-expanded={menuOpen}
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          <span /><span /><span />
+    <>
+      <nav className={"fb-mkt-nav" + (scrollY > 12 ? " is-scrolled" : "")}>
+        <button className="fb-mkt-wordmark" onClick={() => show("landing")}>
+          <LogoMark large />FINBRAIN OS
         </button>
-      </div>
-      {menuOpen && (
-        <div className="fb-mkt-nav-mobile-menu" role="menu">
+        <div className="fb-mkt-nav-links">
           {MARKETING_NAV_ITEMS.map((item) => (
-            <span key={item.id} className={linkClass(item.id)} tabIndex={0} role="menuitem" onClick={() => scrollTo(item.id)}>{item.label}</span>
+            <span key={item.id} className={linkClass(item.id)} tabIndex={0} role="button" onClick={() => scrollTo(item.id)}>{item.label}</span>
           ))}
         </div>
-      )}
-    </nav>
+        <div className="fb-mkt-nav-actions">
+          <span tabIndex={0} role="button" onClick={() => show("login")}>Log in</span>
+          <button className="fb-mkt-btn is-accent" onClick={() => show("signup")}>Get Started</button>
+          <button
+            className={"fb-mkt-nav-toggle" + (menuOpen ? " is-open" : "")}
+            type="button"
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <span /><span /><span />
+          </button>
+        </div>
+        {menuOpen && (
+          <div className="fb-mkt-nav-mobile-menu" role="menu">
+            {MARKETING_NAV_ITEMS.map((item) => (
+              <span key={item.id} className={linkClass(item.id)} tabIndex={0} role="menuitem" onClick={() => scrollTo(item.id)}>{item.label}</span>
+            ))}
+          </div>
+        )}
+      </nav>
+      {/* Rendered as a sibling of <nav>, not a child: .fb-mkt-nav has
+          backdrop-filter, which (per spec, like transform/filter) makes it
+          the containing block for any position:fixed descendant -- so a
+          fixed backdrop nested inside it would resolve inset:0 against the
+          nav's own small box instead of the viewport. The menu itself stays
+          inside <nav>; its position:absolute is anchored fine by the nav's
+          own position:sticky, which that quirk doesn't affect. */}
+      {menuOpen && <div className="fb-mkt-nav-backdrop" onClick={() => setMenuOpen(false)} />}
+    </>
   );
 }
 
