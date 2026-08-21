@@ -17,9 +17,16 @@ const HERO_NAV_ICONS: Record<string, ReactNode> = {
 };
 
 const HERO_NAV_GROUPS: { label: string | null; items: { key: string; label: string }[] }[] = [
-  { label: null, items: [{ key: "home", label: "Briefing" }, { key: "agents", label: "Ask" }, { key: "customers", label: "Customers" }] },
-  { label: "Records", items: [{ key: "einvoice", label: "e-Invoicing" }, { key: "finance", label: "Financial Intelligence" }] },
-  { label: "Oversight", items: [{ key: "approvals", label: "Workflows" }, { key: "ingestion", label: "Sources" }, { key: "audit", label: "Audit & Access" }] },
+  { label: null, items: [
+    { key: "home", label: "Briefing" },
+    { key: "agents", label: "Ask" },
+    { key: "customers", label: "Customers" },
+    { key: "einvoice", label: "e-Invoicing" },
+    { key: "finance", label: "Financial Intelligence" },
+    { key: "approvals", label: "Workflows" },
+    { key: "ingestion", label: "Sources" },
+    { key: "audit", label: "Audit & Access" },
+  ] },
 ];
 
 const HERO_SCREENS = ["customers", "agents", "finance", "audit"];
@@ -361,20 +368,27 @@ export default function Landing() {
                   </div>
                 )}
                 {activeScreen === "agents" && (
-                  <div className="fb-mkt-preview-pane">
-                    <div className="fb-mkt-ask">
-                      <div className="fb-mkt-eyebrow is-plain">Question asked</div>
-                      <p>"{typed}{phase === "typing" && <span className="fb-mkt-caret" aria-hidden="true" />}"</p>
+                  <div className="fb-mkt-preview-pane fb-mkt-chat-pane">
+                    <div className="fb-mkt-chat-row is-user">
+                      <div className="fb-mkt-chat-bubble is-user">
+                        <p>{typed}{phase === "typing" && <span className="fb-mkt-caret" aria-hidden="true" />}</p>
+                      </div>
+                      <span className="fb-mkt-chat-avatar is-user" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="8" r="4" /></svg>
+                      </span>
                     </div>
-                    <div className={"fb-mkt-answer" + (phase !== "typing" ? " is-visible" : "")}>
-                      {phase === "thinking" ? (
-                        <div className="fb-mkt-thinking-row"><span className="fb-mkt-thinking-dots"><span /><span /><span /></span>Thinking…</div>
-                      ) : phase === "answered" ? (
-                        <>
-                          <p>{demo.answer}<sup>1</sup></p>
-                          <div className="fb-mkt-citation"><span>{demo.citation}</span><span className="fb-mkt-pill is-restricted">{demo.pill}</span></div>
-                        </>
-                      ) : null}
+                    <div className={"fb-mkt-chat-row is-agent" + (phase !== "typing" ? " is-visible" : "")}>
+                      <span className="fb-mkt-chat-avatar is-agent" aria-hidden="true"><LogoMark /></span>
+                      <div className="fb-mkt-chat-bubble is-agent">
+                        {phase === "thinking" ? (
+                          <div className="fb-mkt-thinking-row"><span className="fb-mkt-thinking-dots"><span /><span /><span /></span>Thinking…</div>
+                        ) : phase === "answered" ? (
+                          <>
+                            <p>{demo.answer}<sup>1</sup></p>
+                            <div className="fb-mkt-citation"><span>{demo.citation}</span><span className="fb-mkt-pill is-restricted">{demo.pill}</span></div>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 )}
