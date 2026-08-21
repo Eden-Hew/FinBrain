@@ -250,7 +250,9 @@ img{max-width:100%}
 .fb-topbar-profile-email{font-size:.74rem;font-weight:600;color:var(--ink);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .fb-topbar-profile-role{font-size:.66rem;color:var(--ink-soft);}
 .fb-topbar-chevron{width:14px;height:14px;color:var(--ink-soft);flex:0 0 auto;}
-.fb-topbar-profile-menu{position:absolute;top:calc(100% + .5rem);right:0;min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);padding:.6rem;display:flex;flex-direction:column;gap:.6rem;z-index:60;}
+.fb-topbar-profile-menu{position:absolute;top:calc(100% + .5rem);right:0;min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);padding:.6rem;display:flex;flex-direction:column;gap:.15rem;z-index:60;}
+.fb-topbar-profile-menu .fb-sidebar-logout{background:none;color:var(--ink-soft);text-align:left;padding:.62rem .7rem;border-radius:12px;font-weight:600;}
+.fb-topbar-profile-menu .fb-sidebar-logout:hover{background:var(--bg-alt);color:var(--ink);}
 
 .fb-notif{position:relative;}
 .fb-notif-panel{position:absolute;top:calc(100% + .6rem);right:0;width:min(380px,90vw);max-height:520px;overflow:hidden;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 40px -12px rgba(16,17,18,.28);z-index:60;}
@@ -291,9 +293,20 @@ img{max-width:100%}
 }
 .fb-topbar-ask svg{width:15px;height:15px;color:var(--accent);}
 @media (max-width:900px){
-  /* Placed after the base rules above (both set display:flex) so this
-     override actually wins the cascade instead of being shadowed. */
-  .fb-topbar-crumb,.fb-topbar-profile-text{display:none;}
+  /* Placed after the base rules above (both set display:flex, or in
+     .fb-topbar-search's case flex:1) so these overrides actually win the
+     cascade instead of being shadowed. Keep .fb-topbar-current visible even
+     here — without it there's no page-name indicator anywhere in the
+     collapsed topbar at all. */
+  .fb-topbar-home-link,.fb-topbar-sep,.fb-topbar-profile-text{display:none;}
+  .fb-topbar-search{flex:0 0 auto;width:36px;height:36px;padding:0;justify-content:center;margin:0;}
+}
+@media (max-width:640px){
+  /* .fb-sidebar-toggle (the hamburger) is position:fixed at left:.9rem, floating
+     outside the topbar's own flex layout, so it sits on top of the breadcrumb
+     text unless the topbar reserves space for it here. Placed after the base
+     .fb-topbar padding shorthand above so this override isn't clobbered by it. */
+  .fb-topbar{padding-left:3.6rem;}
 }
 
 /* Quick actions command palette */
