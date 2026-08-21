@@ -312,10 +312,10 @@ export default function Customers() {
                   <span className={"fb-status-pill " + priorityPillClass(row.priority)}><span className="fb-status-dot"></span>{TIER_LABEL[row.priority] ?? row.priority}</span>
                   <span className="fb-fine"> {row.attention_score}/100</span>
                 </td>
-                <td className={"fb-num" + (Number(row.overdue_total) > 0 ? " is-attn" : "")}>{formatRm(Number(row.overdue_total))}</td>
+                <td className={"fb-num-left" + (Number(row.overdue_total) > 0 ? " is-attn" : "")}>{formatRm(Number(row.overdue_total))}</td>
                 <td>{row.profile_status}{row.identity_review_status === "review_required" ? " · review required" : ""}</td>
-                <td className="fb-num">{formatRm(Number(row.outstanding_total))}</td>
-                <td className="fb-num">{row.linked_source_count}</td>
+                <td className="fb-num-left">{formatRm(Number(row.outstanding_total))}</td>
+                <td className="fb-num-left">{row.linked_source_count}</td>
                 <td className="fb-table-row-chevron" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
                 </td>
