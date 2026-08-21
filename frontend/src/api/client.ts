@@ -933,13 +933,23 @@ export async function updateEinvoiceRecord(
   recordId: number,
   payload: EInvoiceUpdatePayload,
 ): Promise<EInvoiceApiRecord> {
-  return parse<EInvoiceApiRecord>(
-    await authenticatedFetch(`/einvoice-records/${recordId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }),
-  );
+  try {
+    return parse<EInvoiceApiRecord>(
+      await authenticatedFetch(`/einvoice-records/${recordId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+  } catch (_patchErr) {
+    return parse<EInvoiceApiRecord>(
+      await authenticatedFetch(`/einvoice-records/${recordId}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+  }
 }
 
 export async function approveEinvoiceRecord(recordId: number): Promise<EInvoiceApiRecord> {
