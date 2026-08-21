@@ -167,7 +167,11 @@ def create_record(
     if due_date is None and payload.issue_date is not None:
         terms = get_settings().default_payment_terms_days
         due_date = payload.issue_date + timedelta(days=terms)
-    initial_status = "review" if not payload.supplier_tin or not str(payload.supplier_tin).strip() else "pending"
+    initial_status = (
+        "review"
+        if not payload.supplier_tin or not str(payload.supplier_tin).strip()
+        else "pending"
+    )
     record = EInvoiceRecord(
         tenant_id=tenant_id,
         supplier_name=payload.supplier_name,

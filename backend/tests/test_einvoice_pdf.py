@@ -305,14 +305,19 @@ def test_einvoice_receipt_pdf_route():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import StaticPool
+
     from app.auth.dependencies import get_current_user
     from app.db import get_db
     from app.models import Base, EInvoiceRecord
     from app.routes.einvoice import router
-    from tests.auth_support import principal
     from app.schemas import UserRole
+    from tests.auth_support import principal
 
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     db = Session(engine)
     record = EInvoiceRecord(
