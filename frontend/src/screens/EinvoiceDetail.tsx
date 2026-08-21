@@ -15,7 +15,7 @@ import {
   type EInvoiceApiRecord,
   type EInvoiceUpdatePayload,
 } from "../api/client";
-import { openEinvoiceDocument, openEinvoiceReceipt } from "./Einvoice";
+import { isOverdue, openEinvoiceDocument } from "./Einvoice";
 
 function RealEinvoiceDetail({ recordId }: { recordId: number }) {
   const { askRole, show } = useAppState();
@@ -24,7 +24,6 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
   const [error, setError] = useState("");
   const [approving, setApproving] = useState(false);
   const [documentState, setDocumentState] = useState<Record<number, "idle" | "loading" | "failed">>({});
-  const [receiptState, setReceiptState] = useState<Record<number, "idle" | "loading" | "failed">>({});
   const [attaching, setAttaching] = useState(false);
   const [attachError, setAttachError] = useState("");
 
@@ -164,6 +163,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
   const needsAction = record.status === "review" || (!record.supplier_tin || !record.supplier_tin.trim());
   const showApproveBtn = record.status === "pending" && !needsAction;
   const isPaid = Boolean(record.paid_at);
+  const overdue = isOverdue(record);
   const showRecordPaymentBtn = record.status === "validated" && !isPaid && (canManage || canApprove);
   const showUinPanel = record.status === "validated";
   const displayUin = record.uin || ("MY29A" + (record.invoice_no ? record.invoice_no.replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() : record.id));
@@ -175,7 +175,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
     ["Invoice No.", record.invoice_no && record.invoice_no.trim() ? record.invoice_no : <span className="fb-badge-warning" style={{ color: "var(--chart-attn, #ef4444)" }}>Missing</span>],
     ["Issue date", record.issue_date && record.issue_date.trim() ? record.issue_date : <span className="fb-badge-warning" style={{ color: "var(--chart-attn, #ef4444)" }}>Missing</span>],
     ["Due date", record.due_date ?? "—"],
-    ["Payment status", isPaid ? `Paid on ${record.paid_at}` : "Unpaid / Outstanding"],
+    ["Payment status", isPaid ? `Paid on ${record.paid_at}` : overdue ? <strong style={{ color: "var(--chart-attn, #ef4444)" }}>Overdue — was due {record.due_date}</strong> : "Unpaid / Outstanding"],
     ["Currency", record.currency ?? "—"],
     ["Tax type", record.tax_type ?? "—"],
     ["Tax rate", record.tax_rate ?? "—"],
@@ -254,6 +254,23 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
           </div>
         )}
 
+        {overdue && (
+          <div
+            className="fb-callout"
+            style={{
+              marginTop: "1rem",
+              borderColor: "var(--chart-attn, #ef4444)",
+              background: "rgba(239, 68, 68, 0.05)",
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "var(--chart-attn, #ef4444)", marginBottom: ".25rem", display: "flex", alignItems: "center", gap: ".4rem" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "16px", height: "16px" }}><path d="m12 2 10 18H2z" /><path d="M12 9v4M12 16h.01" /></svg>
+              Payment Overdue
+            </div>
+            <div style={{ color: "var(--ink)" }}>This invoice was due on {record.due_date} and has not been marked paid. Follow up with the buyer or record payment once settled.</div>
+          </div>
+        )}
+
         {fixSuccessNotice && (
           <div className="fb-callout" style={{ marginTop: ".8rem", borderColor: "var(--chart-good, #10b981)", color: "var(--chart-good, #10b981)", background: "rgba(16, 185, 129, 0.05)" }}>
             <strong>✓ Fix request submitted:</strong> {fixSuccessNotice}. You can track or approve the outreach in the Approvals queue.
@@ -292,16 +309,6 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
               >
                 {documentState[record.id] === "loading" ? "Opening…" : isPaid ? "View invoice (Paid)" : "View invoice"}
               </button>
-              {isPaid && (
-                <button
-                  className="fb-btn fb-btn-outline"
-                  type="button"
-                  disabled={receiptState[record.id] === "loading"}
-                  onClick={() => openEinvoiceReceipt(record.id, setReceiptState)}
-                >
-                  {receiptState[record.id] === "loading" ? "Opening receipt…" : receiptState[record.id] === "failed" ? "Retry receipt" : "View payment receipt"}
-                </button>
-              )}
             </div>
           ) : (
             <>

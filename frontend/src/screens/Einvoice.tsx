@@ -10,7 +10,6 @@ import {
   extractEinvoiceFields,
   fetchEinvoiceDocumentUrl,
   fetchEinvoicePdfBlob,
-  fetchEinvoiceReceiptBlob,
   fetchEinvoiceReadiness,
   fetchEinvoiceRecords,
   friendlyLoadError,
@@ -84,26 +83,6 @@ export async function openEinvoiceDocument(
       tab?.close();
       setDocumentState((s) => ({ ...s, [recordId]: "failed" }));
     }
-  }
-}
-
-export async function openEinvoiceReceipt(
-  recordId: number,
-  setReceiptState: (updater: (s: Record<number, DocumentState>) => Record<number, DocumentState>) => void,
-) {
-  const tab = window.open("", "_blank");
-  setReceiptState((s) => ({ ...s, [recordId]: "loading" }));
-  try {
-    const blob = await fetchEinvoiceReceiptBlob(recordId);
-    const blobUrl = URL.createObjectURL(blob);
-    setReceiptState((s) => ({ ...s, [recordId]: "idle" }));
-    if (tab) {
-      tab.location.href = blobUrl;
-    }
-  } catch (err) {
-    console.error("fetchEinvoiceReceiptBlob failed:", err);
-    tab?.close();
-    setReceiptState((s) => ({ ...s, [recordId]: "failed" }));
   }
 }
 
@@ -504,7 +483,7 @@ function AddInvoiceForm({ onCreated, onCancel, onWarning }: { onCreated: (record
 
 type PaymentCategory = "all" | "overdue" | "unpaid" | "paid" | "review";
 
-function isOverdue(r: EInvoiceApiRecord): boolean {
+export function isOverdue(r: EInvoiceApiRecord): boolean {
   if (r.paid_at !== null) return false;
   if (!r.due_date) return false;
   const due = new Date(r.due_date);
