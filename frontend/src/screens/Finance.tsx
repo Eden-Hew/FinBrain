@@ -13,7 +13,7 @@ import {
   type FinanceSummaryResponse,
   type TopCustomer,
 } from "../api/client";
-import { isOutstanding, toAmount } from "../lib/customerAggregation";
+import { displayCase, isOutstanding, isPlaceholderName, toAmount } from "../lib/customerAggregation";
 
 function downloadCsv(filename: string, rows: (string | number)[][]) {
   const csv = rows
@@ -169,7 +169,9 @@ function TopCustomersChart({ customers, onSelect }: { customers: TopCustomer[]; 
             onClick={() => onSelect(customer.customer_id)}
             style={{ cursor: "pointer" }}
           >
-            <text x={barLeft - 8} y={top + 14} textAnchor="end" fontSize="10.5" fill="var(--ink)">{customer.name}</text>
+            <text x={barLeft - 8} y={top + 14} textAnchor="end" fontSize="10.5" fill="var(--ink)" fontStyle={isPlaceholderName(customer.name) ? "italic" : undefined}>
+              {isPlaceholderName(customer.name) ? "Protected customer" : displayCase(customer.name)}
+            </text>
             <path
               d={`M${barLeft},${top} L${right - 4},${top} Q${right},${top} ${right},${top + 4} L${right},${top + 16} Q${right},${top + 20} ${right - 4},${top + 20} L${barLeft},${top + 20} Z`}
               fill="var(--viz-1)"
@@ -299,7 +301,18 @@ function CustomerInsightsSection() {
             {atRisk.map((c) => (
               <button key={c.id} className="fb-briefing-row" type="button" onClick={() => showCustomerDetail(`id:${c.id}`)}>
                 <span className={"fb-briefing-tier is-" + c.priority}>{TIER_LABEL[c.priority]}</span>
-                <span className="fb-briefing-name">{c.name}</span>
+                {isPlaceholderName(c.name) ? (
+                  <span className="fb-briefing-name">
+                    <span className="fb-mask-badge">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                      Protected customer
+                    </span>
+                  </span>
+                ) : (
+                  <span className="fb-briefing-name">
+                    <span className="fb-briefing-name-text">{displayCase(c.name)}</span>
+                  </span>
+                )}
                 <span className="fb-briefing-detail">{formatCurrency(c.overdue_total)} overdue · {c.attention_score}/100</span>
                 <span className="fb-home-card-arrow" aria-hidden="true">→</span>
               </button>
