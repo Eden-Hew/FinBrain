@@ -25,7 +25,7 @@ import {
 
 const SOURCE_OPTIONS = [
   { value: "manual", label: "Manual entry" },
-  { value: "whatsapp", label: "WhatsApp" },
+  { value: "telegram", label: "Telegram" },
   { value: "email", label: "Email" },
   { value: "bank_csv", label: "Bank CSV" },
   { value: "document", label: "Document / OCR" },
@@ -128,6 +128,8 @@ function ProtectedFilePanel() {
         </div>
         <input
           ref={inputRef}
+          className="fb-field-mock"
+          style={{ width: "auto" }}
           type="file"
           accept=".txt,.md,.csv,.eml,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tiff"
           onChange={(event) => select(event.target.files?.[0])}
@@ -501,7 +503,7 @@ export default function Ingestion() {
         <TelegramCapturePanel />
         <EmailCapturePanel />
         <div className="fb-callout">
-          The selected <strong>{PERSONAS[role].label}</strong> role is trusted for this demo.
+          Your assigned <strong>{PERSONAS[role].label}</strong> role determines what protected content you can see.
           Raw text goes only to FinBrain's backend; AI services and Supabase receive only protected content.
         </div>
 
