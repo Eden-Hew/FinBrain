@@ -260,8 +260,13 @@ img{max-width:100%}
 .fb-palette-esc{font-size:.62rem;font-weight:700;color:var(--ink-soft);border:1px solid var(--line);border-radius:5px;padding:.15rem .4rem;flex:0 0 auto;}
 .fb-palette-list{overflow-y:auto;padding:.5rem;}
 .fb-palette-empty{padding:1.2rem;text-align:center;color:var(--ink-soft);font-size:.8rem;}
-.fb-palette-item{display:flex;align-items:center;justify-content:space-between;width:100%;padding:.7rem .8rem;border:none;background:none;border-radius:10px;color:var(--ink);font-size:.82rem;font-weight:600;cursor:pointer;text-align:left;font-family:inherit;}
+.fb-palette-item{display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;padding:.7rem .8rem;border:none;background:none;border-radius:10px;color:var(--ink);font-size:.82rem;font-weight:600;cursor:pointer;text-align:left;font-family:inherit;}
 .fb-palette-item.is-highlighted{background:var(--bg-alt);}
+.fb-palette-item-left{display:flex;align-items:center;gap:.65rem;min-width:0;}
+.fb-palette-item-icon{width:16px;height:16px;flex:0 0 auto;color:var(--ink-soft);}
+.fb-palette-item.is-highlighted .fb-palette-item-icon{color:var(--accent);}
+.fb-palette-item-right{display:flex;align-items:center;gap:.55rem;flex:0 0 auto;}
+.fb-palette-kbd{color:var(--ink-soft);font-weight:600;}
 .fb-palette-hint{font-size:.68rem;color:var(--ink-soft);font-weight:500;}
 
 /* Ask FinBrain floating drawer */
