@@ -195,7 +195,7 @@ function RealEinvoiceDetail({ recordId }: { recordId: number }) {
             <p>{record.readiness_reason}</p>
           </div>
           <div style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
-            {(record.status === "review" || record.status === "pending") && canManage && (
+            {record.status === "review" && canManage && (
               <button className="fb-btn fb-btn-outline" type="button" onClick={openEdit}>
                 ✏️ Fix &amp; Edit Details
               </button>
@@ -636,7 +636,7 @@ export default function EinvoiceDetail() {
             <p>{inv.description}</p>
           </div>
           <div style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }}>
-            {(inv.status === "review" || inv.status === "pending") && canManage && (
+            {inv.status === "review" && canManage && (
               <button className="fb-btn fb-btn-outline" type="button" onClick={openEdit}>
                 ✏️ Fix &amp; Edit Details
               </button>
