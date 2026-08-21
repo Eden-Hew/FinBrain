@@ -246,7 +246,9 @@ export function AppTopBar({ current }: { current: Screen }) {
           <span className="fb-topbar-current">{SCREEN_TITLES.home}</span>
         ) : (
           <>
-            <span tabIndex={0} role="button" onClick={() => show("home")}>{SCREEN_TITLES.home}</span>
+            <span className="fb-topbar-home-link" tabIndex={0} role="button" onClick={() => show("home")} aria-label={`Go to ${SCREEN_TITLES.home}`} title={`Go to ${SCREEN_TITLES.home}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7" /><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" /></svg>
+            </span>
             <span className="fb-topbar-sep">/</span>
             <span className="fb-topbar-current">{SCREEN_TITLES[current] ?? current}</span>
           </>
@@ -255,7 +257,7 @@ export function AppTopBar({ current }: { current: Screen }) {
 
       <button className="fb-topbar-search" type="button" onClick={openPalette}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-        <span>Search records, invoices, or ask FinBrain…</span>
+        <span>Search pages and actions…</span>
         <span className="fb-topbar-kbd">⌘K</span>
       </button>
 
