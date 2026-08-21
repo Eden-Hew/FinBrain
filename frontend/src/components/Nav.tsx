@@ -242,9 +242,6 @@ export function AppTopBar({ current }: { current: Screen }) {
       </button>
 
       <div className="fb-topbar-actions">
-        <button className="fb-topbar-icon-btn" type="button" onClick={() => show("finance")} title="Upcoming invoice due dates" aria-label="Upcoming invoice due dates">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
-        </button>
         <button className="fb-topbar-icon-btn" type="button" onClick={() => show("approvals")} title="Pending approvals" aria-label="Pending approvals">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
           {approvalsCount > 0 && <span className="fb-nav-badge fb-topbar-badge">{approvalsCount}</span>}
