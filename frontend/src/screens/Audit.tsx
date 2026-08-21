@@ -49,8 +49,18 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
+// Generic word-by-word title casing mangles the two branded terms this app
+// actually uses elsewhere -- "SOP" (a real acronym, shown as its own type
+// badge on Workflows) and "e-Invoice"/"e-Invoicing" (the sidebar nav label) --
+// into "Sop" and "Einvoice". Fix those up after the generic pass rather than
+// hardcoding every event_type, so unrecognized event types still degrade
+// gracefully to plain title case.
 function humanize(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bSop\b/g, "SOP")
+    .replace(/\bEinvoice/g, "e-Invoice");
 }
 
 // Every disclosure row otherwise carries the identical hardcoded title
