@@ -136,7 +136,9 @@ function CustomerWorkspace({ customer: initialCustomer, onBack }: { customer: Cu
     finally { setBusy(false); }
   };
   const submitOutreach = async () => {
-    const endpoint = endpoints.find((row) => row.verification_status === "verified");
+    const endpoint = endpoints.find(
+      (row) => row.channel === "email" && row.verification_status === "verified",
+    );
     if (!endpoint) { setMessage("A verified email endpoint is required."); return; }
     setBusy(true); setMessage("");
     try {

@@ -61,12 +61,27 @@ async def _reminder_loop(bot) -> None:
                 plan_due_reminders(
                     db, settings.telegram_customer_tenant_id, datetime.now(UTC).date()
                 )
+        except Exception:
+            logging.getLogger(__name__).exception("telegram_reminder_loop_failed")
+        await asyncio.sleep(settings.telegram_reminder_interval_seconds)
+
+
+async def _outbound_loop(bot) -> None:
+    settings = get_settings()
+    while True:
+        try:
+            with SessionLocal() as db:
+                set_worker_context(
+                    db,
+                    actor_ref="telegram-outbound-worker",
+                    tenant_id=settings.telegram_customer_tenant_id,
+                )
                 for _ in range(settings.telegram_outbound_batch_size):
                     if await dispatch_one(db, bot) is None:
                         break
         except Exception:
-            logging.getLogger(__name__).exception("telegram_reminder_loop_failed")
-        await asyncio.sleep(settings.telegram_reminder_interval_seconds)
+            logging.getLogger(__name__).exception("telegram_outbound_loop_failed")
+        await asyncio.sleep(settings.telegram_outbound_interval_seconds)
 
 
 def main() -> None:
@@ -98,6 +113,9 @@ def main() -> None:
         if settings.telegram_outbound_enabled:
             app.bot_data["reminder_task"] = asyncio.create_task(
                 _reminder_loop(app.bot), name="telegram-reminders"
+            )
+            app.bot_data["outbound_task"] = asyncio.create_task(
+                _outbound_loop(app.bot), name="telegram-outbound"
             )
 
     application.post_init = start_tasks

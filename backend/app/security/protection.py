@@ -1,8 +1,26 @@
+import re
+
 from sqlalchemy.orm import Session
 
 from app.models import TokenVaultEntry
 from app.security.detect import Span, contains_known_pii, detect_spans
 from app.security.tokenize import tokenize_record
+
+_PROTECTED_TOKEN_PATTERN = re.compile(
+    r"(?:AMOUNT_BAND_\d+_[0-9a-f]{10}|[A-Z]+_[0-9a-f]{10})"
+)
+
+
+def _exclude_existing_protected_tokens(text: str, spans: list[Span]) -> list[Span]:
+    token_ranges = [match.span() for match in _PROTECTED_TOKEN_PATTERN.finditer(text)]
+    return [
+        span
+        for span in spans
+        if not any(
+            span.start < token_end and span.end > token_start
+            for token_start, token_end in token_ranges
+        )
+    ]
 
 
 def protect_text(
@@ -15,9 +33,12 @@ def protect_text(
     tokenizer=None,
 ) -> tuple[str, list[TokenVaultEntry]]:
     tokenize = tokenizer or tokenize_record
+    detected_spans = detect_spans(text) if spans is None else spans
+    if spans is None:
+        detected_spans = _exclude_existing_protected_tokens(text, detected_spans)
     protected, entries = tokenize(
         text,
-        detect_spans(text) if spans is None else spans,
+        detected_spans,
         source_record_id,
         tenant_id,
         db=db,

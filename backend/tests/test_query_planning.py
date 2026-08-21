@@ -48,6 +48,21 @@ def test_planner_recognizes_exact_email_listing_before_tokenization():
     assert underscored.filters.record_types == ("customer_email",)
 
 
+def test_planner_recognizes_common_telegram_truncation_as_a_listing():
+    plan = plan_query("show all telegra", ["email", "telegram"])
+
+    assert plan.intent is QueryIntent.LIST_RECORDS
+    assert plan.source_systems == ("telegram",)
+
+
+def test_planner_treats_linked_sources_as_record_enumeration():
+    for question in ("show all linked source", "list linked sources", "display linked records"):
+        plan = plan_query(question, ["email", "telegram"])
+
+        assert plan.intent is QueryIntent.LIST_RECORDS
+        assert plan.source_systems == ()
+
+
 def test_planner_recognizes_einvoice_listing_before_search_mirror_exists():
     plan = plan_query("show all einvoice", ["email", "telegram"])
 

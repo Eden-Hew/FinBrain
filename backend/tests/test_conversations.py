@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,7 @@ from app.services.conversations import (
     prior_citation_hits,
     protected_history,
     protected_planning_history,
+    resolve_ordinal_reference,
 )
 from app.services.retrieval import RetrievalHit
 from tests.auth_support import principal
@@ -54,6 +56,21 @@ def _ready_record(db: Session, source_id: str, source: str) -> TokenizedContent:
     db.add(row)
     db.commit()
     return row
+
+
+@pytest.mark.parametrize(
+    ("question", "resolved"),
+    [
+        ("source 2", "the selected evidence"),
+        ("about SOURCE-2", "about the selected evidence"),
+        ("describe the second message", "describe the selected evidence"),
+        ("summarize the 2nd telegram", "summarize the selected evidence"),
+    ],
+)
+def test_ordinal_reference_is_rewritten_for_the_current_evidence_namespace(
+    question, resolved
+):
+    assert resolve_ordinal_reference(question) == resolved
 
 
 def _hit(row: TokenizedContent) -> RetrievalHit:
@@ -209,12 +226,29 @@ def test_ordinal_falls_back_to_nearest_turn_that_contains_requested_position():
             insufficient_evidence=False,
             cited_hits=[_hit(second)],
         )
+        persist_turn(
+            db,
+            conversation,
+            user_role="general_employee",
+            protected_question="Legacy corrupted source-two lookup",
+            protected_answer="One incorrectly numbered citation.",
+            query_intent="lookup",
+            source_systems=["email"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(third)],
+            citation_ordinals=[2],
+        )
 
         hits = prior_citation_hits(
             db, conversation.id, "Tell me about the third one", DEFAULT_TENANT_ID
         )
+        second_hits = prior_citation_hits(
+            db, conversation.id, "about source 2", DEFAULT_TENANT_ID
+        )
 
         assert [hit.source_record_id for hit in hits] == ["email:3"]
+        assert [hit.source_record_id for hit in second_hits] == ["email:2"]
     finally:
         db.close()
         engine.dispose()
@@ -434,6 +468,60 @@ def test_person_pronoun_follow_up_reuses_single_cited_customer_as_compact_lookup
         engine.dispose()
 
 
+def test_general_ask_resolves_spoken_and_numeric_ordinals_against_latest_listing(monkeypatch):
+    engine, db = _database()
+    records = [
+        _ready_record(db, f"telegram:ordinal-{index}", "telegram")
+        for index in range(1, 9)
+    ]
+    try:
+        user = principal()
+        listing = query(
+            QueryRequest(question="show all telegram"),
+            user,
+            db,
+        )
+        captured_ids: list[int] = []
+
+        def answer_ordinal(_question, hits, *, response_style="analysis"):
+            captured_ids.extend(hit.content_id for hit in hits)
+            return CitedAnswer(
+                answer="The selected Telegram record is available.",
+                citations=["SOURCE-1"],
+            ), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_ordinal,
+        )
+        conversation_id = listing.conversation_id
+        for question in (
+            "the second one",
+            "the second message",
+            "the 2nd",
+            "the second telegram",
+            "the 6th",
+        ):
+            response = query(
+                QueryRequest(question=question, conversation_id=conversation_id),
+                user,
+                db,
+            )
+            assert len(response.citations) == 1
+
+        newest_first = list(reversed(records))
+        assert captured_ids == [
+            newest_first[1].id,
+            newest_first[1].id,
+            newest_first[1].id,
+            newest_first[1].id,
+            newest_first[5].id,
+        ]
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_ambiguous_person_pronoun_requests_a_name_without_calling_model(monkeypatch):
     engine, db = _database()
     first = _ready_record(db, "email:first-person", "email")
@@ -648,6 +736,14 @@ def test_selected_customer_uses_verified_sender_endpoint_for_email_and_name(monk
             owner,
             db,
         )
+        bare_name_response = query(
+            QueryRequest(
+                question="customer name",
+                conversation_id=email_response.conversation_id,
+            ),
+            owner,
+            db,
+        )
 
         assert email_response.mode == "structured-customer-profile"
         assert raw_email in email_response.answer
@@ -655,6 +751,340 @@ def test_selected_customer_uses_verified_sender_endpoint_for_email_and_name(monk
         assert name_response.mode == "structured-customer-profile"
         assert raw_name in name_response.answer
         assert len(name_response.citations) == 1
+        assert bare_name_response.mode == "structured-customer-profile"
+        assert raw_name in bare_name_response.answer
+        assert len(bare_name_response.citations) == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("source_system", "identity_record_type", "endpoint_origin"),
+    [
+        ("telegram", "customer_onboarding_profile", "telegram_onboarding"),
+        ("email", "email", "inbound_email"),
+    ],
+)
+def test_selected_customer_context_keeps_identity_evidence_with_latest_message(
+    monkeypatch, source_system, identity_record_type, endpoint_origin
+):
+    engine, db = _database()
+    try:
+        raw_name = "Context Customer"
+        raw_email = "context.customer@example.com"
+        protected_name, name_entries = protect_text(
+            raw_name,
+            f"{source_system}-context-name",
+            DEFAULT_TENANT_ID,
+            db,
+            spans=[Span(0, len(raw_name), raw_name, "person", "test")],
+        )
+        protected_email, email_entries = protect_text(
+            raw_email,
+            f"{source_system}-context-email",
+            DEFAULT_TENANT_ID,
+            db,
+            spans=[Span(0, len(raw_email), raw_email, "email", "test")],
+        )
+        persist_vault_entries(db, [*name_entries, *email_entries])
+        customer = Customer(
+            tenant_id=DEFAULT_TENANT_ID,
+            canonical_name="[person — restricted]",
+            normalized_name=f"CONTEXT{source_system.upper()}",
+            primary_name_token=protected_name,
+            profile_status="confirmed",
+            identity_review_status="clear",
+        )
+        db.add(customer)
+        db.flush()
+        db.add(
+            CustomerEndpoint(
+                tenant_id=DEFAULT_TENANT_ID,
+                customer_id=customer.id,
+                channel="email",
+                endpoint_token=protected_email,
+                verification_status=("observed" if source_system == "telegram" else "verified"),
+                origin=endpoint_origin,
+            )
+        )
+        identity = TokenizedContent(
+            tenant_id=DEFAULT_TENANT_ID,
+            source_record_id=f"{source_system}:identity-context",
+            source_system=source_system,
+            record_type=identity_record_type,
+            content_text=f"Customer name: {protected_name}\nEmail: {protected_email}",
+            summary=f"Customer {protected_name} uses {protected_email}.",
+            processing_status="ready",
+        )
+        latest = TokenizedContent(
+            tenant_id=DEFAULT_TENANT_ID,
+            source_record_id=f"{source_system}:latest-message",
+            source_system=source_system,
+            record_type="customer_message",
+            content_text="The customer asked about a choke collar.",
+            summary="The latest request concerns a choke collar.",
+            processing_status="ready",
+        )
+        db.add_all([identity, latest])
+        db.flush()
+        db.add_all(
+            [
+                CustomerRecordLink(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    customer_id=customer.id,
+                    tokenized_content_id=row.id,
+                    match_status="verified",
+                    confidence=1.0,
+                    match_basis=f"verified_{source_system}_context",
+                )
+                for row in (identity, latest)
+            ]
+        )
+        db.commit()
+        settings = get_settings().model_copy(update={"customer_intelligence_enabled": True})
+        monkeypatch.setattr("app.routes.query.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "app.routes.query.retrieve_hybrid_hits",
+            lambda *_args, **_kwargs: [_hit(latest)],
+        )
+        captured: dict[str, object] = {}
+
+        def answer_scoped(question, hits, *, response_style="analysis"):
+            captured["question"] = question
+            captured["ids"] = [hit.content_id for hit in hits]
+            return CitedAnswer(
+                answer="The latest request concerns a choke collar.",
+                citations=["SOURCE-1"],
+            ), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_scoped,
+        )
+
+        response = query(
+            QueryRequest(question="Summarize this customer", customer_id=customer.id),
+            principal(UserRole.OWNER_DIRECTOR),
+            db,
+        )
+
+        assert captured["ids"] == [latest.id, identity.id]
+        assert protected_name in str(captured["question"])
+        assert protected_email in str(captured["question"])
+        assert response.sources_used == 2
+        assert response.context_customer_id == customer.id
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_selected_customer_follow_up_does_not_narrow_to_previous_turn_citations(monkeypatch):
+    engine, db = _database()
+    identity = _ready_record(db, "telegram:selected-identity", "telegram")
+    request = _ready_record(db, "telegram:selected-request", "telegram")
+    try:
+        owner = principal(UserRole.OWNER_DIRECTOR)
+        identity.record_type = "customer_onboarding_profile"
+        request.record_type = "customer_message"
+        request.summary = "The customer wants to purchase a choke collar."
+        customer = Customer(
+            tenant_id=DEFAULT_TENANT_ID,
+            canonical_name="Selected Customer",
+            normalized_name="SELECTEDCUSTOMERFOLLOWUP",
+        )
+        db.add(customer)
+        db.flush()
+        db.add_all(
+            [
+                CustomerRecordLink(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    customer_id=customer.id,
+                    tokenized_content_id=row.id,
+                    match_status="verified",
+                    confidence=1.0,
+                    match_basis="verified_telegram_context",
+                )
+                for row in (identity, request)
+            ]
+        )
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(owner.user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="owner_director",
+            protected_question="customer name",
+            protected_answer="The selected customer has an onboarding profile.",
+            query_intent="lookup",
+            source_systems=["telegram"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(identity)],
+        )
+        settings = get_settings().model_copy(update={"customer_intelligence_enabled": True})
+        monkeypatch.setattr("app.routes.query.get_settings", lambda: settings)
+        monkeypatch.setattr(
+            "app.routes.query.plan_conversation",
+            lambda **_kwargs: ConversationalPlan(
+                intent="lookup",
+                referenced_turn=1,
+                response_style="compact",
+                needs_clarification=False,
+            ),
+        )
+        response = query(
+            QueryRequest(
+                question="what he wants",
+                conversation_id=conversation.id,
+                customer_id=customer.id,
+            ),
+            owner,
+            db,
+        )
+
+        assert "wants to purchase a choke collar" in response.answer
+        assert response.sources_used == 2
+        assert len(response.citations) == 1
+        assert response.citations[0].source_record_id == request.source_record_id
+        assert response.context_customer_id == customer.id
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_selected_customer_linked_source_listing_returns_every_verified_link(monkeypatch):
+    engine, db = _database()
+    records = [
+        _ready_record(db, "telegram:linked-first", "telegram"),
+        _ready_record(db, "telegram:linked-second", "telegram"),
+        _ready_record(db, "telegram:linked-profile", "telegram"),
+    ]
+    try:
+        records[2].record_type = "customer_onboarding_profile"
+        customer = Customer(
+            tenant_id=DEFAULT_TENANT_ID,
+            canonical_name="Linked Customer",
+            normalized_name="LINKEDCUSTOMERLISTING",
+        )
+        db.add(customer)
+        db.flush()
+        db.add_all(
+            [
+                CustomerRecordLink(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    customer_id=customer.id,
+                    tokenized_content_id=row.id,
+                    match_status="verified",
+                    confidence=1.0,
+                    match_basis="verified_telegram_context",
+                )
+                for row in records
+            ]
+        )
+        db.commit()
+        settings = get_settings().model_copy(update={"customer_intelligence_enabled": True})
+        monkeypatch.setattr("app.routes.query.get_settings", lambda: settings)
+
+        response = query(
+            QueryRequest(question="show all linked source", customer_id=customer.id),
+            principal(UserRole.OWNER_DIRECTOR),
+            db,
+        )
+
+        assert response.mode == "structured-filter"
+        assert response.sources_used == 3
+        assert len(response.citations) == 3
+        assert {citation.source_record_id for citation in response.citations} == {
+            row.source_record_id for row in records
+        }
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_selected_customer_source_ordinal_is_not_augmented_with_identity_evidence(monkeypatch):
+    engine, db = _database()
+    first = _ready_record(db, "telegram:first-request", "telegram")
+    second = _ready_record(db, "telegram:second-request", "telegram")
+    identity = _ready_record(db, "telegram:selected-profile", "telegram")
+    try:
+        owner = principal(UserRole.OWNER_DIRECTOR)
+        first.record_type = "customer_message"
+        second.record_type = "customer_message"
+        second.summary = "The customer enquired about a peg stick."
+        identity.record_type = "customer_onboarding_profile"
+        customer = Customer(
+            tenant_id=DEFAULT_TENANT_ID,
+            canonical_name="Selected Customer",
+            normalized_name="SELECTEDSOURCEORDINAL",
+        )
+        db.add(customer)
+        db.flush()
+        db.add_all(
+            [
+                CustomerRecordLink(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    customer_id=customer.id,
+                    tokenized_content_id=row.id,
+                    match_status="verified",
+                    confidence=1.0,
+                    match_basis="verified_telegram_context",
+                )
+                for row in (first, second, identity)
+            ]
+        )
+        conversation = create_conversation(
+            db,
+            DEFAULT_TENANT_ID,
+            str(owner.user_id),
+        )
+        persist_turn(
+            db,
+            conversation,
+            user_role="owner_director",
+            protected_question="show all source",
+            protected_answer="Three linked sources.",
+            query_intent="analyze_all",
+            source_systems=["telegram"],
+            reasoning_mode="test",
+            insufficient_evidence=False,
+            cited_hits=[_hit(first), _hit(second), _hit(identity)],
+        )
+        settings = get_settings().model_copy(update={"customer_intelligence_enabled": True})
+        monkeypatch.setattr("app.routes.query.get_settings", lambda: settings)
+        captured: dict[str, object] = {}
+
+        def answer_scoped(question, hits, *, response_style="analysis"):
+            captured["question"] = question
+            captured["ids"] = [hit.content_id for hit in hits]
+            return CitedAnswer(
+                answer="The customer enquired about a peg stick.",
+                citations=["SOURCE-1"],
+            ), "test"
+
+        monkeypatch.setattr(
+            "app.routes.query.answer_all_query_with_citations",
+            answer_scoped,
+        )
+
+        response = query(
+            QueryRequest(
+                question="about source 2",
+                conversation_id=conversation.id,
+                customer_id=customer.id,
+            ),
+            owner,
+            db,
+        )
+
+        assert captured["ids"] == [second.id]
+        assert "authoritative customer state" not in str(captured["question"])
+        assert len(response.citations) == 1
+        assert response.citations[0].source_record_id == second.source_record_id
     finally:
         db.close()
         engine.dispose()

@@ -1,3 +1,5 @@
+import asyncio
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -6,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.principal import AuthPrincipal
 from app.config import get_settings
+from app.integrations.telegram.sender import dispatch_one as dispatch_telegram
 from app.models import (
     Base,
     Customer,
@@ -23,7 +26,7 @@ from app.schemas import UserRole
 from app.security.detect import Span
 from app.security.detokenize import detokenize_response_with_trace, hash_query
 from app.security.protection import protect_text
-from app.security.tokenize import persist_vault_entries
+from app.security.tokenize import persist_vault_entries, protect_scalar
 from app.services.customer_intelligence import customer_summary
 from app.services.outreach import (
     _remove_customer_contact_misuse,
@@ -87,7 +90,7 @@ def test_endpoint_is_protected_and_requires_verification_before_submit():
                 role=UserRole.FINANCE_OPS, user_id=USER, actor_ref="actor",
             )
         except ValueError as error:
-            assert str(error) == "verified_email_endpoint_required"
+            assert str(error) == "verified_outreach_endpoint_required"
         else:
             raise AssertionError("unverified endpoint was accepted")
         verify_endpoint(db, endpoint.id, tenant_id=TENANT, reviewer_id=USER)
@@ -156,7 +159,7 @@ def test_revoked_endpoint_blocks_approval_and_requires_explicit_restore():
                 role=UserRole.OWNER_DIRECTOR, user_id=USER, actor_ref="owner",
             )
         except ValueError as error:
-            assert str(error) == "verified_email_endpoint_required"
+            assert str(error) == "verified_outreach_endpoint_required"
         else:
             raise AssertionError("revoked endpoint was approved for delivery")
 
@@ -248,7 +251,13 @@ def test_protected_chat_generation_creates_editable_draft_without_sending(monkey
         ))
         db.commit()
         settings = get_settings().model_copy(
-            update={"morpheus_api_key": "test-key", "allow_offline_demo": False}
+            update={
+                "morpheus_api_key": "test-key",
+                "allow_offline_demo": False,
+                "email_outreach_signature_name": "FinBrain Team",
+                "email_outreach_signature_title": "Customer Operations",
+                "email_outreach_signature_organization": "FinBrain",
+            }
         )
         monkeypatch.setattr("app.services.outreach.get_settings", lambda: settings)
         model_request: dict[str, str] = {}
@@ -316,9 +325,185 @@ def test_protected_chat_generation_creates_editable_draft_without_sending(monkey
         assert (api_preview.body or "").endswith(
             "Best regards,\nFinBrain Team\nCustomer Operations\nFinBrain"
         )
+        assert "ORG_" not in (api_preview.body or "")
         assert edited.status == "draft"
         assert edited.protected_subject == "Updated quotation subject"
         assert db.get(OutreachAction, generated.id).sent_at is None
+    finally:
+        db.close()
+
+
+def test_telegram_generation_uses_safe_customer_label_and_same_chat_destination(monkeypatch):
+    db, customer = _session()
+    try:
+        raw_name = "Aisha Rahman"
+        protected_name, name_entries = protect_text(
+            raw_name,
+            "telegram-outreach-name",
+            TENANT,
+            db,
+            spans=[Span(0, len(raw_name), raw_name, "person", "test")],
+        )
+        persist_vault_entries(db, name_entries)
+        telegram_token = protect_scalar(
+            db,
+            entity_type="TGUSER",
+            value="1933659680",
+            source_record_id="telegram-outreach-user",
+            tenant_id=TENANT,
+        )
+        delivery_token = protect_scalar(
+            db,
+            entity_type="TGCHAT",
+            value="1933659680",
+            source_record_id="telegram-outreach-chat",
+            tenant_id=TENANT,
+        )
+        customer.primary_name_token = protected_name
+        customer.profile_status = "confirmed"
+        customer.identity_review_status = "clear"
+        endpoint = CustomerEndpoint(
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            channel="telegram",
+            endpoint_token=telegram_token,
+            delivery_token=delivery_token,
+            verification_status="verified",
+            origin="telegram_onboarding",
+        )
+        content = TokenizedContent(
+            tenant_id=TENANT,
+            source_record_id="telegram:customer-question",
+            source_system="telegram",
+            record_type="customer_message",
+            content_text="Customer asked for an update on the requested product.",
+            summary="Customer asked for an update on the requested product.",
+            processing_status="ready",
+        )
+        db.add_all([endpoint, content])
+        db.flush()
+        db.add_all(
+            [
+                CustomerIdentityClaim(
+                    tenant_id=TENANT,
+                    customer_id=customer.id,
+                    endpoint_id=endpoint.id,
+                    identity_token=protected_name,
+                    claim_basis="display_name",
+                    confidence=1.0,
+                    evidence_content_id=content.id,
+                    status="accepted",
+                ),
+                CustomerRecordLink(
+                    tenant_id=TENANT,
+                    customer_id=customer.id,
+                    tokenized_content_id=content.id,
+                    match_status="verified",
+                    confidence=1.0,
+                    match_basis="verified_telegram_endpoint",
+                ),
+            ]
+        )
+        db.commit()
+        settings = get_settings().model_copy(
+            update={
+                "morpheus_api_key": "test-key",
+                "allow_offline_demo": False,
+                "email_outreach_signature_name": "FinBrain Team",
+                "email_outreach_signature_title": "Customer Operations",
+                "email_outreach_signature_organization": "FinBrain",
+            }
+        )
+        monkeypatch.setattr("app.services.outreach.get_settings", lambda: settings)
+        model_request: dict[str, str] = {}
+
+        def generate(messages, **_kwargs):
+            model_request["system"] = messages[0]["content"]
+            model_request["context"] = messages[1]["content"]
+            return (
+                '{"subject":"ignored","body":"We are reviewing your request '
+                'and will update you shortly."}'
+            )
+
+        monkeypatch.setattr("app.services.outreach.morpheus_chat", generate)
+        generated, mode = generate_action(
+            db,
+            tenant_id=TENANT,
+            customer_id=customer.id,
+            endpoint_id=endpoint.id,
+            turn_id=None,
+            instruction="Reply with a short update.",
+            idempotency_key="telegram-chat-generation-test",
+            created_by_user_id=USER,
+            actor_role=UserRole.FINANCE_OPS.value,
+            actor_ref="finance",
+        )
+        owner = AuthPrincipal(
+            user_id=UUID(USER),
+            email="owner@example.com",
+            role=UserRole.OWNER_DIRECTOR,
+            tenant_id=UUID(TENANT),
+        )
+
+        endpoint_response = _endpoint_response(db, endpoint, owner)
+        action_response = _action_response(db, generated, owner)
+        updated = update_draft(
+            db,
+            generated.id,
+            tenant_id=TENANT,
+            subject=None,
+            body="A shorter Telegram reply.",
+            actor_role=UserRole.FINANCE_OPS.value,
+            actor_ref="finance",
+        )
+        transition_action(
+            db,
+            generated.id,
+            "submit",
+            tenant_id=TENANT,
+            role=UserRole.FINANCE_OPS,
+            user_id=USER,
+            actor_ref="finance",
+        )
+        transition_action(
+            db,
+            generated.id,
+            "approve",
+            tenant_id=TENANT,
+            role=UserRole.OWNER_DIRECTOR,
+            user_id=USER,
+            actor_ref="owner",
+        )
+        sent: list[tuple[int, str]] = []
+
+        class Bot:
+            async def send_message(self, *, chat_id, text):
+                sent.append((chat_id, text))
+                return SimpleNamespace(message_id=88)
+
+        monkeypatch.setattr(
+            "app.integrations.telegram.sender.get_settings",
+            lambda: SimpleNamespace(telegram_outbound_enabled=True),
+        )
+        dispatched = asyncio.run(dispatch_telegram(db, Bot()))
+
+        assert mode == "morpheus"
+        assert generated.channel == "telegram"
+        assert endpoint_response.authorized_value is None
+        assert endpoint_response.display_label == "Telegram — Aisha Rahman"
+        assert endpoint_response.delivery_eligible is True
+        assert action_response.recipient is None
+        assert action_response.recipient_label == "Aisha Rahman (Telegram)"
+        assert "1933659680" not in endpoint_response.model_dump_json()
+        assert "1933659680" not in action_response.model_dump_json()
+        assert "Telegram message" in model_request["system"]
+        assert "Do not refer to an email" in model_request["system"]
+        assert "1933659680" not in model_request["context"]
+        assert generated.subject is None
+        assert updated.protected_subject == generated.protected_subject
+        assert dispatched is not None
+        assert dispatched.status == "sent"
+        assert sent == [(1933659680, "A shorter Telegram reply.")]
     finally:
         db.close()
 

@@ -78,46 +78,53 @@ def detokenize_response_with_trace(
         turn_ref=turn_ref,
     )
     try:
-        for token in sorted(set(TOKEN_PATTERN.findall(text)), key=len, reverse=True):
-            registry = db.get(ProtectedTokenRegistry, token)
-            entry = db.scalar(select(TokenVaultEntry).where(TokenVaultEntry.token == token))
-            if registry is None:
-                if token.startswith("AMOUNT_BAND_"):
-                    result = result.replace(token, _band_label(token))
-                continue
-            # PostgreSQL RLS hides ciphertext rows from roles outside allowed_roles.
-            # The explicit check preserves identical behavior in SQLite tests.
-            authorized = entry is not None and role in entry.allowed_roles
-            if authorized:
-                assert entry is not None
-                plaintext = decrypt_vault_entry(db, entry)
-                grant = session.issue(token, plaintext)
-                replacement = session.consume(grant)
-                restored += 1
-            else:
-                replacement = (
-                    _band_label(token)
-                    if registry.entity_type == "AMOUNT"
-                    else registry.masked_value
+        for _depth in range(5):
+            tokens = sorted(set(TOKEN_PATTERN.findall(result)), key=len, reverse=True)
+            if not tokens:
+                break
+            before_pass = result
+            for token in tokens:
+                registry = db.get(ProtectedTokenRegistry, token)
+                entry = db.scalar(select(TokenVaultEntry).where(TokenVaultEntry.token == token))
+                if registry is None:
+                    if token.startswith("AMOUNT_BAND_"):
+                        result = result.replace(token, _band_label(token))
+                    continue
+                # PostgreSQL RLS hides ciphertext rows from roles outside allowed_roles.
+                # The explicit check preserves identical behavior in SQLite tests.
+                authorized = entry is not None and role in entry.allowed_roles
+                if authorized:
+                    assert entry is not None
+                    plaintext = decrypt_vault_entry(db, entry)
+                    grant = session.issue(token, plaintext)
+                    replacement = session.consume(grant)
+                    restored += 1
+                else:
+                    replacement = (
+                        _band_label(token)
+                        if registry.entity_type == "AMOUNT"
+                        else registry.masked_value
+                    )
+                    withheld += 1
+                result = result.replace(token, replacement)
+                decisions.append(
+                    DisclosureDecision(
+                        token=token,
+                        entity_type=registry.entity_type,
+                        authorized=authorized,
+                    )
                 )
-                withheld += 1
-            result = result.replace(token, replacement)
-            decisions.append(
-                DisclosureDecision(
-                    token=token,
-                    entity_type=registry.entity_type,
-                    authorized=authorized,
+                write_audit_entry(
+                    db,
+                    role,
+                    token,
+                    authorized,
+                    query_hash,
+                    tenant_id=registry.tenant_id,
+                    actor_ref=actor_ref,
                 )
-            )
-            write_audit_entry(
-                db,
-                role,
-                token,
-                authorized,
-                query_hash,
-                tenant_id=registry.tenant_id,
-                actor_ref=actor_ref,
-            )
+            if result == before_pass:
+                break
         db.commit()
         return DetokenizationTrace(
             text=result,

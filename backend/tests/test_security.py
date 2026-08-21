@@ -2,9 +2,10 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.models import DEFAULT_TENANT_ID, AuditLogEntry, Base, TokenVaultEntry
-from app.security.detect import detect_spans
+from app.security.detect import Span, detect_spans
 from app.security.detokenize import detokenize_response
-from app.security.tokenize import tokenize_record
+from app.security.protection import protect_text
+from app.security.tokenize import protect_scalar, tokenize_record
 from app.services.audit import verify_audit_chain
 
 
@@ -90,6 +91,44 @@ def test_deterministic_tokens_link_same_value():
     first, _ = tokenize_record(raw, detect_spans(raw), "one", DEFAULT_TENANT_ID)
     second, _ = tokenize_record(raw, detect_spans(raw), "two", DEFAULT_TENANT_ID)
     assert first == second
+
+
+def test_protection_does_not_tokenize_an_existing_protected_token(monkeypatch):
+    token = "ORG_0123456789"
+    monkeypatch.setattr(
+        "app.security.protection.detect_spans",
+        lambda _text: [Span(0, len(token), token, "company name", "test")],
+    )
+
+    protected, entries = protect_text(token, "already-protected", DEFAULT_TENANT_ID)
+
+    assert protected == token
+    assert entries == []
+
+
+def test_detokenization_resolves_legacy_nested_tokens():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        inner = protect_scalar(
+            db,
+            entity_type="ORG",
+            value="FinBrain",
+            source_record_id="inner-signature",
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+        outer = protect_scalar(
+            db,
+            entity_type="ORG",
+            value=inner,
+            source_record_id="outer-signature",
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+        db.commit()
+
+        restored = detokenize_response(db, outer, "owner_director", "nested-signature")
+
+        assert restored == "FinBrain"
 
 
 def test_role_gate_and_audit_chain():

@@ -25,7 +25,7 @@ from app.schemas import OutreachActionResponse, UserRole
 from app.security.detect import contains_known_pii
 from app.security.detokenize import TOKEN_PATTERN
 from app.security.protection import protect_text
-from app.security.tokenize import persist_vault_entries
+from app.security.tokenize import persist_vault_entries, protect_scalar
 from app.services.morpheus import morpheus_chat
 from app.services.reasoning import unknown_tokens
 from app.services.workflow_audit import write_workflow_event
@@ -34,6 +34,33 @@ from app.services.workflow_audit import write_workflow_event
 class GeneratedOutreachDraft(BaseModel):
     subject: str = Field(min_length=1, max_length=998)
     body: str = Field(min_length=1, max_length=20_000)
+
+
+_SUPPORTED_OUTREACH_CHANNELS = {"email", "telegram"}
+
+
+def _validate_outreach_endpoint(
+    db: Session,
+    *,
+    tenant_id: str,
+    customer_id: int,
+    endpoint_id: int,
+    require_verified: bool,
+) -> CustomerEndpoint:
+    endpoint = db.get(CustomerEndpoint, endpoint_id)
+    if (
+        endpoint is None
+        or endpoint.tenant_id != tenant_id
+        or endpoint.customer_id != customer_id
+    ):
+        raise LookupError("customer_endpoint_not_found")
+    if endpoint.channel not in _SUPPORTED_OUTREACH_CHANNELS:
+        raise ValueError("unsupported_outreach_channel")
+    if require_verified and endpoint.verification_status != "verified":
+        raise ValueError("verified_outreach_endpoint_required")
+    if endpoint.channel == "telegram" and endpoint.delivery_token is None:
+        raise ValueError("telegram_delivery_destination_required")
+    return endpoint
 
 
 _CUSTOMER_CONTACT_MISUSE = re.compile(
@@ -263,9 +290,13 @@ def create_action(
     ))
     if existing:
         return _response(db, existing)
-    endpoint = db.get(CustomerEndpoint, endpoint_id)
-    if endpoint is None or endpoint.tenant_id != tenant_id or endpoint.customer_id != customer_id:
-        raise LookupError("customer_endpoint_not_found")
+    endpoint = _validate_outreach_endpoint(
+        db,
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        endpoint_id=endpoint_id,
+        require_verified=False,
+    )
     action_id = str(uuid.uuid4())
     subject_protected, subject_entries = protect_text(
         subject, f"outreach-subject:{action_id}", tenant_id, db
@@ -291,7 +322,7 @@ def create_action(
         raise ValueError("outreach_evidence_not_linked_to_customer")
     row = OutreachAction(
         id=action_id, tenant_id=tenant_id, customer_id=customer_id,
-        customer_endpoint_id=endpoint_id, channel="email",
+        customer_endpoint_id=endpoint_id, channel=endpoint.channel,
         protected_subject=subject_protected, protected_body=body_protected,
         status="draft", idempotency_key=idempotency_key,
         created_by_user_id=created_by_user_id,
@@ -309,7 +340,7 @@ def create_action(
         tenant_id=tenant_id,
         event_payload={
             "customer_id": customer_id,
-            "channel": "email",
+            "channel": endpoint.channel,
             "evidence_count": len(evidence_ids),
         },
     )
@@ -320,10 +351,19 @@ def create_action(
 def _turn_evidence_ids(
     db: Session, *, tenant_id: str, customer_id: int, turn_id: int | None
 ) -> list[int]:
-    linked = select(CustomerRecordLink.tokenized_content_id).where(
-        CustomerRecordLink.tenant_id == tenant_id,
-        CustomerRecordLink.customer_id == customer_id,
-        CustomerRecordLink.match_status == "verified",
+    linked = (
+        select(CustomerRecordLink.tokenized_content_id)
+        .join(
+            TokenizedContent,
+            TokenizedContent.id == CustomerRecordLink.tokenized_content_id,
+        )
+        .where(
+            CustomerRecordLink.tenant_id == tenant_id,
+            CustomerRecordLink.customer_id == customer_id,
+            CustomerRecordLink.match_status == "verified",
+            TokenizedContent.tenant_id == tenant_id,
+            TokenizedContent.processing_status == "ready",
+        )
     )
     if turn_id is not None:
         turn = db.get(ConversationTurn, turn_id)
@@ -353,6 +393,7 @@ def _generate_protected_draft(
     rows: list[TokenizedContent],
     instruction: str,
     signature: str,
+    channel: str,
 ) -> tuple[GeneratedOutreachDraft, str]:
     if not rows:
         raise ValueError("outreach_evidence_required")
@@ -364,10 +405,18 @@ def _generate_protected_draft(
     context = f"Customer: {name}\n\n{evidence}\n\nUser instruction: {instruction}"
     if contains_known_pii(context):
         raise ValueError("outreach_generation_context_not_protected")
+    medium = "Telegram message" if channel == "telegram" else "customer email"
+    channel_instruction = (
+        "Write a concise chat message with short paragraphs. Do not refer to an email or subject "
+        "line. Set the JSON subject to exactly 'Telegram response'. "
+        if channel == "telegram"
+        else "Write a professional email with a clear subject and body. "
+    )
     system = (
-        "Draft a professional customer email using only the supplied protected evidence. "
+        f"Draft a professional {medium} using only the supplied protected evidence. "
+        f"{channel_instruction}"
         "Do not infer hidden token values, invent facts, promise an unconfirmed outcome, or "
-        "include citation markers in the email. Contact details in the evidence belong to the "
+        "include citation markers in the response. Contact details in the evidence belong to the "
         "customer unless the evidence explicitly says otherwise. Never tell the customer to "
         "contact our company using their own phone number or email address. Do not repeat a "
         "customer contact detail unless the user explicitly asks to confirm it. Do not add a "
@@ -406,7 +455,10 @@ def _generate_protected_draft(
     if not unsigned_body:
         raise ValueError("generated_outreach_body_empty_after_safety_review")
     draft = draft.model_copy(
-        update={"body": f"{unsigned_body}\n\nBest regards,\n{signature}"}
+        update={
+            "subject": "Telegram response" if channel == "telegram" else draft.subject,
+            "body": f"{unsigned_body}\n\nBest regards,\n{signature}",
+        }
     )
     serialized = draft.model_dump_json()
     if contains_known_pii(serialized):
@@ -433,11 +485,13 @@ def generate_action(
     customer = db.get(Customer, customer_id)
     if customer is None or customer.tenant_id != tenant_id:
         raise LookupError("customer_not_found")
-    endpoint = db.get(CustomerEndpoint, endpoint_id)
-    if endpoint is None or endpoint.tenant_id != tenant_id or endpoint.customer_id != customer_id:
-        raise LookupError("customer_endpoint_not_found")
-    if endpoint.verification_status != "verified":
-        raise ValueError("verified_email_endpoint_required")
+    endpoint = _validate_outreach_endpoint(
+        db,
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        endpoint_id=endpoint_id,
+        require_verified=True,
+    )
     protected_instruction, instruction_entries = protect_text(
         instruction,
         f"outreach-instruction:{idempotency_key}",
@@ -445,19 +499,31 @@ def generate_action(
         db,
     )
     settings = get_settings()
+    signature_name = settings.email_outreach_signature_name.strip() or "FinBrain Team"
+    signature_title = settings.email_outreach_signature_title.strip()
+    signature_organization = settings.email_outreach_signature_organization.strip()
     signature_lines = [
-        settings.email_outreach_signature_name.strip() or "FinBrain Team",
-        settings.email_outreach_signature_title.strip(),
-        settings.email_outreach_signature_organization.strip(),
+        protect_scalar(
+            db,
+            entity_type="ORG",
+            value=signature_name,
+            source_record_id=f"outreach-signature-name:{idempotency_key}",
+            tenant_id=tenant_id,
+        ),
+        signature_title,
     ]
-    raw_signature = "\n".join(dict.fromkeys(line for line in signature_lines if line))
-    protected_signature, signature_entries = protect_text(
-        raw_signature,
-        f"outreach-signature:{idempotency_key}",
-        tenant_id,
-        db,
-    )
-    persist_vault_entries(db, [*instruction_entries, *signature_entries])
+    if signature_organization and signature_organization != signature_name:
+        signature_lines.append(
+            protect_scalar(
+                db,
+                entity_type="ORG",
+                value=signature_organization,
+                source_record_id=f"outreach-signature-organization:{idempotency_key}",
+                tenant_id=tenant_id,
+            )
+        )
+    protected_signature = "\n".join(line for line in signature_lines if line)
+    persist_vault_entries(db, instruction_entries)
     evidence_ids = _turn_evidence_ids(
         db, tenant_id=tenant_id, customer_id=customer_id, turn_id=turn_id
     )
@@ -477,6 +543,7 @@ def generate_action(
         rows=rows,
         instruction=protected_instruction,
         signature=protected_signature,
+        channel=endpoint.channel,
     )
     action = create_action(
         db,
@@ -499,7 +566,7 @@ def update_draft(
     action_id: str,
     *,
     tenant_id: str,
-    subject: str,
+    subject: str | None,
     body: str,
     actor_role: str,
     actor_ref: str,
@@ -509,9 +576,14 @@ def update_draft(
         raise LookupError("outreach_action_not_found")
     if row.status != "draft":
         raise ValueError("only_draft_outreach_can_be_edited")
-    subject_protected, subject_entries = protect_text(
-        subject, f"outreach-subject:{action_id}:edit", tenant_id, db
-    )
+    subject_entries = []
+    subject_protected = row.protected_subject
+    if row.channel == "email":
+        if subject is None or not subject.strip():
+            raise ValueError("email_subject_required")
+        subject_protected, subject_entries = protect_text(
+            subject, f"outreach-subject:{action_id}:edit", tenant_id, db
+        )
     body_protected, body_entries = protect_text(
         body, f"outreach-body:{action_id}:edit", tenant_id, db
     )
@@ -553,9 +625,13 @@ def transition_action(
     if row is None or row.tenant_id != tenant_id:
         raise LookupError("outreach_action_not_found")
     if operation in {"submit", "approve"}:
-        endpoint = db.get(CustomerEndpoint, row.customer_endpoint_id)
-        if endpoint is None or endpoint.verification_status != "verified":
-            raise ValueError("verified_email_endpoint_required")
+        _validate_outreach_endpoint(
+            db,
+            tenant_id=tenant_id,
+            customer_id=row.customer_id,
+            endpoint_id=row.customer_endpoint_id,
+            require_verified=True,
+        )
         customer = db.get(Customer, row.customer_id)
         if customer is None or customer.profile_status != "confirmed":
             raise ValueError("confirmed_customer_required")

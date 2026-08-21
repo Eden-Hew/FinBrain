@@ -31,6 +31,7 @@ from app.services.conversations import (
     prior_citation_hits,
     protected_history,
     protected_planning_history,
+    resolve_ordinal_reference,
     turn_citation_hits,
 )
 from app.services.embeddings import embed_query_cached
@@ -45,8 +46,10 @@ from app.services.query_planning import QueryIntent, QueryPlan, plan_query, sour
 from app.services.reasoning import (
     answer_all_query_with_citations,
     is_contact_enumeration,
+    is_customer_needs_lookup,
     is_customer_profile_lookup,
     structured_contact_lookup,
+    structured_customer_needs_lookup,
     structured_customer_profile_lookup,
     structured_record_listing,
     unknown_tokens,
@@ -60,6 +63,68 @@ logger = logging.getLogger(__name__)
 # eligible row; ANALYZE_ALL keeps the unbounded listing since its whole meaning is
 # "every/all/entire" and truncating to top-k would silently drop requested data.
 SEMANTIC_TOP_K = 10
+SELECTED_CUSTOMER_IDENTITY_EVIDENCE_LIMIT = 5
+
+
+def _selected_customer_profile_context(
+    db: Session, *, tenant_id: str, customer_id: int
+) -> str:
+    """Build the authoritative protected identity bundle for a selected customer."""
+    customer = db.get(Customer, customer_id)
+    if customer is None or customer.tenant_id != tenant_id:
+        return "Protected selected-customer profile: unavailable."
+    lines = ["Protected selected-customer profile (authoritative customer state):"]
+    lines.append(f"- Name: {customer.primary_name_token or 'not available'}")
+    endpoints = db.scalars(
+        select(CustomerEndpoint)
+        .where(
+            CustomerEndpoint.tenant_id == tenant_id,
+            CustomerEndpoint.customer_id == customer_id,
+            CustomerEndpoint.channel.in_(("email", "phone")),
+            CustomerEndpoint.verification_status != "revoked",
+        )
+        .order_by(CustomerEndpoint.channel, CustomerEndpoint.id)
+    ).all()
+    if not endpoints:
+        lines.append("- Contact endpoints: not available")
+    else:
+        seen: set[tuple[str, str]] = set()
+        for endpoint in endpoints:
+            key = (endpoint.channel, endpoint.endpoint_token)
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(
+                f"- {endpoint.channel.title()} ({endpoint.verification_status}): "
+                f"{endpoint.endpoint_token}"
+            )
+    return "\n".join(lines)
+
+
+def _include_selected_customer_identity_evidence(
+    db: Session,
+    *,
+    filters,
+    existing_hits: list[RetrievalHit],
+    protected_profile_context: str,
+) -> list[RetrievalHit]:
+    """Keep identity evidence beside similarity-ranked selected-customer messages."""
+    profile_tokens = set(TOKEN_PATTERN.findall(protected_profile_context))
+    if not profile_tokens:
+        return existing_hits
+    existing_ids = {hit.content_id for hit in existing_hits}
+    anchors: list[RetrievalHit] = []
+    for candidate in list_eligible_hits(db, filters):
+        if candidate.content_id in existing_ids:
+            continue
+        candidate_tokens = set(TOKEN_PATTERN.findall(candidate.retrieval_text))
+        if candidate.record_type == "customer_onboarding_profile" or (
+            candidate_tokens & profile_tokens
+        ):
+            anchors.append(candidate)
+            if len(anchors) == SELECTED_CUSTOMER_IDENTITY_EVIDENCE_LIMIT:
+                break
+    return [*existing_hits, *anchors]
 
 
 @router.post("/query", response_model=QueryResponse)
@@ -100,6 +165,7 @@ def query(
         conversation.context_customer_id = customer.id
         conversation.context_updated_at = utcnow()
         db.commit()
+    selected_customer_profile_context = ""
     if conversation.context_customer_id is not None:
         customer_content_ids = list(
             db.scalars(
@@ -111,6 +177,11 @@ def query(
             ).all()
         )
         plan = QueryPlan(plan.intent, plan.filters.with_content_ids(customer_content_ids or [-1]))
+        selected_customer_profile_context = _selected_customer_profile_context(
+            db,
+            tenant_id=str(principal.tenant_id),
+            customer_id=conversation.context_customer_id,
+        )
     history = protected_history(db, conversation.id, str(principal.tenant_id))
     query_id = f"query-{uuid.uuid4()}"
     detected_spans = detect_spans(payload.question)
@@ -194,7 +265,12 @@ def query(
         prior_hits = (
             list_eligible_hits(db, plan.filters.with_content_ids(prior_ids)) if prior_ids else []
         )
-    referential = reference_requested and bool(prior_hits)
+    selected_customer_full_scope = (
+        conversation.context_customer_id is not None and not ordinal_reference
+    )
+    referential = (
+        reference_requested and bool(prior_hits) and not selected_customer_full_scope
+    )
     ambiguous_person_reference = bool(
         conversation.context_customer_id is None
         and (
@@ -212,18 +288,38 @@ def query(
     customer_scope_instruction = (
         "The backend has restricted this request to the explicitly selected customer. "
         "Treat references such as this customer, they, their issue, and their contact as "
-        "referring to that selected customer. Use only the supplied protected evidence.\n\n"
+        "referring to that selected customer. Use only the supplied protected evidence. "
+        "Identical protected tokens represent the same value and must never be described as "
+        "different or conflicting.\n"
+        + (f"{selected_customer_profile_context}\n" if not referential else "")
+        + "\n"
         if conversation.context_customer_id is not None
         else ""
+    )
+    resolved_follow_up = (
+        resolve_ordinal_reference(sanitized_question)
+        if ordinal_reference
+        else sanitized_question
+    )
+    referential_instruction = (
+        "Historical SOURCE-n labels are local to their original turn and have already "
+        "been translated to the current evidence namespace. Answer about the selected "
+        "evidence directly; do not search for the old ordinal. Use only the current "
+        "SOURCE-n citation identifiers.\n\n"
+        f"Resolved user request: {resolved_follow_up}"
+        if ordinal_reference
+        else (
+            "Answer about that selected evidence directly; do not say the referent is "
+            "missing merely because the earlier list is not repeated. Use only the current "
+            "SOURCE-n citation identifiers.\n\n"
+            f"User follow-up: {resolved_follow_up}"
+        )
     )
     reasoning_question = customer_scope_instruction + (
         (
             "FinBrain's deterministic conversation resolver has already selected the "
             "protected evidence supplied with this request as the user's intended referent. "
-            "Answer about that selected evidence directly; do not say the referent or its "
-            "ordinal is missing merely because the earlier list is not repeated. Use only the "
-            "current SOURCE-n citation identifiers.\n\n"
-            f"User follow-up: {sanitized_question}"
+            f"{referential_instruction}"
         )
         if referential
         else f"{history}\n\nCurrent protected question: {sanitized_question}"
@@ -233,35 +329,40 @@ def query(
 
     scoped_profile_hits: list[RetrievalHit] = []
     scoped_profile_answer: CitedAnswer | None = None
-    if (
-        conversation.context_customer_id is not None
-        and is_customer_profile_lookup(payload.question)
+    if conversation.context_customer_id is not None and (
+        is_customer_profile_lookup(payload.question)
+        or is_customer_needs_lookup(payload.question)
     ):
         scoped_profile_hits = list_eligible_hits(db, plan.filters)
-        scoped_customer = db.get(Customer, conversation.context_customer_id)
-        verified_endpoint = db.scalar(
-            select(CustomerEndpoint)
-            .where(
-                CustomerEndpoint.tenant_id == str(principal.tenant_id),
-                CustomerEndpoint.customer_id == conversation.context_customer_id,
-                CustomerEndpoint.channel == "email",
-                CustomerEndpoint.verification_status == "verified",
+        if is_customer_profile_lookup(payload.question):
+            scoped_customer = db.get(Customer, conversation.context_customer_id)
+            verified_endpoint = db.scalar(
+                select(CustomerEndpoint)
+                .where(
+                    CustomerEndpoint.tenant_id == str(principal.tenant_id),
+                    CustomerEndpoint.customer_id == conversation.context_customer_id,
+                    CustomerEndpoint.channel == "email",
+                    CustomerEndpoint.verification_status == "verified",
+                )
+                .order_by(CustomerEndpoint.verified_at.desc(), CustomerEndpoint.id.desc())
             )
-            .order_by(CustomerEndpoint.verified_at.desc(), CustomerEndpoint.id.desc())
-        )
-        endpoint_registry = (
-            db.get(ProtectedTokenRegistry, verified_endpoint.endpoint_token)
-            if verified_endpoint is not None
-            else None
-        )
-        scoped_profile_answer = structured_customer_profile_lookup(
-            payload.question,
-            scoped_profile_hits,
-            name_token=scoped_customer.primary_name_token if scoped_customer else None,
-            email_token=verified_endpoint.endpoint_token if verified_endpoint else None,
-            email_mask=endpoint_registry.masked_value if endpoint_registry else None,
-            reveal_email=principal.role.value == "owner_director",
-        )
+            endpoint_registry = (
+                db.get(ProtectedTokenRegistry, verified_endpoint.endpoint_token)
+                if verified_endpoint is not None
+                else None
+            )
+            scoped_profile_answer = structured_customer_profile_lookup(
+                payload.question,
+                scoped_profile_hits,
+                name_token=scoped_customer.primary_name_token if scoped_customer else None,
+                email_token=verified_endpoint.endpoint_token if verified_endpoint else None,
+                email_mask=endpoint_registry.masked_value if endpoint_registry else None,
+                reveal_email=principal.role.value == "owner_director",
+            )
+        else:
+            scoped_profile_answer = structured_customer_needs_lookup(
+                payload.question, scoped_profile_hits
+            )
 
     hits: list[RetrievalHit]
     conversation_context_hits: list[RetrievalHit] | None = None
@@ -320,6 +421,8 @@ def query(
     elif plan.intent in {QueryIntent.SEMANTIC, QueryIntent.LOOKUP}:
         if referential:
             hits = prior_hits or []
+        elif conversation.context_customer_id is not None:
+            hits = list_eligible_hits(db, plan.filters)
         elif plan.intent is QueryIntent.LOOKUP and is_contact_enumeration(payload.question):
             hits = list_eligible_hits(db, plan.filters)
         else:
@@ -330,6 +433,13 @@ def query(
                 query_embedding,
                 k=SEMANTIC_TOP_K,
                 filters=plan.filters,
+            )
+        if conversation.context_customer_id is not None and not referential:
+            hits = _include_selected_customer_identity_evidence(
+                db,
+                filters=plan.filters,
+                existing_hits=hits,
+                protected_profile_context=selected_customer_profile_context,
             )
         if plan.intent is QueryIntent.LOOKUP:
             contact_answer = structured_contact_lookup(payload.question, hits)
@@ -494,6 +604,7 @@ def query(
                         for field in ("user", "assistant")
                         for token in TOKEN_PATTERN.findall(str(turn[field]))
                     ),
+                    *TOKEN_PATTERN.findall(selected_customer_profile_context),
                 }
             ),
             restored_tokens=(

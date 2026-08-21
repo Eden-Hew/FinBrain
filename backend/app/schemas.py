@@ -723,6 +723,8 @@ class CustomerEndpointResponse(BaseModel):
     channel: str
     masked_value: str
     authorized_value: str | None = None
+    display_label: str
+    delivery_eligible: bool
     verification_status: str
     origin: str = "manual"
     created_at: datetime
@@ -766,7 +768,7 @@ class OutreachGenerateRequest(BaseModel):
 
 
 class OutreachUpdateRequest(BaseModel):
-    subject: str = Field(min_length=1, max_length=998)
+    subject: str | None = Field(default=None, min_length=1, max_length=998)
     body: str = Field(min_length=1, max_length=20_000)
 
 
@@ -778,6 +780,7 @@ class OutreachActionResponse(BaseModel):
     protected_subject: str
     protected_body: str
     recipient: str | None = None
+    recipient_label: str | None = None
     subject: str | None = None
     body: str | None = None
     evidence_content_ids: list[int] = Field(default_factory=list)

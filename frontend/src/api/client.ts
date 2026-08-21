@@ -388,7 +388,7 @@ export interface CustomerSummary {
   name: string;
   profile_status: "provisional" | "confirmed";
   identity_review_status: "clear" | "review_required";
-  profile_origin: "manual" | "einvoice" | "email";
+  profile_origin: "manual" | "einvoice" | "email" | "telegram";
   attention_score: number;
   priority: "urgent" | "high" | "monitoring" | "healthy";
   outstanding_total: string;
@@ -427,11 +427,13 @@ export interface CustomerDetail extends CustomerSummary {
 export interface CustomerEndpoint {
   id: number;
   customer_id: number;
-  channel: "email";
+  channel: "email" | "telegram" | "phone";
   masked_value: string;
   authorized_value: string | null;
+  display_label: string;
+  delivery_eligible: boolean;
   verification_status: "observed" | "verified" | "revoked";
-  origin: "manual" | "inbound_email";
+  origin: "manual" | "inbound_email" | "telegram_onboarding" | "telegram_contact_share";
   created_at: string;
 }
 
@@ -453,10 +455,11 @@ export interface OutreachAction {
   id: string;
   customer_id: number;
   customer_endpoint_id: number;
-  channel: "email";
+  channel: "email" | "telegram";
   protected_subject: string;
   protected_body: string;
   recipient: string | null;
+  recipient_label: string | null;
   subject: string | null;
   body: string | null;
   evidence_content_ids: number[];
@@ -572,7 +575,7 @@ export async function fetchOutreachStatus(id: string): Promise<OutreachStatus> {
 
 export async function updateOutreachAction(
   id: string,
-  input: { subject: string; body: string },
+  input: { subject?: string; body: string },
 ): Promise<OutreachAction> {
   return parse<OutreachAction>(await authenticatedFetch(`/outreach/${id}`, {
     method: "PATCH",

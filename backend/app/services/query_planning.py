@@ -52,7 +52,7 @@ def _source_aliases(source_system: str) -> set[str]:
     if readable == "email":
         aliases.update({"emails", "mail", "mails"})
     elif readable == "telegram":
-        aliases.add("telegram messages")
+        aliases.update({"telegram messages", "telegra"})
     elif readable == "meeting notes":
         aliases.update({"meeting", "meetings"})
     elif readable == "support ticket":
@@ -280,6 +280,8 @@ def plan_query(
     # this before source-list routing so combined phone/email requests stay lookups.
     if contact_lookup_request:
         return QueryPlan(QueryIntent.LOOKUP, filters)
+    if enumeration_verb and re.search(r"\blinked\s+(?:records?|sources?)\b", lowered):
+        return QueryPlan(QueryIntent.LIST_RECORDS, filters)
     if sources and (explicit_column_filter or (enumeration_verb and enumeration_scope)):
         return QueryPlan(QueryIntent.LIST_RECORDS, filters)
     if not sources and (

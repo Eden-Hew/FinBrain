@@ -38,7 +38,7 @@ ORDINALS = {
     "twentieth": 20,
 }
 _ORDINAL_WORDS = "|".join(ORDINALS)
-_REFERENCE_NOUNS = r"(?:one|result|record|source|email|message|invoice)"
+_REFERENCE_NOUNS = r"(?:one|result|record|source|email|telegram|message|invoice)"
 REFERENCE_PATTERN = re.compile(
     rf"\b(?:those|these|them|it|that|he|him|his|she|her|hers|they|"
     rf"that (?:record|customer|person|client)|the previous {_REFERENCE_NOUNS}|"
@@ -182,7 +182,7 @@ def protected_planning_history(
 
 
 def is_referential_question(question: str) -> bool:
-    return bool(REFERENCE_PATTERN.search(question))
+    return _requested_ordinal(question) is not None or bool(REFERENCE_PATTERN.search(question))
 
 
 def is_person_reference_question(question: str) -> bool:
@@ -193,8 +193,38 @@ def is_ordinal_reference_question(question: str) -> bool:
     return _requested_ordinal(question) is not None
 
 
+def resolve_ordinal_reference(question: str) -> str:
+    """Replace a historical turn-local ordinal with its resolved evidence referent.
+
+    The retrieval layer uses the original question to select the cited row. The
+    reasoning layer receives this rewritten form because its evidence namespace
+    is numbered afresh from SOURCE-1 for the current turn.
+    """
+    if _requested_ordinal(question) is None:
+        return question
+    patterns = (
+        rf"\b(?:the\s+)?(?:{_ORDINAL_WORDS})\s+{_REFERENCE_NOUNS}\b",
+        r"\b(?:source|email|result|record)[\s-]*(?:number\s*)?\d{1,2}\b",
+        rf"\b(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)\s+{_REFERENCE_NOUNS}\b",
+        rf"\babout\s+(?:the\s+)?\d{{1,2}}(?:st|nd|rd|th)?(?:\s+{_REFERENCE_NOUNS})?\b",
+        r"^(?:the\s+)?(?:\d{1,2}(?:st|nd|rd|th)|"
+        rf"{_ORDINAL_WORDS})$",
+    )
+    for pattern in patterns:
+        resolved, substitutions = re.subn(
+            pattern,
+            "the selected evidence",
+            question,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        if substitutions:
+            return resolved
+    return question
+
+
 def _requested_ordinal(question: str) -> int | None:
-    lowered = question.casefold()
+    lowered = question.casefold().strip()
     for word, ordinal in ORDINALS.items():
         if re.search(rf"\b(?:the\s+)?{word}\s+{_REFERENCE_NOUNS}\b", lowered):
             return ordinal
@@ -207,6 +237,12 @@ def _requested_ordinal(question: str) -> int | None:
         if match := re.search(pattern, lowered):
             ordinal = int(match.group(1))
             return ordinal if ordinal > 0 else None
+    if match := re.fullmatch(r"(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)", lowered):
+        ordinal = int(match.group(1))
+        return ordinal if ordinal > 0 else None
+    for word, ordinal in ORDINALS.items():
+        if re.fullmatch(rf"(?:the\s+)?{word}", lowered):
+            return ordinal
     return None
 
 
@@ -240,6 +276,9 @@ def prior_citation_hits(
             .order_by(ConversationTurnCitation.ordinal)
         ).all()
         if ordinal is not None:
+            available_ordinals = {citation.ordinal for citation, _row in candidates}
+            if not set(range(1, ordinal + 1)).issubset(available_ordinals):
+                continue
             candidates = [pair for pair in candidates if pair[0].ordinal == ordinal]
         if candidates:
             citations = candidates

@@ -9,6 +9,7 @@ from app.auth.principal import AuthPrincipal
 from app.config import get_settings
 from app.db import get_db
 from app.models import (
+    Customer,
     CustomerEndpoint,
     CustomerIdentityClaim,
     OutreachAction,
@@ -30,7 +31,7 @@ from app.schemas import (
     TenantOutreachPolicyUpdate,
     UserRole,
 )
-from app.security.detokenize import detokenize_response_with_trace, hash_query
+from app.security.detokenize import TOKEN_PATTERN, detokenize_response_with_trace, hash_query
 from app.services.outreach import (
     create_action,
     endpoint_mask,
@@ -119,7 +120,7 @@ def _endpoint_response(
     db: Session, row: CustomerEndpoint, principal: AuthPrincipal
 ) -> CustomerEndpointResponse:
     authorized_value = None
-    if principal.role is UserRole.OWNER_DIRECTOR:
+    if row.channel == "email" and principal.role is UserRole.OWNER_DIRECTOR:
         trace = detokenize_response_with_trace(
             db,
             row.endpoint_token,
@@ -130,13 +131,60 @@ def _endpoint_response(
         )
         if trace.restored_tokens == 1 and trace.withheld_tokens == 0:
             authorized_value = trace.text
+    if row.channel == "telegram":
+        display_label = f"Telegram — {_authorized_customer_name(db, row.customer_id, principal)}"
+        delivery_eligible = (
+            row.verification_status == "verified" and row.delivery_token is not None
+        )
+    elif row.channel == "email":
+        display_label = f"Email — {authorized_value or endpoint_mask(db, row)}"
+        delivery_eligible = row.verification_status == "verified"
+    else:
+        display_label = f"{row.channel.title()} — {endpoint_mask(db, row)}"
+        delivery_eligible = False
     return CustomerEndpointResponse(
         id=row.id, customer_id=row.customer_id, channel=row.channel,
         masked_value=endpoint_mask(db, row), authorized_value=authorized_value,
+        display_label=display_label, delivery_eligible=delivery_eligible,
         verification_status=row.verification_status,
         origin=row.origin,
         created_at=row.created_at,
     )
+
+
+def _authorized_customer_name(
+    db: Session, customer_id: int, principal: AuthPrincipal
+) -> str:
+    customer = db.get(Customer, customer_id)
+    if (
+        customer is None
+        or customer.tenant_id != str(principal.tenant_id)
+        or customer.profile_status != "confirmed"
+        or customer.identity_review_status != "clear"
+        or customer.primary_name_token is None
+    ):
+        return "Customer"
+    accepted = db.scalar(
+        select(CustomerIdentityClaim.id).where(
+            CustomerIdentityClaim.tenant_id == str(principal.tenant_id),
+            CustomerIdentityClaim.customer_id == customer.id,
+            CustomerIdentityClaim.identity_token == customer.primary_name_token,
+            CustomerIdentityClaim.status == "accepted",
+        )
+    )
+    if accepted is None:
+        return "Customer"
+    trace = detokenize_response_with_trace(
+        db,
+        customer.primary_name_token,
+        principal.role.value,
+        hash_query(f"outreach-customer-name:{customer.id}"),
+        actor_ref=principal.actor_ref,
+        turn_ref=f"outreach-customer-name:{customer.id}",
+    )
+    if trace.restored_tokens == 1 and trace.withheld_tokens == 0:
+        return trace.text
+    return "Customer"
 
 
 def _identity_claim_response(
@@ -178,8 +226,19 @@ def _action_response(
     generation_mode: str | None = None,
 ) -> OutreachActionResponse:
     endpoint = db.get(CustomerEndpoint, response.customer_endpoint_id)
-    recipient = endpoint_mask(db, endpoint) if endpoint is not None else None
-    if endpoint is not None and principal.role is UserRole.OWNER_DIRECTOR:
+    recipient = None
+    recipient_label = None
+    if endpoint is not None and endpoint.channel == "telegram":
+        customer_name = _authorized_customer_name(db, response.customer_id, principal)
+        recipient_label = f"{customer_name} (Telegram)"
+    elif endpoint is not None:
+        recipient = endpoint_mask(db, endpoint)
+        recipient_label = recipient
+    if (
+        endpoint is not None
+        and endpoint.channel == "email"
+        and principal.role is UserRole.OWNER_DIRECTOR
+    ):
         endpoint_trace = detokenize_response_with_trace(
             db,
             endpoint.endpoint_token,
@@ -190,6 +249,7 @@ def _action_response(
         )
         if endpoint_trace.restored_tokens == 1 and endpoint_trace.withheld_tokens == 0:
             recipient = endpoint_trace.text
+            recipient_label = recipient
     content_trace = detokenize_response_with_trace(
         db,
         f"{response.protected_subject}\n\u0000\n{response.protected_body}",
@@ -199,6 +259,8 @@ def _action_response(
         turn_ref=f"outreach:{response.id}",
     )
     subject, body = content_trace.text.split("\n\u0000\n", 1)
+    if TOKEN_PATTERN.search(subject) or TOKEN_PATTERN.search(body):
+        raise HTTPException(status_code=500, detail="outreach_preview_contains_protected_token")
     evidence_ids = list(
         db.scalars(
             select(OutreachEvidence.tokenized_content_id).where(
@@ -210,6 +272,7 @@ def _action_response(
     return response.model_copy(
         update={
             "recipient": recipient,
+            "recipient_label": recipient_label,
             "subject": subject,
             "body": body,
             "evidence_content_ids": evidence_ids,

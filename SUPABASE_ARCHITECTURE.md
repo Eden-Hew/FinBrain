@@ -173,11 +173,11 @@ identity claims, reply correlations, or outreach actions.
 
 | Tables | Responsibility |
 |---|---|
-| `outreach_actions`, `outreach_evidence` | Protected email draft, evidence lineage, approval, idempotent send state, provider reference, and reply state |
+| `outreach_actions`, `outreach_evidence` | Protected email/Telegram response, evidence lineage, approval, idempotent send state, provider reference, and reply state |
 | `process_recommendations`, `recommendation_evidence`, `recommendation_decisions` | Evidence-backed process recommendation, source lineage, and approval decision |
 | `einvoice_records`, `einvoice_outreach_drafts` | Structured e-Invoice readiness/payment data and legacy invoice outreach drafts |
 
-Governed email follows the state machine:
+Governed email and Telegram outreach follow the state machine:
 
 ```text
 draft -> pending_approval -> approved -> sending -> sent -> replied
@@ -185,9 +185,16 @@ draft -> pending_approval -> approved -> sending -> sent -> replied
 cancelled    rejected         failed   delivery_unknown
 ```
 
-Do not send directly from a route or mark an action `sent` before SMTP succeeds. The sender worker
-claims approved work idempotently, stores only a hash of the provider message reference, and uses
-that hash plus the protected sender endpoint for reply correlation.
+Do not send directly from a route or mark an action `sent` before the channel provider succeeds.
+The sender worker claims approved work idempotently and stores only a hash of the provider message
+reference. Email uses that hash plus the protected sender endpoint for reply correlation.
+
+Manual Telegram responses use the same governed state machine. The browser selects only a
+tenant/customer-owned endpoint ID and receives a customer-name display label, never the Telegram
+user or chat identifier. The Telegram worker decrypts `customer_endpoints.delivery_token` only at
+delivery time and sends to the private chat captured during onboarding. Reminder planning and
+outbound delivery run on separate intervals so manually approved responses do not wait for the
+hourly reminder-planning cycle.
 
 Telegram customer onboarding shows the privacy notice at `/start`, then collects name, Gmail,
 and a sender-owned shared phone in order. The completed values plus Telegram user/chat identities are unified into one protected

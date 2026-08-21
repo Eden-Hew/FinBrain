@@ -104,7 +104,17 @@ _CONTACT_ENUMERATION_PATTERN = re.compile(
 )
 _CUSTOMER_NAME_QUESTION_PATTERN = re.compile(
     r"\b(?:show|list|give|tell|what|who)\b.*\b(?:customer(?:'s)? )?names?\b|"
-    r"\bwho (?:is|was) (?:the )?(?:customer|sender)\b",
+    r"\bwho (?:is|was) (?:the )?(?:customer|sender)\b|"
+    r"\b(?:customer(?:'s)?|sender(?:'s)?) names?\b|"
+    r"\bnames? of (?:the )?(?:customer|sender)\b",
+    re.IGNORECASE,
+)
+_CUSTOMER_NEEDS_QUESTION_PATTERN = re.compile(
+    r"\b(?:what|which)\b.*\b(?:he|she|they|the customer)\b.*\b(?:wants?|needs?|requested?)\b|"
+    r"\b(?:what|which)\b.*\b(?:wants?|needs?|requests?)\b|"
+    r"\b(?:summari[sz]e|show|list|describe|tell)\b.*\b(?:his|her|their|customer(?:'s)?) "
+    r"(?:wants?|needs?|requests?)\b|"
+    r"\b(?:his|her|their|customer(?:'s)?) (?:wants?|needs?|requests?)\b",
     re.IGNORECASE,
 )
 
@@ -131,6 +141,48 @@ def is_customer_profile_lookup(question: str) -> bool:
     return bool(
         _CUSTOMER_NAME_QUESTION_PATTERN.search(question)
         or _CONTACT_QUESTION_PATTERN.search(question)
+    )
+
+
+def is_customer_needs_lookup(question: str) -> bool:
+    return bool(_CUSTOMER_NEEDS_QUESTION_PATTERN.search(question))
+
+
+def structured_customer_needs_lookup(
+    question: str, hits: list[RetrievalHit]
+) -> CitedAnswer | None:
+    """Return every documented request for an explicitly selected customer."""
+    if not is_customer_needs_lookup(question):
+        return None
+    documented = [
+        (index, hit)
+        for index, hit in enumerate(hits, 1)
+        if hit.record_type != "customer_onboarding_profile"
+    ]
+    if not documented:
+        return CitedAnswer(
+            answer="The selected customer has no documented needs in linked evidence.",
+            citations=[],
+            insufficient_evidence=True,
+        )
+    statements = [
+        (hit.protected_summary or hit.protected_excerpt).strip()
+        for _index, hit in documented
+        if (hit.protected_summary or hit.protected_excerpt).strip()
+    ]
+    if not statements:
+        return CitedAnswer(
+            answer="The selected customer has no documented needs in linked evidence.",
+            citations=[],
+            insufficient_evidence=True,
+        )
+    return CitedAnswer(
+        answer=(
+            "The selected customer's documented needs are:\n- "
+            + "\n- ".join(dict.fromkeys(statements))
+        ),
+        citations=[f"SOURCE-{index}" for index, _hit in documented],
+        insufficient_evidence=False,
     )
 
 

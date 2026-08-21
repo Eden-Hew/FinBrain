@@ -433,16 +433,6 @@ export default function Agents() {
                           {msg.exposure && msg.rawQuestion && msg.modelQuestion && (
                             <StandaloneExposureReceipt exposure={msg.exposure} rawQuestion={msg.rawQuestion} modelQuestion={msg.modelQuestion} protectedAnswer={msg.protectedText} authorizedAnswer={msg.text} />
                           )}
-                          {msg.rawQuestion && (
-                            <button
-                              type="button"
-                              className="fb-btn fb-btn-outline fb-answer-action"
-                              onClick={() => send(msg.rawQuestion ?? "")}
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.7-6.4" /><path d="M21 4v5h-5" /></svg>
-                              Re-run as selected persona
-                            </button>
-                          )}
                           {!!msg.citations?.length && (
                             <details className="fb-answer-action-details">
                               <summary className="fb-btn fb-btn-outline fb-answer-action">

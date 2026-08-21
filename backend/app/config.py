@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     telegram_customer_tenant_id: str = "00000000-0000-0000-0000-000000000001"
     telegram_outbound_enabled: bool = False
     telegram_reminder_interval_seconds: int = 3600
+    telegram_outbound_interval_seconds: int = 5
     telegram_outbound_batch_size: int = 10
     email_connector_enabled: bool = False
     email_imap_host: str = ""
@@ -126,6 +127,7 @@ class Settings(BaseSettings):
         "telegram_preview_chars",
         "telegram_enrichment_concurrency",
         "telegram_reminder_interval_seconds",
+        "telegram_outbound_interval_seconds",
         "telegram_outbound_batch_size",
         "email_imap_port",
         "email_sync_interval_seconds",
