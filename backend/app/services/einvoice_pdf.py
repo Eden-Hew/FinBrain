@@ -25,6 +25,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    HRFlowable,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -145,6 +147,114 @@ DEFAULT_BUYER_PROFILE = {
     "phone": "+603-2111 2222",
     "email": "finance@finbrain.os",
 }
+
+# Reuses the same status palette as the web app's status pills
+# (frontend/src/styles.css .fb-status-pill.is-*) so the generated PDF and the
+# app UI never disagree about what each status color means.
+_STATUS_BANNER: dict[str, tuple[str, "HexColor"]] = {
+    "review": ("DRAFT — NEEDS REVIEW BEFORE MYINVOIS SUBMISSION", HexColor("#D97706")),
+    "pending": ("PENDING APPROVAL — NOT YET SUBMITTED TO MYINVOIS", HexColor("#475569")),
+    "submitted": ("SUBMITTED TO MYINVOIS · AWAITING LHDN VALIDATION", HexColor("#7C4DFF")),
+    "validated": ("VALIDATED E-INVOICE · MYINVOIS (LHDN)", HexColor("#00A868")),
+}
+
+_STATUS_FOOTER_NOTE: dict[str, str] = {
+    "review": (
+        "This e-Invoice record is incomplete and requires correction (missing required fields) "
+        "before it can be submitted to MyInvois. It is not yet a valid tax document."
+    ),
+    "pending": (
+        "This e-Invoice is complete and awaiting Finance Director approval prior to submission "
+        "to MyInvois (LHDN)."
+    ),
+    "submitted": (
+        "This e-Invoice has been submitted to the MyInvois system and is pending validation by "
+        "LHDN/IRBM. A Unique Identifier Number (UIN) will be issued once validated."
+    ),
+    "validated": (
+        "This document has been digitally signed and validated through the MyInvois system "
+        "operated by Lembaga Hasil Dalam Negeri Malaysia (LHDN/IRBM). The Unique Identifier "
+        "Number (UIN) and QR code above can be used to verify the authenticity and validation "
+        "status of this e-Invoice on the official MyInvois portal."
+    ),
+}
+
+_ONES = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+    "Seventeen", "Eighteen", "Nineteen",
+]
+_TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+_SCALES = [(1_000_000_000, "Billion"), (1_000_000, "Million"), (1_000, "Thousand"), (100, "Hundred")]
+
+_CURRENCY_WORDS = {
+    "MYR": ("Ringgit Malaysia", "Sen"),
+    "USD": ("US Dollars", "Cents"),
+    "SGD": ("Singapore Dollars", "Cents"),
+    "EUR": ("Euro", "Cents"),
+    "GBP": ("Pounds Sterling", "Pence"),
+}
+
+
+def _int_to_words(n: int) -> str:
+    if n < 0:
+        return "Negative " + _int_to_words(-n)
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        tens_word = _TENS[n // 10]
+        ones_word = _ONES[n % 10]
+        return f"{tens_word}-{ones_word}" if ones_word else tens_word
+    for value, name in _SCALES:
+        if n >= value:
+            count, remainder = divmod(n, value)
+            head = f"{_int_to_words(count)} {name}"
+            if remainder == 0:
+                return head
+            joiner = " and " if remainder < 100 else " "
+            return f"{head}{joiner}{_int_to_words(remainder)}"
+    return _ONES[n]
+
+
+def _amount_in_words(amount: Decimal, currency_code: str) -> str:
+    """Render a decimal amount as an English words line, e.g. sample's
+    'Ringgit Malaysia Ten Thousand Seven Hundred Eighty-Nine and Sen Twenty Only'."""
+    dec = amount.quantize(Decimal("0.01"))
+    whole = int(dec)
+    cents = int((dec - whole) * 100)
+    major_name, minor_name = _CURRENCY_WORDS.get(
+        currency_code.upper(), (currency_code.upper(), "Cents")
+    )
+    whole_words = _int_to_words(whole)
+    if cents:
+        return f"{major_name} {whole_words} and {minor_name} {_int_to_words(cents)} Only"
+    return f"{major_name} {whole_words} Only"
+
+
+def _format_num(val: Any) -> str:
+    """Plain thousands-separated number, no currency prefix -- used where the
+    currency already appears in a column/row label, matching the sample template."""
+    return f"{_to_decimal(val):,.2f}"
+
+
+def _kv_block(rows: list[tuple[str, str]], width: float, label_style: Any, value_style: Any) -> Table:
+    """Stacked label/value pairs in one column, mirroring the reference template's kv_block()."""
+    data: list[list[Any]] = []
+    for label, val in rows:
+        data.append([Paragraph(label, label_style)])
+        data.append([Paragraph(val, value_style)])
+    t = Table(data, colWidths=[width])
+    t.setStyle(
+        TableStyle(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ]
+        )
+    )
+    return t
 
 
 @dataclass
