@@ -625,64 +625,64 @@ export default function Agents() {
 
             <div className="fb-composer2-toolbar-row">
               <div className="fb-composer2-tools">
-                <div
-                  className="fb-recent-menu"
-                  onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node)) setRecentOpen(false);
-                  }}
-                >
-                  <button
-                    className="fb-btn fb-btn-outline"
-                    type="button"
-                    onClick={() => setRecentOpen((v) => !v)}
-                    aria-expanded={recentOpen}
-                    title="Recent conversations (stored on this device only)"
+                <div className="fb-composer2-tool-group">
+                  <div
+                    className="fb-recent-menu"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node)) setRecentOpen(false);
+                    }}
                   >
-                    Recent
-                  </button>
-                  {recentOpen && (
-                    <div className="fb-recent-menu-panel" role="menu">
-                      {recentConversations.length === 0 ? (
-                        <div className="fb-fine" style={{ padding: ".8rem" }}>No recent conversations yet.</div>
-                      ) : (
-                        recentConversations.map((entry) => (
-                          <button
-                            key={entry.id}
-                            className="fb-recent-menu-item"
-                            type="button"
-                            role="menuitem"
-                            onClick={() => resumeConversation(entry)}
-                          >
-                            <span className="fb-recent-menu-title">{entry.title}</span>
-                            <span className="fb-fine">
-                              {entry.turnCount} turn{entry.turnCount === 1 ? "" : "s"} · {new Date(entry.lastActivityAt).toLocaleDateString()}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                      <div className="fb-recent-menu-footnote">Stored on this device only</div>
-                    </div>
+                    <button
+                      className="fb-btn fb-btn-outline"
+                      type="button"
+                      onClick={() => setRecentOpen((v) => !v)}
+                      aria-expanded={recentOpen}
+                      title="Recent conversations (stored on this device only)"
+                    >
+                      Recent
+                    </button>
+                    {recentOpen && (
+                      <div className="fb-recent-menu-panel" role="menu">
+                        {recentConversations.length === 0 ? (
+                          <div className="fb-fine" style={{ padding: ".8rem" }}>No recent conversations yet.</div>
+                        ) : (
+                          recentConversations.map((entry) => (
+                            <button
+                              key={entry.id}
+                              className="fb-recent-menu-item"
+                              type="button"
+                              role="menuitem"
+                              onClick={() => resumeConversation(entry)}
+                            >
+                              <span className="fb-recent-menu-title">{entry.title}</span>
+                              <span className="fb-fine">
+                                {entry.turnCount} turn{entry.turnCount === 1 ? "" : "s"} · {new Date(entry.lastActivityAt).toLocaleDateString()}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                        <div className="fb-recent-menu-footnote">Stored on this device only</div>
+                      </div>
+                    )}
+                  </div>
+                  {hasConversation && (
+                    <button
+                      className="fb-btn fb-btn-outline"
+                      type="button"
+                      onClick={startNewConversation}
+                      title="Clear this conversation and start a new one"
+                    >
+                      New chat
+                    </button>
                   )}
                 </div>
-                {hasConversation && (
-                  <button
-                    className="fb-btn fb-btn-outline"
-                    type="button"
-                    onClick={startNewConversation}
-                    title="Clear this conversation and start a new one"
-                  >
-                    New chat
-                  </button>
-                )}
+                <span className="fb-composer2-divider" aria-hidden="true" />
                 <button className="fb-icon-btn" type="button" title="Upload a file" onClick={() => fileInputRef.current?.click()} aria-label="Upload from computer">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
                 </button>
-                <button className="fb-icon-btn is-soon" type="button" disabled title="Web search isn't connected in this prototype" aria-label="Web search isn't connected in this prototype" aria-disabled="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18" strokeLinecap="round" /><path d="M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" strokeLinecap="round" /></svg>
-                  <span className="fb-soon-badge" aria-hidden="true">Soon</span>
-                </button>
-                <span className="fb-fine fb-composer-privacy-note" title="FinBrain masks personal details before any question reaches the AI model.">
-                  🔒 Privacy protected{protectedTurnCount > 0 ? ` · ${protectedTurnCount} ${protectedTurnCount === 1 ? "reply" : "replies"}` : ""}
+                <span className="fb-composer-privacy-note" title="FinBrain masks personal details before any question reaches the AI model.">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                  Privacy protected{protectedTurnCount > 0 ? ` · ${protectedTurnCount} ${protectedTurnCount === 1 ? "reply" : "replies"}` : ""}
                 </span>
               </div>
               <button className="fb-send-btn2" type="button" onClick={() => send(input)} aria-label={FB_UI_STRINGS[lang].send}>
