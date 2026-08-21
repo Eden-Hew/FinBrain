@@ -780,15 +780,6 @@ def render_einvoice_pdf(
         leading=17,
         textColor=NAVY,
     )
-    style_title = ParagraphStyle(
-        "EinvoiceTitle",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=17,
-        leading=19,
-        alignment=2,  # Right align
-        textColor=NAVY,
-    )
     style_meta_val = ParagraphStyle(
         "EinvoiceMetaVal",
         parent=styles["Normal"],
@@ -797,10 +788,22 @@ def render_einvoice_pdf(
         leading=10,
         textColor=NEAR_BLACK,
     )
-    style_meta_val_r = ParagraphStyle(
-        "EinvoiceMetaValR",
-        parent=style_meta_val,
-        alignment=2,
+    style_meta_label = ParagraphStyle(
+        "EinvoiceMetaLabel",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=6.6,
+        leading=8.5,
+        textColor=MID_GREY,
+    )
+    style_small_c = ParagraphStyle(
+        "EinvoiceSmallC",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=6.8,
+        leading=8.5,
+        alignment=1,
+        textColor=MID_GREY,
     )
     style_box_head = ParagraphStyle(
         "EinvoiceBoxHead",
@@ -814,14 +817,19 @@ def render_einvoice_pdf(
         "EinvoiceTh",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
-        fontSize=7.5,
-        leading=9,
+        fontSize=7,
+        leading=8.5,
         textColor=WHITE,
     )
     style_th_r = ParagraphStyle(
         "EinvoiceThR",
         parent=style_th,
         alignment=2,
+    )
+    style_th_c = ParagraphStyle(
+        "EinvoiceThC",
+        parent=style_th,
+        alignment=1,
     )
     style_td = ParagraphStyle(
         "EinvoiceTd",
@@ -840,6 +848,11 @@ def render_einvoice_pdf(
         "EinvoiceTdR",
         parent=style_td,
         alignment=2,
+    )
+    style_td_c = ParagraphStyle(
+        "EinvoiceTdC",
+        parent=style_td,
+        alignment=1,
     )
     style_td_r_bold = ParagraphStyle(
         "EinvoiceTdRBold",
@@ -868,33 +881,100 @@ def render_einvoice_pdf(
         alignment=1,  # Centered
         textColor=MID_GREY,
     )
+    style_footer_note = ParagraphStyle(
+        "EinvoiceFooterNote",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7,
+        leading=9.5,
+        textColor=MID_GREY,
+    )
+    style_banner = ParagraphStyle(
+        "EinvoiceBanner",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=10,
+        alignment=1,
+        textColor=WHITE,
+    )
+    style_words = ParagraphStyle(
+        "EinvoiceWords",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=7.3,
+        leading=9,
+        textColor=MID_GREY,
+    )
 
     story: list[Any] = []
 
     # ==========================================
-    # 1. HEADER BAND
+    # STATUS BANNER (color/text keyed off the record's real status)
     # ==========================================
-    left_header_data = [
-        [Paragraph(data.supplier.name, style_h1)],
+    status_key = data.document.status.lower()
+    banner_label, banner_color = _STATUS_BANNER.get(status_key, _STATUS_BANNER["pending"])
+    banner_table = Table([[Paragraph(banner_label, style_banner)]], colWidths=[538])
+    banner_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), banner_color),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ]
+        )
+    )
+    story.append(banner_table)
+    story.append(Spacer(1, 5))
+
+    # Only a `validated` record ever has a real UIN -- approve_record() is the
+    # only code path that assigns one, and it jumps straight pending -> validated.
+    # review/pending/submitted therefore never have a UIN or QR to show.
+    is_validated = status_key == "validated" and bool(data.document.irbm_unique_id)
+    uin_display = data.document.irbm_unique_id if is_validated else "Not yet issued"
+    validated_display = (
+        data.document.validation_datetime
+        or f"{data.document.issue_date} {data.document.issue_time} MYT"
+        if is_validated
+        else "Pending LHDN validation"
+    )
+    verification_url = (
+        f"https://myinvois.hasil.gov.my/{data.document.irbm_unique_id}" if is_validated else None
+    )
+    qr_drawing = _build_qr_drawing(verification_url) if verification_url else None
+
+    # ==========================================
+    # 1. HEADER BAND (company block left, document meta right)
+    # ==========================================
+    left_header_data = [[Paragraph(data.supplier.name, style_h1)]]
+    left_header_data.append(
+        [Paragraph(f"Registration No. (SSM): {data.supplier.registration_no}", style_meta_val)]
+    )
+    left_header_data.append(
+        [Paragraph(f"Tax Identification No. (TIN): {data.supplier.tin}", style_meta_val)]
+    )
+    if data.supplier.sst_registration_no:
+        left_header_data.append(
+            [Paragraph(f"SST Registration No.: {data.supplier.sst_registration_no}", style_meta_val)]
+        )
+    left_header_data.append(
         [
             Paragraph(
-                f"<b>Reg No:</b> {data.supplier.registration_no}"
-                + (
-                    f" | <b>SST:</b> {data.supplier.sst_registration_no}"
-                    if data.supplier.sst_registration_no
-                    else ""
-                ),
+                f"MSIC Code: {data.supplier.msic_code} – {data.supplier.business_activity}",
                 style_meta_val,
             )
-        ],
-        [Paragraph(f"{data.supplier.address}", style_meta_val)],
+        ]
+    )
+    left_header_data.append([Paragraph(data.supplier.address, style_meta_val)])
+    left_header_data.append(
         [
             Paragraph(
-                f"<b>Tel:</b> {data.supplier.contact} &nbsp;|&nbsp; <b>Email:</b> {data.supplier.email}",
+                f"Tel: {data.supplier.contact} &nbsp;·&nbsp; Email: {data.supplier.email}",
                 style_meta_val,
             )
-        ],
-    ]
+        ]
+    )
     t_left_header = Table(left_header_data, colWidths=[310])
     t_left_header.setStyle(
         TableStyle(
@@ -908,52 +988,22 @@ def render_einvoice_pdf(
         )
     )
 
-    right_header_data = [
-        [Paragraph("e-INVOICE", style_title)],
-        [
-            Paragraph(
-                f"<font color='{MID_GREY.hexval()}'><b>INVOICE NO:</b></font> <b>{data.document.einvoice_code}</b>",
-                style_meta_val_r,
-            )
-        ],
-        [
-            Paragraph(
-                f"<font color='{MID_GREY.hexval()}'><b>DATE:</b></font> {data.document.issue_date} &nbsp;|&nbsp; <font color='{MID_GREY.hexval()}'><b>DUE:</b></font> <b>{data.payment.due_date or data.document.issue_date}</b>",
-                style_meta_val_r,
-            )
-        ],
-        [
-            Paragraph(
-                f"<font color='{MID_GREY.hexval()}'><b>TYPE:</b></font> {data.document.einvoice_type.upper()} &nbsp;|&nbsp; <font color='{MID_GREY.hexval()}'><b>CURRENCY:</b></font> {data.document.currency_code}"
-                + (
-                    f" (Rate: {data.document.exchange_rate})" if data.document.exchange_rate else ""
-                ),
-                style_meta_val_r,
-            )
-        ],
+    meta_rows = [
+        ("E-INVOICE TYPE", data.document.einvoice_type.upper()),
+        ("E-INVOICE VERSION", data.document.einvoice_version),
+        ("INVOICE NO.", data.document.einvoice_code),
+        ("UNIQUE IDENTIFIER NO. (UIN)", uin_display),
+        ("DATE / TIME ISSUED", f"{data.document.issue_date}, {data.document.issue_time} MYT"),
+        ("DATE / TIME VALIDATED", validated_display),
+        (
+            "CURRENCY",
+            data.document.currency_code
+            + (f" (Rate: {data.document.exchange_rate})" if data.document.exchange_rate else ""),
+        ),
     ]
     if data.document.original_einvoice_ref:
-        right_header_data.append(
-            [
-                Paragraph(
-                    f"<font color='{MID_GREY.hexval()}'><b>ORIGINAL REF:</b></font> {data.document.original_einvoice_ref}",
-                    style_meta_val_r,
-                )
-            ]
-        )
-
-    t_right_header = Table(right_header_data, colWidths=[228])
-    t_right_header.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
+        meta_rows.append(("ORIGINAL E-INVOICE REF.", data.document.original_einvoice_ref))
+    t_right_header = _kv_block(meta_rows, 228, style_meta_label, style_meta_val)
 
     header_table = Table([[t_left_header, t_right_header]], colWidths=[310, 228])
     header_table.setStyle(
@@ -968,107 +1018,28 @@ def render_einvoice_pdf(
         )
     )
     story.append(header_table)
-
-    # ==========================================
-    # 2. GOLD ACCENT DIVIDER
-    # ==========================================
-    story.append(_build_gold_line())
     story.append(Spacer(1, 4))
-
-    # ==========================================
-    # 3. IRBM VALIDATION STRIP
-    # ==========================================
-    uin_text = data.document.irbm_unique_id or "PENDING VALIDATION"
-    val_dt_text = (
-        data.document.validation_datetime
-        or f"{data.document.issue_date} {data.document.issue_time} MYT"
-    )
-    status_label = data.document.status.upper()
-    status_color = (
-        "#10B981"
-        if status_label == "VALIDATED"
-        else "#F59E0B"
-        if status_label in ("PENDING", "SUBMITTED")
-        else "#EF4444"
-    )
-
-    irbm_left_data = [
-        [
-            Paragraph(
-                f"<font size='6.5' color='#94A3B8'><b>LHDN / MyInvois UNIQUE IDENTIFIER NO. (UIN)</b></font><br/><font face='Courier-Bold' size='9' color='#FFFFFF'><b>{uin_text}</b></font>",
-                styles["Normal"],
-            )
-        ],
-        [
-            Paragraph(
-                f"<font size='6.5' color='#94A3B8'><b>VALIDATION TIMESTAMP:</b></font> <font size='7' color='#E2E8F0'>{val_dt_text}</font> &nbsp;&nbsp;|&nbsp;&nbsp; <font size='6.5' color='#94A3B8'><b>STATUS:</b></font> <font color='{status_color}'><b>{status_label}</b></font>",
-                styles["Normal"],
-            )
-        ],
-    ]
-    t_irbm_left = Table(irbm_left_data, colWidths=[475])
-    t_irbm_left.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
-
-    verification_url = (
-        f"https://myinvois.hasil.gov.my/{data.document.irbm_unique_id}"
-        if data.document.irbm_unique_id and data.document.status.lower() == "validated"
-        else None
-    )
-    qr_drawing = _build_qr_drawing(verification_url) if verification_url else None
-
-    if qr_drawing:
-        irbm_strip_table = Table([[t_irbm_left, qr_drawing]], colWidths=[485, 53])
-    else:
-        irbm_strip_table = Table([[t_irbm_left]], colWidths=[538])
-    irbm_strip_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), NAVY_DARK),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ]
-        )
-    )
-    story.append(irbm_strip_table)
+    story.append(HRFlowable(width=538, thickness=1.0, color=BORDER_GREY))
     story.append(Spacer(1, 5))
 
     # ==========================================
-    # 4. PARTIES SECTION (Supplier & Buyer Boxes)
+    # 4. PARTIES SECTION (Supplier & Buyer Boxes + QR when validated)
     # ==========================================
-    box_w = 264.0
+    qr_w = 44 * mm
+    box_w = (538 - qr_w) / 2 if qr_drawing else 269.0
 
     # Supplier Box Content
     sup_rows = [
-        [Paragraph("SUPPLIER (BILL FROM)", style_box_head)],
+        [Paragraph("SUPPLIER DETAILS", style_box_head)],
         [
             Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>COMPANY NAME</b></font><br/><b>{data.supplier.name}</b>",
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>SUPPLIER</b></font><br/><b>{data.supplier.name}</b>",
                 style_meta_val,
             )
         ],
         [
             Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>TIN:</b></font> <b>{data.supplier.tin}</b> &nbsp;&nbsp; <font size='6' color='{MID_GREY.hexval()}'><b>REG NO:</b></font> {data.supplier.registration_no}",
-                style_meta_val,
-            )
-        ],
-        [
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>SST REG:</b></font> {data.supplier.sst_registration_no or '—'} &nbsp;&nbsp; <font size='6' color='{MID_GREY.hexval()}'><b>MSIC:</b></font> {data.supplier.msic_code}",
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>TIN / REG NO:</b></font> <b>{data.supplier.tin}</b> / {data.supplier.registration_no}",
                 style_meta_val,
             )
         ],
@@ -1106,22 +1077,16 @@ def render_einvoice_pdf(
 
     # Buyer Box Content
     buy_rows = [
-        [Paragraph("BUYER (BILL TO)", style_box_head)],
+        [Paragraph("BUYER DETAILS", style_box_head)],
         [
             Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>BUYER NAME</b></font><br/><b>{data.buyer.name}</b>",
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>BUYER</b></font><br/><b>{data.buyer.name}</b>",
                 style_meta_val,
             )
         ],
         [
             Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>TIN:</b></font> <b>{data.buyer.tin}</b> &nbsp;&nbsp; <font size='6' color='{MID_GREY.hexval()}'><b>REG NO:</b></font> {data.buyer.registration_no}",
-                style_meta_val,
-            )
-        ],
-        [
-            Paragraph(
-                f"<font size='6' color='{MID_GREY.hexval()}'><b>SST REG:</b></font> {data.buyer.sst_registration_no or '—'} &nbsp;&nbsp; <font size='6' color='{MID_GREY.hexval()}'><b>TOURISM TAX:</b></font> —",
+                f"<font size='6' color='{MID_GREY.hexval()}'><b>TIN / REG NO:</b></font> <b>{data.buyer.tin}</b> / {data.buyer.registration_no}",
                 style_meta_val,
             )
         ],
@@ -1157,57 +1122,99 @@ def render_einvoice_pdf(
         )
     )
 
-    parties_table = Table(
-        [[t_sup_box, t_buy_box]], colWidths=[264, 264], spaceBefore=0, spaceAfter=0
-    )
-    parties_table.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ]
+    if qr_drawing:
+        qr_tbl = Table(
+            [[qr_drawing], [Spacer(1, 3)], [Paragraph("Scan to verify on MyInvois", style_small_c)]],
+            colWidths=[qr_w],
         )
-    )
+        qr_tbl.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]
+            )
+        )
+        parties_table = Table(
+            [[t_sup_box, t_buy_box, qr_tbl]], colWidths=[box_w, box_w, qr_w], spaceBefore=0, spaceAfter=0
+        )
+        parties_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (1, 0), 8),
+                    ("RIGHTPADDING", (2, 0), (2, 0), 0),
+                ]
+            )
+        )
+    else:
+        parties_table = Table(
+            [[t_sup_box, t_buy_box]], colWidths=[box_w, box_w], spaceBefore=0, spaceAfter=0
+        )
+        parties_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (0, 0), 8),
+                    ("RIGHTPADDING", (1, 0), (1, 0), 0),
+                ]
+            )
+        )
     story.append(parties_table)
     story.append(Spacer(1, 5))
 
     # ==========================================
     # 5. ITEMISED DETAILS TABLE
     # ==========================================
+    ccy = data.document.currency_code
     items_header = [
-        Paragraph("#", style_th),
-        Paragraph("DESCRIPTION &amp; CLASSIFICATION", style_th),
+        Paragraph("NO.", style_th_c),
+        Paragraph("CLASS.<br/>CODE", style_th_c),
+        Paragraph("DESCRIPTION OF GOODS / SERVICES", style_th),
         Paragraph("QTY", style_th_r),
-        Paragraph("UNIT PRICE", style_th_r),
-        Paragraph("DISC.", style_th_r),
-        Paragraph("TAX (SST)", style_th_r),
-        Paragraph("TOTAL", style_th_r),
+        Paragraph(f"UNIT PRICE<br/>({ccy})", style_th_r),
+        Paragraph(f"DISC.<br/>({ccy})", style_th_r),
+        Paragraph("TAX TYPE /<br/>RATE", style_th_r),
+        Paragraph(f"TAX AMT<br/>({ccy})", style_th_r),
+        Paragraph(f"AMOUNT<br/>({ccy})", style_th_r),
     ]
-    item_col_widths = [18, 200, 38, 68, 48, 76, 90]
+    item_col_widths = [22, 40, 164, 24, 62, 44, 58, 60, 64]
 
     items_rows = [items_header]
     for idx, item in enumerate(data.line_items, 1):
-        disc_text = f"{_format_curr(item.discount_amount or 0)}" if item.discount_amount else "—"
-        tax_str = f"{item.tax_type} ({item.tax_rate:.0f}%)" if item.tax_rate else item.tax_type
-        if item.tax_amount:
-            tax_str += f"<br/><font size='6' color='{MID_GREY.hexval()}'>{_format_curr(item.tax_amount)}</font>"
-
+        disc_text = _format_num(item.discount_amount) if item.discount_amount else "—"
+        tax_str = (
+            f"{item.tax_type} ({item.tax_rate:.0f}%)"
+            if item.tax_type and item.tax_rate
+            else (item.tax_type or "Not Applicable")
+        )
         desc_p = Paragraph(
-            f"<b>{item.description}</b><br/><font size='6' color='{MID_GREY.hexval()}'>Class: {item.classification_code} | UOM: {item.unit_of_measure or 'Unit'}</font>",
+            f"<b>{item.description}</b>"
+            + (
+                f"<br/><font size='6' color='{MID_GREY.hexval()}'>UOM: {item.unit_of_measure}</font>"
+                if item.unit_of_measure
+                else ""
+            ),
             style_td,
         )
         items_rows.append(
             [
-                Paragraph(str(idx), style_td),
+                Paragraph(str(idx), style_td_c),
+                Paragraph(item.classification_code, style_td_c),
                 desc_p,
                 Paragraph(f"{item.quantity:g}", style_td_r),
-                Paragraph(_format_curr(item.unit_price), style_td_r),
+                Paragraph(_format_num(item.unit_price), style_td_r),
                 Paragraph(disc_text, style_td_r),
                 Paragraph(tax_str, style_td_r),
-                Paragraph(_format_curr(item.line_subtotal), style_td_r_bold),
+                Paragraph(_format_num(item.tax_amount), style_td_r),
+                Paragraph(_format_num(item.line_subtotal), style_td_r_bold),
             ]
         )
 
@@ -1234,181 +1241,140 @@ def render_einvoice_pdf(
     story.append(Spacer(1, 4))
 
     # ==========================================
-    # 6. TOTALS BLOCK & PAYMENT INFO GRID
+    # 6. TOTALS (right-aligned, sample's 3-line breakdown + TOTAL PAYABLE bar)
     # ==========================================
-    # Payment info block (left)
-    if data.payment.paid_at:
-        pay_rows = [
-            [
-                Paragraph(
-                    "PAYMENT SETTLEMENT &bull; <font color='#10B981'>PAID</font>",
-                    style_box_head,
-                ),
-                Paragraph("", style_box_head),
-            ],
-            [
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>SETTLEMENT STATUS:</b></font><br/><font color='#10B981'><b>Paid on {data.payment.paid_at}</b></font>",
-                    style_meta_val,
-                ),
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>BENEFICIARY ACCOUNT:</b></font><br/><b>{data.payment.bank_account_no or '—'}</b>",
-                    style_meta_val,
-                ),
-            ],
-            [
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT METHOD:</b></font><br/>{data.payment.mode or 'Bank Transfer'}",
-                    style_meta_val,
-                ),
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>TRANSACTION REF:</b></font><br/>{data.payment.payment_reference_no or data.document.einvoice_code}",
-                    style_meta_val,
-                ),
-            ],
-            [
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>TERMS:</b></font><br/>{data.payment.terms or 'Net 30 Days'}",
-                    style_meta_val,
-                ),
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>BILL REF:</b></font><br/>{data.payment.bill_reference_no or '—'}",
-                    style_meta_val,
-                ),
-            ],
-        ]
-    else:
-        pay_rows = [
-            [
-                Paragraph(
-                    "REMITTANCE &amp; PAYMENT INSTRUCTIONS",
-                    style_box_head,
-                ),
-                Paragraph("", style_box_head),
-            ],
-            [
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAY TO / BENEFICIARY:</b></font><br/><b>{data.supplier.name}</b>",
-                    style_meta_val,
-                ),
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>BANK ACC NO:</b></font><br/><b>{data.payment.bank_account_no or '—'}</b>",
-                    style_meta_val,
-                ),
-            ],
-            [
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT TERMS:</b></font><br/>{data.payment.terms or 'Net 30 Days'}",
-                    style_meta_val,
-                ),
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>PAYMENT DUE DATE:</b></font><br/><b>{data.payment.due_date or data.document.issue_date}</b>",
-                    style_meta_val,
-                ),
-            ],
-            [
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>QUOTE FOR REMITTANCE:</b></font><br/>{data.document.einvoice_code}",
-                    style_meta_val,
-                ),
-                Paragraph(
-                    f"<font size='6' color='{MID_GREY.hexval()}'><b>ACCEPTED MODES:</b></font><br/>{data.payment.mode or 'Bank Transfer / DuitNow'}",
-                    style_meta_val,
-                ),
-            ],
-        ]
-    t_pay_box = Table(pay_rows, colWidths=[130, 140])
-    t_pay_box.setStyle(
-        TableStyle(
-            [
-                ("SPAN", (0, 0), (1, 0)),
-                ("BACKGROUND", (0, 0), (1, 0), NAVY),
-                ("TOPPADDING", (0, 0), (1, 0), 2),
-                ("BOTTOMPADDING", (0, 0), (1, 0), 2),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ("BACKGROUND", (0, 1), (-1, -1), LIGHT_BG),
-                ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
-                ("INNERGRID", (0, 1), (-1, -1), 0.25, BORDER_GREY),
-                ("TOPPADDING", (0, 1), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
-            ]
-        )
+    tax_label = (
+        data.line_items[0].tax_type
+        if data.line_items and data.line_items[0].tax_type
+        else "Tax"
     )
-
-    # Totals block (right)
     tot_rows = [
         [
-            Paragraph("Subtotal (Excl. Tax)", style_td),
-            Paragraph(_format_curr(data.totals.subtotal), style_td_r),
+            Paragraph(f"Total Excluding Tax ({ccy})", style_td),
+            Paragraph(_format_num(data.totals.total_excluding_tax), style_td_r),
         ],
         [
-            Paragraph("Total Discount", style_td),
-            Paragraph(_format_curr(data.totals.total_discount), style_td_r),
+            Paragraph(f"Total Discount ({ccy})", style_td),
+            Paragraph(_format_num(data.totals.total_discount), style_td_r),
         ],
         [
-            Paragraph("Total Tax (SST / Tax)", style_td),
-            Paragraph(_format_curr(data.totals.total_tax), style_td_r),
+            Paragraph(f"Total {tax_label} Payable ({ccy})", style_td),
+            Paragraph(_format_num(data.totals.total_tax), style_td_r),
         ],
         [
-            Paragraph("Total Incl. Tax", style_td_bold),
-            Paragraph(_format_curr(data.totals.total_including_tax), style_td_r_bold),
-        ],
-        [
-            Paragraph("TOTAL PAYABLE", style_tot_head),
-            Paragraph(_format_curr(data.totals.total_payable), style_tot_head_r),
+            Paragraph(f"TOTAL PAYABLE ({ccy})", style_tot_head),
+            Paragraph(_format_num(data.totals.total_payable), style_tot_head_r),
         ],
     ]
-    t_tot_box = Table(tot_rows, colWidths=[140, 118])
+    tot_label_w, tot_val_w = 168, 100
+    t_tot_box = Table(tot_rows, colWidths=[tot_label_w, tot_val_w])
     t_tot_box.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, 3), 1.8),
-                ("BOTTOMPADDING", (0, 0), (-1, 3), 1.8),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("BACKGROUND", (0, 0), (-1, 3), WHITE),
-                ("BACKGROUND", (0, 4), (-1, 4), NAVY),
-                ("TOPPADDING", (0, 4), (-1, 4), 3),
-                ("BOTTOMPADDING", (0, 4), (-1, 4), 3),
+                ("TOPPADDING", (0, 0), (-1, 2), 2.2),
+                ("BOTTOMPADDING", (0, 0), (-1, 2), 2.2),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("BACKGROUND", (0, 0), (-1, 2), WHITE),
+                ("BACKGROUND", (0, 3), (-1, 3), NAVY),
+                ("TOPPADDING", (0, 3), (-1, 3), 5),
+                ("BOTTOMPADDING", (0, 3), (-1, 3), 5),
                 ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GREY),
-                ("INNERGRID", (0, 0), (-1, 3), 0.25, LIGHT_GREY),
+                ("INNERGRID", (0, 0), (-1, 2), 0.25, LIGHT_GREY),
             ]
         )
     )
+    right_wrap = Table(
+        [["", t_tot_box]], colWidths=[538 - (tot_label_w + tot_val_w), tot_label_w + tot_val_w]
+    )
+    right_wrap.setStyle(
+        TableStyle(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(right_wrap)
+    story.append(Spacer(1, 4))
+    story.append(
+        Paragraph(
+            f"Amount in words: {_amount_in_words(data.totals.total_payable, ccy)}",
+            style_words,
+        )
+    )
+    story.append(Spacer(1, 6))
 
-    summary_table = Table([[t_pay_box, t_tot_box]], colWidths=[275, 263])
-    summary_table.setStyle(
+    # ==========================================
+    # 7. PAYMENT INFORMATION + FOOTER (kept together to avoid an awkward page split)
+    # ==========================================
+    if data.payment.paid_at:
+        pay_bar_text = "PAYMENT INFORMATION &bull; <font color='#D1FAE5'>PAID</font>"
+        pay_bar_color = HexColor("#00A868")
+        pay_left = [
+            ("PAYMENT TERMS", data.payment.terms or "—"),
+            ("SETTLED ON", str(data.payment.paid_at)),
+        ]
+        pay_right = [
+            ("PAYMENT METHOD", data.payment.mode or "Bank Transfer"),
+            ("BENEFICIARY ACCOUNT", data.payment.bank_account_no or "—"),
+        ]
+    else:
+        pay_bar_text = "PAYMENT INFORMATION"
+        pay_bar_color = NAVY
+        pay_left = [
+            ("PAYMENT TERMS", data.payment.terms or "Net 30 Days"),
+            ("PAYMENT MODE", data.payment.mode or "Bank Transfer"),
+        ]
+        pay_right = [
+            ("BENEFICIARY ACCOUNT", data.payment.bank_account_no or "—"),
+            ("PAYMENT DUE DATE", data.payment.due_date or data.document.issue_date),
+        ]
+
+    pw = 269.0
+    t_pay_left = _kv_block(pay_left, pw, style_meta_label, style_meta_val)
+    t_pay_right = _kv_block(pay_right, pw, style_meta_label, style_meta_val)
+    pay_grid = Table([[t_pay_left, t_pay_right]], colWidths=[pw, pw])
+    pay_grid.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (0, 0), 0),
+                ("LEFTPADDING", (1, 0), (1, 0), 14),
             ]
         )
     )
-    story.append(summary_table)
-    story.append(Spacer(1, 4))
-
-    # ==========================================
-    # 7. FOOTER & COMPLIANCE DISCLAIMER
-    # ==========================================
-    disclaimer_text = (
-        "<b>IRBM / MyInvois Compliance Notice:</b> This e-Invoice printable document has been validated "
-        "and certified under LHDN Malaysia e-Invoicing Guidelines (v4.6, Jan 2026). "
-        "The digital signature and cryptographic verification proof are securely lodged with Inland Revenue Board of Malaysia (LHDN)."
+    pay_bar = Table([[Paragraph(pay_bar_text, style_box_head)]], colWidths=[538])
+    pay_bar.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), pay_bar_color),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
     )
-    story.append(Paragraph(disclaimer_text, style_footer))
-    story.append(Spacer(1, 1))
-    story.append(
+
+    footer_note_text = _STATUS_FOOTER_NOTE.get(status_key, _STATUS_FOOTER_NOTE["pending"])
+    bottom_block = [
+        pay_bar,
+        Spacer(1, 4),
+        pay_grid,
+        Spacer(1, 8),
+        HRFlowable(width=538, thickness=0.6, color=BORDER_GREY),
+        Spacer(1, 4),
+        Paragraph(footer_note_text, style_footer_note),
+        Spacer(1, 3),
         Paragraph(
             "FinBrain OS e-Invoice Readiness Platform &bull; Human-Readable Official Representation",
             style_footer,
-        )
-    )
+        ),
+    ]
+    story.append(KeepTogether(bottom_block))
 
     doc.build(story)
     return buf.getvalue()
